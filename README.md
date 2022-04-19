@@ -19,9 +19,9 @@ Although one can change the macro to use floating-point weights, it's not recomm
 ## Tests
 
 In order to test the correctness of our MWPM solver, we need a ground truth MWPM solver.
-[Blossom V](https://doi.org/10.1007/s12532-009-0002-8) is widely-used in existing MWPM decoders, but according to the license we cannot embed this library.
-To run the test cases with ground truth comparison, you need to download this library [at this website](https://pub.ist.ac.at/~vnk/software.html) to a folder
-named `blossomV` at the root directory of this git repo.
+[Blossom V](https://doi.org/10.1007/s12532-009-0002-8) is widely-used in existing MWPM decoders, but according to the license we cannot embed it in this library.
+To run the test cases with ground truth comparison or enable the functions like `blossom_v_mwpm`, you need to download this library
+[at this website](https://pub.ist.ac.at/~vnk/software.html) to a folder named `blossomV` at the root directory of this git repo.
 
 ```shell
 wget -c https://pub.ist.ac.at/~vnk/software/blossom5-v2.05.src.tar.gz -O - | tar -xz
