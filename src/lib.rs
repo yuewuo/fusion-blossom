@@ -2,6 +2,9 @@ extern crate libc;
 extern crate cfg_if;
 extern crate rand_xoshiro;
 extern crate priority_queue;
+extern crate parking_lot;
+extern crate serde;
+#[macro_use] extern crate serde_json;
 
 pub mod blossom_v;
 pub mod util;
@@ -10,13 +13,18 @@ pub mod complete_graph;
 
 use util::*;
 
-/// use fusion blossom to solve MWPM
+/// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`fusion_single_thread::FusionSingleThread`] object)
 pub fn fusion_mwpm(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
-    println!("node_num: {}", node_num);
-    println!("weighted_edges: {:?}", weighted_edges);
-    println!("virtual_nodes: {:?}", virtual_nodes);
-    println!("syndrome_nodes: {:?}", syndrome_nodes);
-    unimplemented!()
+    // sanity check
+    assert!(node_num > 1, "at least one node required");
+    let max_safe_weight = ((Weight::MAX as usize) / node_num) as Weight;
+    for (i, j, weight) in weighted_edges.iter() {
+        if weight > &max_safe_weight {
+            panic!("edge {}-{} has weight {} > max safe weight {}, it may cause fusion blossom to overflow", i, j, weight, max_safe_weight);
+        }
+    }
+    // by default use single-thread fusion blossom
+    fusion_single_thread::solve_mwpm(node_num, weighted_edges, virtual_nodes, syndrome_nodes)
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)
