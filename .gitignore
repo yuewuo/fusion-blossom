@@ -13,3 +13,6 @@ Cargo.lock
 /blossomV/*
 # remain the interfacing source file
 !/blossomV/blossomV.cpp
+
+# visualization data
+/visualize/data/*.json

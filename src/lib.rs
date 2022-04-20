@@ -5,11 +5,14 @@ extern crate priority_queue;
 extern crate parking_lot;
 extern crate serde;
 #[macro_use] extern crate serde_json;
+extern crate chrono;
 
 pub mod blossom_v;
 pub mod util;
 pub mod fusion_single_thread;
 pub mod complete_graph;
+pub mod union_find;
+pub mod visualize;
 
 use util::*;
 
