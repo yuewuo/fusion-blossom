@@ -168,8 +168,9 @@ impl UnionNodeTrait for FusionUnionNode {
 pub fn solve_mwpm_visualizer(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>, syndrome_nodes: &Vec<usize>, mut visualizer: Option<&mut Visualizer>) -> Vec<usize> {
     let mut fusion_solver = FusionSingleThread::new(node_num, weighted_edges, virtual_nodes);
     fusion_solver.load_syndrome(syndrome_nodes);
-    println!("snapshot: {}", fusion_solver.snapshot(true).to_string());
-    if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("init"), &fusion_solver).unwrap(); }  // log to visualizer
+    if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("start"), &fusion_solver).unwrap(); }
+    if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("form blossom"), &fusion_solver).unwrap(); }
+    if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("end"), &fusion_solver).unwrap(); }
     unimplemented!()
 }
 
@@ -301,6 +302,12 @@ mod tests {
         let visualize_filename = static_visualize_data_filename();
         print_visualize_link(&visualize_filename);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        let mut positions = Vec::new();
+        for i in 0..d {
+            positions.push(VisualizePosition::new(0., i as f64, 0.));
+        }
+        positions.push(VisualizePosition::new(0., -1., 0.));
+        visualizer.set_positions(positions, true);  // automatic center all nodes
         let fusion_matchings = solve_mwpm_visualizer(node_num, &weighted_edges, &virtual_nodes, &syndrome_nodes, Some(&mut visualizer));
         let fusion_details = detailed_matching(node_num, &weighted_edges, &syndrome_nodes, &fusion_matchings);
         let mut fusion_weight: Weight = 0;
