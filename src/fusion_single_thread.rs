@@ -285,27 +285,27 @@ mod tests {
         };
         let virtual_nodes = vec![d-1, d];
         println!("[debug] weighted_edges: {:?}", weighted_edges);
-        let mut errors: Vec<bool> = (0..d).map(|_| false).collect();
-        let mut measurements: Vec<bool> = (0..d-1).map(|_| false).collect();
+        let mut errors: Vec<bool> = weighted_edges.iter().map(|_| false).collect();
+        let mut measurements: Vec<bool> = (0..node_num).map(|_| false).collect();
         let rounds = 5;
         for round in 0..rounds {
             let mut rng = DeterministicRng::seed_from_u64(round);
             // generate random error
-            for i in 0..d-1 { measurements[i] = false; }  // clear measurement errors
-            for i in 0..d {
+            for i in 0..node_num { measurements[i] = false; }  // clear measurement errors
+            for i in 0..weighted_edges.len() {
                 errors[i] = rng.next_f64() < p;
                 if errors[i] {
-                    if i > 0 {
-                        measurements[i-1] ^= true;  // flip left
-                    }
-                    if i < d-1 {
-                        measurements[i] ^= true;  // flip right
-                    }
+                    let (left, right, _) = weighted_edges[i];
+                    measurements[left] ^= true;
+                    measurements[right] ^= true;
                 }
+            }
+            for &virtual_node in virtual_nodes.iter() {
+                measurements[virtual_node] = false;  // virtual node cannot detect errors
             }
             // println!("[debug {}] errors: {:?}", round, errors);
             let mut error_nodes = Vec::new();
-            for i in 0..d {
+            for i in 0..weighted_edges.len() {
                 if errors[i] {
                     error_nodes.push(i);
                 }
@@ -313,7 +313,7 @@ mod tests {
             println!("[debug {}] error_nodes: {:?}", round, error_nodes);
             // generate syndrome
             let mut syndrome_nodes = Vec::new();
-            for i in 0..d-1 {
+            for i in 0..node_num {
                 if measurements[i] {
                     syndrome_nodes.push(i);
                 }
@@ -358,25 +358,25 @@ mod tests {
         };
         let virtual_nodes = vec![d-1, d];
         println!("[debug] weighted_edges: {:?}", weighted_edges);
-        let mut errors: Vec<bool> = (0..d).map(|_| false).collect();
-        let mut measurements: Vec<bool> = (0..d-1).map(|_| false).collect();
+        let mut errors: Vec<bool> = weighted_edges.iter().map(|_| false).collect();
+        let mut measurements: Vec<bool> = (0..node_num).map(|_| false).collect();
         // load error
         let error_nodes = vec![2, 10];
         println!("[debug] error_nodes: {:?}", error_nodes);
-        for i in 0..d-1 { measurements[i] = false; }  // clear measurement errors
+        for i in 0..node_num { measurements[i] = false; }  // clear measurement errors
         for &i in error_nodes.iter() {
             errors[i] = true;
-            if i > 0 {
-                measurements[i-1] ^= true;  // flip left
-            }
-            if i < d-1 {
-                measurements[i] ^= true;  // flip right
-            }
+            let (left, right, _) = weighted_edges[i];
+            measurements[left] ^= true;
+            measurements[right] ^= true;
+        }
+        for &virtual_node in virtual_nodes.iter() {
+            measurements[virtual_node] = false;  // virtual node cannot detect errors
         }
         // println!("[debug {}] errors: {:?}", round, errors);
         // generate syndrome
         let mut syndrome_nodes = Vec::new();
-        for i in 0..d-1 {
+        for i in 0..node_num {
             if measurements[i] {
                 syndrome_nodes.push(i);
             }
@@ -389,9 +389,187 @@ mod tests {
         let mut positions = Vec::new();
         for i in 0..d {
             positions.push(VisualizePosition::new(0., i as f64, 0.));
-            // positions.push(VisualizePosition::new(i as f64 * 0.2, i as f64 * 2., i as f64 * 5.));  // debug visualization: strange position
         }
         positions.push(VisualizePosition::new(0., -1., 0.));
+        visualizer.set_positions(positions, true);  // automatic center all nodes
+        let fusion_matchings = solve_mwpm_visualizer(node_num, &weighted_edges, &virtual_nodes, &syndrome_nodes, Some(&mut visualizer));
+        let fusion_details = detailed_matching(node_num, &weighted_edges, &syndrome_nodes, &fusion_matchings);
+        let mut fusion_weight: Weight = 0;
+        for detail in fusion_details.iter() {
+            fusion_weight += detail.weight;
+        }
+        println!("[debug] fusion_matchings: {:?}", fusion_matchings);
+        println!("[debug] fusion_weight: {:?}", fusion_weight);
+    }
+
+    #[test]
+    fn single_thread_surface_code_visualize_d11() {  // cargo test single_thread_surface_code_visualize_d11 -- --nocapture
+        let d = 11;
+        let p = 0.2f64;
+        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
+        let node_num = row_node_num * d;  // `d` rows
+        let weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
+        let weighted_edges = {
+            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
+            for row in 0..d {
+                let bias = row * row_node_num;
+                for i in 0..d-1 {
+                    weighted_edges.push((bias + i, bias + i+1, weight));
+                }
+                weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
+                if row + 1 < d {
+                    for i in 0..d-1 {
+                        weighted_edges.push((bias + i, bias + i + row_node_num, weight));
+                    }
+                }
+            }
+            weighted_edges
+        };
+        let virtual_nodes = {
+            let mut virtual_nodes = Vec::new();
+            for row in 0..d {
+                let bias = row * row_node_num;
+                virtual_nodes.push(bias + d - 1);
+                virtual_nodes.push(bias + d);
+            }
+            virtual_nodes
+        };
+        // println!("[debug] weighted_edges: {:?}", weighted_edges);
+        let mut errors: Vec<bool> = weighted_edges.iter().map(|_| false).collect();
+        let mut measurements: Vec<bool> = (0..node_num).map(|_| false).collect();
+        // load error
+        let error_edges = vec![2, 10];
+        println!("[debug] error_edges: {:?}", error_edges);
+        for i in 0..node_num { measurements[i] = false; }  // clear measurement errors
+        for &i in error_edges.iter() {
+            errors[i] = true;
+            let (left, right, _) = weighted_edges[i];
+            measurements[left] ^= true;
+            measurements[right] ^= true;
+        }
+        for &virtual_node in virtual_nodes.iter() {
+            measurements[virtual_node] = false;  // virtual node cannot detect errors
+        }
+        // println!("[debug {}] errors: {:?}", round, errors);
+        // generate syndrome
+        let mut syndrome_nodes = Vec::new();
+        for i in 0..node_num {
+            if measurements[i] {
+                syndrome_nodes.push(i);
+            }
+        }
+        println!("[debug] syndrome_nodes: {:?}", syndrome_nodes);
+        // run single-thread fusion blossom algorithm
+        let visualize_filename = static_visualize_data_filename();
+        print_visualize_link(&visualize_filename);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        let mut positions = Vec::new();
+        for row in 0..d {
+            let pos_i = row as f64;
+            for i in 0..d {
+                positions.push(VisualizePosition::new(pos_i, i as f64, 0.));
+            }
+            positions.push(VisualizePosition::new(pos_i, -1., 0.));
+        }
+        visualizer.set_positions(positions, true);  // automatic center all nodes
+        let fusion_matchings = solve_mwpm_visualizer(node_num, &weighted_edges, &virtual_nodes, &syndrome_nodes, Some(&mut visualizer));
+        let fusion_details = detailed_matching(node_num, &weighted_edges, &syndrome_nodes, &fusion_matchings);
+        let mut fusion_weight: Weight = 0;
+        for detail in fusion_details.iter() {
+            fusion_weight += detail.weight;
+        }
+        println!("[debug] fusion_matchings: {:?}", fusion_matchings);
+        println!("[debug] fusion_weight: {:?}", fusion_weight);
+    }
+
+    #[test]
+    fn single_thread_phenomenological_surface_code_visualize_d11() {  // cargo test single_thread_phenomenological_surface_code_visualize_d11 -- --nocapture
+        let d = 11;
+        let p = 0.2f64;
+        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
+        let t_node_num = row_node_num * d;  // `d` rows
+        let node_num = t_node_num * d;  // `d - 1` rounds of measurement capped by another round of perfect measurement
+        let weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
+        let weighted_edges = {
+            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
+            for t in 0..d {
+                let t_bias = t * t_node_num;
+                for row in 0..d {
+                    let bias = t_bias + row * row_node_num;
+                    for i in 0..d-1 {
+                        weighted_edges.push((bias + i, bias + i+1, weight));
+                    }
+                    weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
+                    if row + 1 < d {
+                        for i in 0..d-1 {
+                            weighted_edges.push((bias + i, bias + i + row_node_num, weight));
+                        }
+                    }
+                }
+                // inter-layer connection
+                if t + 1 < d {
+                    for row in 0..d {
+                        let bias = t_bias + row * row_node_num;
+                        for i in 0..d-1 {
+                            weighted_edges.push((bias + i, bias + i + t_node_num, weight));
+                        }
+                    }
+                }
+            }
+            weighted_edges
+        };
+        let virtual_nodes = {
+            let mut virtual_nodes = Vec::new();
+            for t in 0..d {
+                let t_bias = t * t_node_num;
+                for row in 0..d {
+                    let bias = t_bias + row * row_node_num;
+                    virtual_nodes.push(bias + d - 1);
+                    virtual_nodes.push(bias + d);
+                }
+            }
+            virtual_nodes
+        };
+        // println!("[debug] weighted_edges: {:?}", weighted_edges);
+        let mut errors: Vec<bool> = weighted_edges.iter().map(|_| false).collect();
+        let mut measurements: Vec<bool> = (0..node_num).map(|_| false).collect();
+        // load error
+        let error_edges = vec![2, 10];
+        println!("[debug] error_edges: {:?}", error_edges);
+        for i in 0..node_num { measurements[i] = false; }  // clear measurement errors
+        for &i in error_edges.iter() {
+            errors[i] = true;
+            let (left, right, _) = weighted_edges[i];
+            measurements[left] ^= true;
+            measurements[right] ^= true;
+        }
+        for &virtual_node in virtual_nodes.iter() {
+            measurements[virtual_node] = false;  // virtual node cannot detect errors
+        }
+        // println!("[debug {}] errors: {:?}", round, errors);
+        // generate syndrome
+        let mut syndrome_nodes = Vec::new();
+        for i in 0..node_num {
+            if measurements[i] {
+                syndrome_nodes.push(i);
+            }
+        }
+        println!("[debug] syndrome_nodes: {:?}", syndrome_nodes);
+        // run single-thread fusion blossom algorithm
+        let visualize_filename = static_visualize_data_filename();
+        print_visualize_link(&visualize_filename);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        let mut positions = Vec::new();
+        for t in 0..d {
+            let pos_t = t as f64;
+            for row in 0..d {
+                let pos_i = row as f64;
+                for i in 0..d {
+                    positions.push(VisualizePosition::new(pos_i, i as f64, pos_t));
+                }
+                positions.push(VisualizePosition::new(pos_i, -1., pos_t));
+            }
+        }
         visualizer.set_positions(positions, true);  // automatic center all nodes
         let fusion_matchings = solve_mwpm_visualizer(node_num, &weighted_edges, &virtual_nodes, &syndrome_nodes, Some(&mut visualizer));
         let fusion_details = detailed_matching(node_num, &weighted_edges, &syndrome_nodes, &fusion_matchings);

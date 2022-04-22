@@ -130,8 +130,8 @@ const syndrome_node_material = new THREE.MeshStandardMaterial({
     side: THREE.FrontSide,
 })
 const real_node_material = new THREE.MeshStandardMaterial({
-    color: 0x000000,
-    opacity: 0.03,
+    color: 0xffffff,
+    opacity: 0.1,
     transparent: true,
     side: THREE.FrontSide,
 })
@@ -231,16 +231,17 @@ export function show_snapshot(snapshot, fusion_data) {
             if (edge_meshes.length <= i) {
                 const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
                 scene.add( edge_mesh )
-                load_position(edge_mesh.position, a_position)
-                const direction = compute_vector3(b_position).add(compute_vector3(a_position).multiplyScalar(-1))
-                const edge_length = direction.length()
-                // console.log(direction)
-                const quaternion = new THREE.Quaternion()
-                quaternion.setFromUnitVectors(unit_up_vector, direction.normalize())
-                edge_mesh.scale.set(1, edge_length, 1)
-                edge_mesh.applyQuaternion(quaternion)
                 edge_meshes.push(edge_mesh)
             }
+            const edge_mesh = edge_meshes[i]
+            load_position(edge_mesh.position, a_position)
+            const direction = compute_vector3(b_position).add(compute_vector3(a_position).multiplyScalar(-1))
+            const edge_length = direction.length()
+            // console.log(direction)
+            const quaternion = new THREE.Quaternion()
+            quaternion.setFromUnitVectors(unit_up_vector, direction.normalize())
+            edge_mesh.scale.set(1, edge_length, 1)
+            edge_mesh.setRotationFromQuaternion(quaternion)
         }
     }
     for (let i = snapshot.edges.length; i < left_edge_meshes.length; ++i) {
