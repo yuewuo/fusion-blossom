@@ -3,6 +3,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'OrbitControls'
 import * as Stats from 'Stats'
+import * as GUI from 'GUI'
 const { ref, reactive, watch, computed } = Vue
 
 
@@ -22,25 +23,15 @@ export const sizes = reactive({
     canvas_width: 0,
     canvas_height: 0,
     scale: 1,
-    default_size: "md",
 })
 
 watch([window_inner_width, window_inner_height], () => {
-    if (window_inner_width.value >= 3840) {
-        sizes.scale = 2
-        sizes.default_size = "xl"
-    } else if (window_inner_width.value >= 2880) {
-        sizes.scale = 1.5
-        sizes.default_size = "lg"
-    } else if (window_inner_width.value >= 1600) {
-        sizes.scale = 1
-        sizes.default_size = "md"
-    } else if (window_inner_width.value >= 1200) {
-        sizes.scale = 0.75
-        sizes.default_size = "sm"
-    } else {
-        sizes.scale = 0.6
-        sizes.default_size = "xs"
+    sizes.scale = window_inner_width.value / 1920
+    if (sizes.scale > window_inner_height.value / 1080) {  // ultra-wide
+        sizes.scale = window_inner_height.value / 1080
+    }
+    if (sizes.scale * window_inner_width.value < 300) {
+        sizes.scale = 300 / window_inner_width.value
     }
     root.style.setProperty('--s', sizes.scale)
     // sizes.scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s'))
@@ -62,7 +53,8 @@ document.body.appendChild( renderer.domElement )
 watch(sizes, () => {
     perspective_camera.aspect = sizes.canvas_width / sizes.canvas_height
     perspective_camera.updateProjectionMatrix()
-    orthogonal_camera.aspect = sizes.canvas_width / sizes.canvas_height
+    orthogonal_camera.left = sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
+    orthogonal_camera.right = sizes.canvas_width / sizes.canvas_height * (orthogonal_camera_init_scale)
     orthogonal_camera.updateProjectionMatrix()
     renderer.setSize( sizes.canvas_width, sizes.canvas_height, false )
     const ratio = window.devicePixelRatio  // looks better on devices with a high pixel ratio, such as iPhones with Retina displays
@@ -100,6 +92,16 @@ reset_camera_position()
 
 const stats = Stats.default()
 document.body.appendChild(stats.dom)
+export const show_stats = ref(true)
+watch(show_stats, function() {
+    if (show_stats.value) {
+        stats.dom.style.display = "block"
+    } else {
+        stats.dom.style.display = "none"
+    }
+}, { immediate: true })
+
+export const show_config = ref(false)
 
 export function animate() {
     requestAnimationFrame( animate )
@@ -202,3 +204,9 @@ export function show_snapshot(snapshot, fusion_data) {
         edge_meshes[i].visible = false
     }
 }
+
+
+// configurations
+
+
+

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
     <title>Fusion Visualize</title>
 <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet" type="text/css">
 <link href="https://cdn.jsdelivr.net/npm/animate.css@^4.0.0/animate.min.css" rel="stylesheet" type="text/css">
@@ -23,46 +23,48 @@ body, html {
     background-color: rgb(250, 250, 250);
     height: 100%;
     right: 0;
-    font-size: calc(18px * var(--s));
-    /* overflow-y: scroll; */
+    overflow-y: hidden;
     overflow-x: hidden;
 }
 .control-bar-inner {
-    width: calc(600px * var(--s));
-    height: 100%;
-    padding: calc(10px * var(--s));
+    width: 600px;
+    height: calc(100% / var(--s));
+    transform: scale(var(--s));
+    transform-origin: 0 0;
+    font-size: 18px;
 }
 canvas {
     display: block;
 }
 h1, h2, h3, h4, h5 {
     text-align: center;
-    margin: calc(20px * var(--s)) auto 0 auto;
+    margin: 20px auto 0 auto;
 }
 .slider {
-    margin-top: calc(0px * var(--s));
-    margin-left: calc(25px * var(--s));
-    width: calc(530px * var(--s));
+    margin-top: 0;
+    margin-left: 35px;
+    width: 530px;
 }
-.slector {
-    margin-top: calc(20px * var(--s));
-    margin-left: calc(25px * var(--s));
-    width: calc(530px * var(--s));
+.selector {
+    margin-top: 20px;
+    margin-left: 25px;
+    width: 550px;
 }
 h1 {
-    font-size: calc(40px * var(--s));
-    line-height: calc(40px * var(--s));
+    font-size: 40px;
+    line-height: 40px;
 }
 h2 {
-    font-size: calc(30px * var(--s));
-    line-height: calc(30px * var(--s));
+    font-size: 30px;
+    line-height: 30px;
 }
 h3 {
-    font-size: calc(20px * var(--s));
-    line-height: calc(20px * var(--s));
+    font-size: 20px;
+    line-height: 20px;
 }
 .flex-center-div {
-    margin-top: calc(10px * var(--s));
+    width: 600px;
+    margin-top: 10px;
     display: flex;
     justify-content: center;
     flex-direction: row;
@@ -77,28 +79,28 @@ h3 {
 <div class="control-bar" id="app">
     <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
-        <h1>Fusion Blossom</h1>
+        <div class="flex-center-div"><h1>Fusion Blossom</h1></div>
         <h2 v-if="error_message != null" style="color: red;">{{ error_message }}</h2>
-        <div class="slector">
-            <q-select filled v-model="snapshot_select_label" :options="snapshot_labels" options-dense dense behavior="menu">
+        <div class="selector">
+            <q-select filled v-model="snapshot_select_label" :options="snapshot_labels" options-dense behavior="menu" rounded>
                 <template v-slot:before>
-                    <q-btn round dense flat icon="arrow_circle_left" :disabled="snapshot_select == 0" @click="snapshot_select -= 1" />
+                    <q-btn round flat icon="arrow_circle_left" :disabled="snapshot_select == 0" @click="snapshot_select -= 1" size="xl"/>
                 </template>
                 <template v-slot:after>
-                <q-btn round dense flat icon="arrow_circle_right" :disabled="snapshot_select == snapshot_num-1" @click="snapshot_select += 1" />
+                    <q-btn round flat icon="arrow_circle_right" :disabled="snapshot_select == snapshot_num-1" @click="snapshot_select += 1" size="xl"/>
                 </template>
             </q-select>
         </div>
         <div class="slider">
             <q-slider v-model="snapshot_select" :min="0" :max="snapshot_num-1" :step="1" snap
-                thumb-size="calc(25px * var(--s))" track-size="calc(8px * var(--s))"></q-slider>
+                thumb-size="25px" track-size="8px"></q-slider>
         </div>
         <div class="flex-center-div">
-            <q-btn-toggle v-model="use_perspective_camera" :size="size" no-caps rounded unelevated toggle-color="primary" color="white" text-color="primary"
-                :options="[ { label: 'orthogonal', value: false }, { label: 'perspective', value: true } ]"
+            <q-btn-toggle v-model="use_perspective_camera" no-caps rounded unelevated toggle-color="primary" color="white" text-color="primary"
+                :options="[ { label: 'orthogonal', value: false }, { label: 'perspective', value: true } ]" size="lg"
             ></q-btn-toggle>
-            <span style="margin: 0 calc(15px * var(--s)) 0 calc(15px * var(--s)); line-height: calc(38px * var(--s));">camera</span>
-            <q-btn-dropdown color="warning" label="reset" :size="size" no-caps>
+            <span style="margin: 0 15px 0 15px; line-height: 52px; font-size: 25px;">camera</span>
+            <q-btn-dropdown color="warning" label="reset" no-caps size="lg" rounded>
                 <q-list>
                     <q-item clickable v-close-popup @click="reset_camera('top')">
                         <q-item-section>
@@ -118,9 +120,10 @@ h3 {
                 </q-list>
             </q-btn-dropdown>
         </div>
-        <!-- <div class="flex-center-div">
-            <q-toggle v-model="show_stats" label="WebGL stats"/>
-        </div> -->
+        <div class="flex-center-div">
+            <q-toggle v-model="show_config" label="render configs" size="md"/>
+            <q-toggle v-model="show_stats" label="performance stats" size="md"/>
+        </div>
         <!-- <p v-for="index in 50">paragraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraph</p> -->
     </q-scroll-area>
 </div>
@@ -131,18 +134,20 @@ h3 {
     "imports": {
         "three": "https://unpkg.com/three@0.139.2/build/three.module.js",
         "OrbitControls": "https://unpkg.com/three@0.139.2/examples/jsm/controls/OrbitControls.js",
-        "Stats": "https://unpkg.com/three@0.139.2/examples/jsm/libs/stats.module.js"
+        "Stats": "https://unpkg.com/three@0.139.2/examples/jsm/libs/stats.module.js",
+        "GUI": "https://unpkg.com/three@0.139.2/examples/jsm/libs/lil-gui.module.min.js"
     }
 }
 </script>
 
-<script>
+<script type="module" src="./index.js"></script>
+<!-- <script>
 // always fetch the latest script and avoid caching
 var index_script = document.createElement('script');
 index_script.setAttribute('src','./index.js?v=' + Math.random());
 index_script.setAttribute('type','module');
 document.body.appendChild(index_script);
-</script>
+</script> -->
 
 </body>
 </html>

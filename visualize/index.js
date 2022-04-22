@@ -1,7 +1,4 @@
-import * as THREE from 'three'
-import { OrbitControls } from 'OrbitControls'
-import * as Stats from 'Stats'
-import * as GUI from './gui3d.js'
+import * as gui3d from './gui3d.js'
 const { ref, reactive } = Vue
 
 // fetch fusion blossom runtime data
@@ -19,15 +16,14 @@ const App = {
             snapshot_select: ref(0),
             snapshot_select_label: ref(""),
             snapshot_labels: reactive([]),
-            use_perspective_camera: GUI.use_perspective_camera,
-            scale: GUI.scale,
-            size: GUI.default_size,
+            use_perspective_camera: gui3d.use_perspective_camera,
+            sizes: gui3d.sizes,
             // GUI related states
-            show_stats: ref(false),
+            show_stats: gui3d.show_stats,
+            show_config: gui3d.show_config,
         }
     },
     async mounted() {
-        console.log(this.size)
         try {
             let response = await fetch('./data/' + filename, { cache: 'no-cache', })
             fusion_data = await response.json()
@@ -43,7 +39,7 @@ const App = {
         }
         this.snapshot_select_label = this.snapshot_labels[0]
         // only if data loads successfully will the animation starts
-        GUI.animate()
+        gui3d.animate()
         // add keyboard shortcuts
         document.onkeydown = (event) => {
             if (!event.metaKey) {
@@ -72,14 +68,14 @@ const App = {
     methods: {
         show_snapshot(snapshot) {
             try {
-                GUI.show_snapshot(snapshot, fusion_data)
+                gui3d.show_snapshot(snapshot, fusion_data)
             } catch (e) {
                 this.error_message = "load data error"
                 throw e
             }
         },
         reset_camera(direction) {
-            GUI.reset_camera_position(direction)
+            gui3d.reset_camera_position(direction)
         },
     },
     watch: {
@@ -93,39 +89,42 @@ const App = {
         },
     },
     computed: {
+        scale() {
+            return this.sizes.scale
+        },
         vertical_thumb_style() {
             return {
-                right: `${4*this.scale}px`,
-                borderRadius: `${5*this.scale}px`,
+                right: `4px`,
+                borderRadius: `5px`,
                 backgroundColor: '#027be3',
-                width: `${5*this.scale}px`,
+                width: `5px`,
                 opacity: 0.75
             }
         },
         horizontal_thumb_style() {
             return {
-                bottom: `${4*this.scale}px`,
-                borderRadius: `${5*this.scale}px`,
+                bottom: `4px`,
+                borderRadius: `5px`,
                 backgroundColor: '#027be3',
-                height: `${5*this.scale}px`,
+                height: `5px`,
                 opacity: 0.75
             }
         },
         vertical_bar_style() {
             return {
-                right: `${2*this.scale}px`,
-                borderRadius: `${9*this.scale}px`,
+                right: `2px`,
+                borderRadius: `9px`,
                 backgroundColor: '#027be3',
-                width: `${9*this.scale}px`,
+                width: `9px`,
                 opacity: 0.2
             }
         },
         horizontal_bar_style() {
             return {
-                bottom: `${2*this.scale}px`,
-                borderRadius: `${9*this.scale}px`,
+                bottom: `2px`,
+                borderRadius: `9px`,
                 backgroundColor: '#027be3',
-                height: `${9*this.scale}px`,
+                height: `9px`,
                 opacity: 0.2
             }
         },
