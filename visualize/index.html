@@ -40,7 +40,7 @@ h1, h2, h3, h4, h5 {
     margin: calc(20px * var(--s)) auto 0 auto;
 }
 .slider {
-    margin-top: calc(-5px * var(--s));
+    margin-top: calc(0px * var(--s));
     margin-left: calc(25px * var(--s));
     width: calc(530px * var(--s));
 }
@@ -61,7 +61,8 @@ h3 {
     font-size: calc(20px * var(--s));
     line-height: calc(20px * var(--s));
 }
-.camera-control {
+.flex-center-div {
+    margin-top: calc(10px * var(--s));
     display: flex;
     justify-content: center;
     flex-direction: row;
@@ -92,7 +93,7 @@ h3 {
             <q-slider v-model="snapshot_select" :min="0" :max="snapshot_num-1" :step="1" snap
                 thumb-size="calc(25px * var(--s))" track-size="calc(8px * var(--s))"></q-slider>
         </div>
-        <div class="camera-control">
+        <div class="flex-center-div">
             <q-btn-toggle v-model="use_perspective_camera" :size="size" no-caps rounded unelevated toggle-color="primary" color="white" text-color="primary"
                 :options="[ { label: 'orthogonal', value: false }, { label: 'perspective', value: true } ]"
             ></q-btn-toggle>
@@ -117,6 +118,9 @@ h3 {
                 </q-list>
             </q-btn-dropdown>
         </div>
+        <!-- <div class="flex-center-div">
+            <q-toggle v-model="show_stats" label="WebGL stats"/>
+        </div> -->
         <!-- <p v-for="index in 50">paragraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraph</p> -->
     </q-scroll-area>
 </div>
