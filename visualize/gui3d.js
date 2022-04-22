@@ -2,11 +2,11 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from 'OrbitControls'
-import * as Stats from 'Stats'
-import * as GUI from 'GUI'
+import Stats from 'Stats'
+import GUI from 'GUI'
 const { ref, reactive, watch, computed } = Vue
 
-
+const urlParams = new URLSearchParams(window.location.search)
 export const root = document.documentElement
 
 export const window_inner_width = ref(0)
@@ -43,7 +43,7 @@ watch([window_inner_width, window_inner_height], () => {
 export const scene = new THREE.Scene()
 scene.add( new THREE.AmbientLight( 0xffffff ) )
 export const perspective_camera = new THREE.PerspectiveCamera( 75, sizes.canvas_width / sizes.canvas_height, 0.1, 10000 )
-const orthogonal_camera_init_scale = 8
+const orthogonal_camera_init_scale = 6
 export const orthogonal_camera = new THREE.OrthographicCamera( sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
     , sizes.canvas_width / sizes.canvas_height * orthogonal_camera_init_scale, orthogonal_camera_init_scale, -orthogonal_camera_init_scale, 0.1, 10000 )
 export const renderer = new THREE.WebGLRenderer({ alpha: true })
@@ -78,7 +78,7 @@ export const orbit_control = computed(() => {
 })
 
 export function reset_camera_position(direction="top") {
-    for (let [camera, control, distance] of [[perspective_camera, orbit_control_perspective, 10], [orthogonal_camera, orbit_control_orthogonal, 1000]]) {
+    for (let [camera, control, distance] of [[perspective_camera, orbit_control_perspective, 8], [orthogonal_camera, orbit_control_orthogonal, 1000]]) {
         control.reset()
         camera.position.x = (direction == "left" ? -distance : 0)
         camera.position.y = (direction == "top" ? distance : 0)
@@ -90,7 +90,7 @@ reset_camera_position()
 // const axesHelper = new THREE.AxesHelper( 5 )
 // scene.add( axesHelper )
 
-const stats = Stats.default()
+const stats = Stats()
 document.body.appendChild(stats.dom)
 export const show_stats = ref(true)
 watch(show_stats, function() {
@@ -100,8 +100,6 @@ watch(show_stats, function() {
         stats.dom.style.display = "none"
     }
 }, { immediate: true })
-
-export const show_config = ref(false)
 
 export function animate() {
     requestAnimationFrame( animate )
@@ -115,41 +113,79 @@ const zero_vector = new THREE.Vector3( 0, 0, 0 )
 const unit_up_vector = new THREE.Vector3( 0, 1, 0 )
 
 // create common geometries
-const segment = 32  // higher segment will consume more GPU resources
-const node_radius = 0.15
+const segment = parseInt(urlParams.get('segment') || 32)  // higher segment will consume more GPU resources
+const node_radius = parseFloat(urlParams.get('node_radius') || 0.15)
+export const node_radius_scale = ref(1)
 const node_geometry = new THREE.SphereGeometry( node_radius, segment, segment )
-const edge_radius = 0.03
-const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 1, segment )
-edge_geometry.translate(0, 0.5, 0)
+const edge_radius = parseFloat(urlParams.get('edge_radius') || 0.03)
+const edge_radius_scale = ref(1)
+const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 0.5, segment, 1, true )
+edge_geometry.translate(0, 0.25, 0)
 
 // create common materials
 const syndrome_node_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     opacity: 1,
-    transparent: true
+    transparent: true,
+    side: THREE.FrontSide,
 })
 const real_node_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 0.03,
-    transparent: true
+    transparent: true,
+    side: THREE.FrontSide,
 })
 const virtual_node_material = new THREE.MeshStandardMaterial({
     color: 0xffff00,
     opacity: 0.5,
-    transparent: true
+    transparent: true,
+    side: THREE.FrontSide,
+})
+const node_outline_material = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    opacity: 1,
+    transparent: true,
+    side: THREE.BackSide,
 })
 const edge_material = new THREE.MeshStandardMaterial({
-    color: 0x0000ff,
+    color: 0x000000,
     opacity: 0.1,
-    transparent: true
+    transparent: true,
+    side: THREE.FrontSide,
 })
 
 // meshes that can be reused across different snapshots
 export var node_meshes = []
 window.node_meshes = node_meshes
-export var edge_meshes = []
-window.edge_meshes = edge_meshes
+export const outline_ratio = ref(1.2)
+export var node_outline_meshes = []
+window.node_outline_meshes = node_outline_meshes
+export var left_edge_meshes = []
+export var right_edge_meshes = []
+window.left_edge_meshes = left_edge_meshes
+window.right_edge_meshes = right_edge_meshes
 
+// update the sizes of objects
+watch(node_radius_scale, (newVal, oldVal) => {
+    node_geometry.scale(1/oldVal, 1/oldVal, 1/oldVal)
+    node_geometry.scale(newVal, newVal, newVal)
+})
+watch(edge_radius_scale, (newVal, oldVal) => {
+    edge_geometry.scale(1/oldVal, 1, 1/oldVal)
+    edge_geometry.scale(newVal, 1, newVal)
+})
+function update_mesh_outline(mesh) {
+    mesh.scale.x = outline_ratio.value
+    mesh.scale.y = outline_ratio.value
+    mesh.scale.z = outline_ratio.value
+}
+watch([outline_ratio, node_radius_scale], () => {
+    for (let mesh of node_outline_meshes) {
+        update_mesh_outline(mesh)
+    }
+})
+
+// helper functions
 export function compute_vector3(data_position) {
     let vector = new THREE.Vector3( 0, 0, 0 )
     load_position(vector, data_position)
@@ -169,6 +205,11 @@ export function show_snapshot(snapshot, fusion_data) {
             scene.add( node_mesh )
             load_position(node_mesh.position, position)
             node_meshes.push(node_mesh)
+            const node_outline_mesh = new THREE.Mesh( node_geometry, node_outline_material )
+            update_mesh_outline(node_outline_mesh)
+            scene.add( node_outline_mesh )
+            load_position(node_outline_mesh.position, position)
+            node_outline_meshes.push(node_outline_mesh)
         }
         const node_mesh = node_meshes[i]
         if (node.s) {
@@ -186,27 +227,62 @@ export function show_snapshot(snapshot, fusion_data) {
     for (let [i, edge] of snapshot.edges.entries()) {
         const left_position = fusion_data.positions[edge.l]
         const right_position = fusion_data.positions[edge.r]
-        if (edge_meshes.length <= i) {
-            const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
-            scene.add( edge_mesh )
-            load_position(edge_mesh.position, left_position)
-            const direction = compute_vector3(right_position).add(compute_vector3(left_position).multiplyScalar(-1))
-            const edge_length = direction.length()
-            // console.log(direction)
-            const quaternion = new THREE.Quaternion()
-            quaternion.setFromUnitVectors(unit_up_vector, direction.normalize())
-            edge_mesh.scale.set(1, edge_length, 1)
-            edge_mesh.applyQuaternion(quaternion)
-            edge_meshes.push(edge_mesh)
+        for (let [edge_meshes, a_position, b_position] of [[left_edge_meshes, left_position, right_position], [right_edge_meshes, right_position, left_position]]) {
+            if (edge_meshes.length <= i) {
+                const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
+                scene.add( edge_mesh )
+                load_position(edge_mesh.position, a_position)
+                const direction = compute_vector3(b_position).add(compute_vector3(a_position).multiplyScalar(-1))
+                const edge_length = direction.length()
+                // console.log(direction)
+                const quaternion = new THREE.Quaternion()
+                quaternion.setFromUnitVectors(unit_up_vector, direction.normalize())
+                edge_mesh.scale.set(1, edge_length, 1)
+                edge_mesh.applyQuaternion(quaternion)
+                edge_meshes.push(edge_mesh)
+            }
         }
     }
-    for (let i = snapshot.edges.length; i < edge_meshes.length; ++i) {
-        edge_meshes[i].visible = false
+    for (let i = snapshot.edges.length; i < left_edge_meshes.length; ++i) {
+        left_edge_meshes[i].visible = false
+    }
+    for (let i = snapshot.edges.length; i < right_edge_meshes.length; ++i) {
+        right_edge_meshes[i].visible = false
     }
 }
 
 
 // configurations
-
-
-
+const gui = new GUI( { width: 400 } )
+export const show_config = ref(false)
+watch(show_config, () => {
+    if (show_config.value) {
+        gui.domElement.style.display = "block"
+    } else {
+        gui.domElement.style.display = "none"
+    }
+}, { immediate: true })
+const conf = {
+    syndrome_node_color: syndrome_node_material.color,
+    syndrome_node_opacity: syndrome_node_material.opacity,
+    real_node_color: real_node_material.color,
+    real_node_opacity: real_node_material.opacity,
+    virtual_node_color: virtual_node_material.color,
+    virtual_node_opacity: virtual_node_material.opacity,
+    edge_color: edge_material.color,
+    edge_opacity: edge_material.opacity,
+    outline_ratio: outline_ratio.value,
+    node_radius_scale: node_radius_scale.value,
+    edge_radius_scale: edge_radius_scale.value,
+}
+gui.addColor( conf, 'syndrome_node_color' ).onChange( function ( value ) { syndrome_node_material.color = value } )
+gui.add( conf, 'syndrome_node_opacity', 0, 1 ).onChange( function ( value ) { syndrome_node_material.opacity = Number(value) } )
+gui.addColor( conf, 'real_node_color' ).onChange( function ( value ) { real_node_material.color = value } )
+gui.add( conf, 'real_node_opacity', 0, 1 ).onChange( function ( value ) { real_node_material.opacity = Number(value) } )
+gui.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
+gui.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
+gui.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
+gui.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
+gui.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
+gui.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
+gui.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
