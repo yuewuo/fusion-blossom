@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'OrbitControls'
+import * as Stats from 'Stats'
 const { ref, reactive } = Vue
 
 const root = document.documentElement
@@ -75,40 +76,52 @@ function reset_camera_position(direction="top") {
 }
 reset_camera_position()
 
-scene.add( new THREE.AmbientLight( 0xffffff ) );
+scene.add( new THREE.AmbientLight( 0xffffff ) )
 
-// const axesHelper = new THREE.AxesHelper( 5 );
-// scene.add( axesHelper );
+// const axesHelper = new THREE.AxesHelper( 5 )
+// scene.add( axesHelper )
+
+const stats = Stats.default()
+document.body.appendChild(stats.dom)
 
 function animate() {
     requestAnimationFrame( animate )
     three.orbit_control.update()
     renderer.render( scene, three.camera )
+    stats.update()
 }
 
+// commonly used vectors
+const zero_vector = new THREE.Vector3( 0, 0, 0 )
+const unit_up_vector = new THREE.Vector3( 0, 1, 0 )
+
 // create common geometries
-const node_geometry = new THREE.SphereGeometry( 0.15, 15, 15 )
+const segment = 32  // higher segment will consume more GPU resources
+const node_radius = 0.15
+const node_geometry = new THREE.SphereGeometry( node_radius, segment, segment )
+const edge_radius = 0.03
+const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 1, segment )
+edge_geometry.translate(0, 0.5, 0)
 
 // create common materials
 const syndrome_node_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
-    metalness: 0,
-    roughness: 0,
     opacity: 1,
     transparent: true
 })
 const real_node_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
-    metalness: 0,
-    roughness: 0,
     opacity: 0.03,
     transparent: true
 })
 const virtual_node_material = new THREE.MeshStandardMaterial({
     color: 0xffff00,
-    metalness: 0,
-    roughness: 0,
     opacity: 0.5,
+    transparent: true
+})
+const edge_material = new THREE.MeshStandardMaterial({
+    color: 0x0000ff,
+    opacity: 0.1,
     transparent: true
 })
 
@@ -119,6 +132,20 @@ var fusion_data
 
 // meshes that can be reused across different snapshots
 var node_meshes = []
+window.node_meshes = node_meshes
+var edge_meshes = []
+window.edge_meshes = edge_meshes
+
+function compute_vector3(data_position) {
+    let vector = new THREE.Vector3( 0, 0, 0 )
+    load_position(vector, data_position)
+    return vector
+}
+function load_position(mesh_position, data_position) {
+    mesh_position.z = data_position.i
+    mesh_position.x = data_position.j
+    mesh_position.y = data_position.t
+}
 
 // create vue3 app
 const App = {
@@ -152,6 +179,30 @@ const App = {
         this.snapshot_select_label = this.snapshot_labels[0]
         // only if data loads successfully will the animation starts
         animate()
+        // add keyboard shortcuts
+        document.onkeydown = (event) => {
+            if (!event.metaKey) {
+                if (event.key == "t" || event.key == "T") {
+                    this.reset_camera("top")
+                } else if (event.key == "l" || event.key == "L") {
+                    this.reset_camera("left")
+                } else if (event.key == "f" || event.key == "F") {
+                    this.reset_camera("front")
+                } else if (event.key == "ArrowRight") {
+                    if (this.snapshot_select < this.snapshot_num - 1) {
+                        this.snapshot_select += 1
+                    }
+                } else if (event.key == "ArrowLeft") {
+                    if (this.snapshot_select > 0) {
+                        this.snapshot_select -= 1
+                    }
+                } else {
+                    return  // unrecognized, propagate to other listeners
+                }
+                event.preventDefault()
+                event.stopPropagation()
+            }
+        }
     },
     methods: {
         show_snapshot(snapshot) {
@@ -161,9 +212,7 @@ const App = {
                     if (node_meshes.length <= i) {
                         const node_mesh = new THREE.Mesh( node_geometry, syndrome_node_material )
                         scene.add( node_mesh )
-                        node_mesh.position.z = position.i
-                        node_mesh.position.x = position.j
-                        node_mesh.position.y = position.t
+                        load_position(node_mesh.position, position)
                         node_meshes.push(node_mesh)
                     }
                     const node_mesh = node_meshes[i]
@@ -174,6 +223,30 @@ const App = {
                     } else {
                         node_mesh.material = real_node_material
                     }
+                    node_mesh.visible = true
+                }
+                for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
+                    node_meshes[i].visible = false
+                }
+                for (let [i, edge] of snapshot.edges.entries()) {
+                    const left_position = fusion_data.positions[edge.l]
+                    const right_position = fusion_data.positions[edge.r]
+                    if (edge_meshes.length <= i) {
+                        const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
+                        scene.add( edge_mesh )
+                        load_position(edge_mesh.position, left_position)
+                        const direction = compute_vector3(right_position).add(compute_vector3(left_position).multiplyScalar(-1))
+                        const edge_length = direction.length()
+                        // console.log(direction)
+                        const quaternion = new THREE.Quaternion()
+                        quaternion.setFromUnitVectors(unit_up_vector, direction.normalize())
+                        edge_mesh.scale.set(1, edge_length, 1)
+                        edge_mesh.applyQuaternion(quaternion)
+                        edge_meshes.push(edge_mesh)
+                    }
+                }
+                for (let i = snapshot.edges.length; i < edge_meshes.length; ++i) {
+                    edge_meshes[i].visible = false
                 }
             } catch (e) {
                 this.error_message = "load data error"
@@ -186,7 +259,7 @@ const App = {
     },
     watch: {
         snapshot_select() {
-            console.log(this.snapshot_select)
+            // console.log(this.snapshot_select)
             this.show_snapshot(fusion_data.snapshots[this.snapshot_select][1])  // load the snapshot
             this.snapshot_select_label = this.snapshot_labels[this.snapshot_select]
         },

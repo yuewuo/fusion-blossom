@@ -78,7 +78,7 @@ h3 {
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
         <h1>Fusion Blossom</h1>
         <h2 v-if="error_message != null" style="color: red;">{{ error_message }}</h2>
-        <div class="slector">2
+        <div class="slector">
             <q-select filled v-model="snapshot_select_label" :options="snapshot_labels" options-dense dense behavior="menu">
                 <template v-slot:before>
                     <q-btn round dense flat icon="arrow_circle_left" :disabled="snapshot_select == 0" @click="snapshot_select -= 1" />
@@ -126,12 +126,19 @@ h3 {
 {
     "imports": {
         "three": "https://unpkg.com/three@0.139.2/build/three.module.js",
-        "OrbitControls": "https://unpkg.com/three@0.139.2/examples/jsm/controls/OrbitControls.js"
+        "OrbitControls": "https://unpkg.com/three@0.139.2/examples/jsm/controls/OrbitControls.js",
+        "Stats": "https://unpkg.com/three@0.139.2/examples/jsm/libs/stats.module.js"
     }
 }
 </script>
 
-<script type="module" src="./index.js"></script>
+<script>
+// always fetch the latest script and avoid caching
+var index_script = document.createElement('script');
+index_script.setAttribute('src','./index.js?v=' + Math.random());
+index_script.setAttribute('type','module');
+document.body.appendChild(index_script);
+</script>
 
 </body>
 </html>
