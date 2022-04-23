@@ -13,14 +13,14 @@ readme = "README.md"
 # to enable a feature, use `--features xxx`
 default = []
 blossom_v = []  # automatically enabled when file `blossomV/PerfectMatching.h` exists
-u32_weight = []  # use u32 as weight type, to be the same as blossom V library
+i32_weight = []  # use i32 instead of i64 as weight type, to be the same as blossom V library
 
 [dependencies]
 rand_xoshiro = "0.6.0"
 libc = "0.2.124"
 cfg-if = "1.0.0"
 priority-queue = "1.2.1"
-parking_lot = "0.12.0"
+parking_lot = { version = "0.12.0", features = ["hardware-lock-elision"] }
 serde = { version = "1.0.117", features = ["derive", "rc"] }
 serde_json = "1.0.59"
 chrono = "0.4.19"

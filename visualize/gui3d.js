@@ -92,13 +92,17 @@ reset_camera_position()
 
 const stats = Stats()
 document.body.appendChild(stats.dom)
-export const show_stats = ref(true)
+export const show_stats = ref(false)
 watch(show_stats, function() {
     if (show_stats.value) {
         stats.dom.style.display = "block"
     } else {
         stats.dom.style.display = "none"
     }
+}, { immediate: true })
+watch(sizes, () => {
+    stats.dom.style.transform = `scale(${sizes.scale})`
+    stats.dom.style["transform-origin"] = "left top"
 }, { immediate: true })
 
 export function animate() {
@@ -113,7 +117,7 @@ const zero_vector = new THREE.Vector3( 0, 0, 0 )
 const unit_up_vector = new THREE.Vector3( 0, 1, 0 )
 
 // create common geometries
-const segment = parseInt(urlParams.get('segment') || 32)  // higher segment will consume more GPU resources
+const segment = parseInt(urlParams.get('segment') || 128)  // higher segment will consume more GPU resources
 const node_radius = parseFloat(urlParams.get('node_radius') || 0.15)
 export const node_radius_scale = ref(1)
 const node_geometry = new THREE.SphereGeometry( node_radius, segment, segment )
@@ -151,7 +155,7 @@ const edge_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 0.1,
     transparent: true,
-    side: THREE.FrontSide,
+    side: THREE.FrontSide,  // TODO: add dynamic option to adjust this
 })
 
 // meshes that can be reused across different snapshots
@@ -287,3 +291,7 @@ gui.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_materi
 gui.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
 gui.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
 gui.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
+watch(sizes, () => {
+    gui.domElement.style.transform = `scale(${sizes.scale})`
+    gui.domElement.style["transform-origin"] = "right top"
+}, { immediate: true })

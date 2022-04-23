@@ -3,10 +3,14 @@
 
 use super::util::*;
 use std::sync::Arc;
-use crate::parking_lot::Mutex;  // in single thread implementation, it has "Inline fast path for the uncontended case"
+use crate::parking_lot::RwLock;  // in single thread implementation, it has "Inline fast path for the uncontended case"
 use crate::serde_json;
 use super::union_find::*;
 use super::visualize::*;
+
+pub type EdgePointer = Arc<RwLock<Edge>>;
+pub type NodePointer = Arc<RwLock<Node>>;
+pub type TreeNodePointer = Arc<RwLock<TreeNode>>;
 
 pub struct Node {
     /// the index of this node in [`FusionSingleThread::nodes`]
@@ -16,9 +20,11 @@ pub struct Node {
     /// if a node is syndrome
     pub is_syndrome: bool,
     /// all neighbor edges, in surface code this should be constant number of edges, (`peer_node_index`, `edge`)
-    pub edges: Vec<Arc<Mutex<Edge>>>,
+    pub edges: Vec<EdgePointer>,
     /// corresponding tree node if exist (only applies if this is syndrome vertex)
-    pub tree_node: Option<Arc<Mutex<TreeNode>>>,
+    pub tree_node: Option<TreeNodePointer>,
+    /// propagated tree node from other tree node
+    pub propagated_tree_node: Option<TreeNodePointer>,
 }
 
 pub struct TreeNode {
@@ -27,11 +33,11 @@ pub struct TreeNode {
     /// if set, this node has already fall back to UF decoder cluster which can only grow and never shrink
     pub fallback_union_find: bool,
     /// if this tree node is a single vertex, this is the corresponding syndrome node
-    pub syndrome_node: Option<Arc<Mutex<Node>>>,
+    pub syndrome_node: Option<NodePointer>,
     /// the odd cycle of tree nodes if it's a blossom; otherwise this will be empty
-    pub blossom: Vec<Arc<Mutex<TreeNode>>>,
+    pub blossom: Vec<TreeNodePointer>,
     /// edges on the boundary of this vertex or blossom's dual cluster, (`is_left`, `edge`)
-    pub boundary: Vec<(bool, Arc<Mutex<Edge>>)>,
+    pub boundary: Vec<(bool, EdgePointer)>,
     /// dual variable of this node
     pub dual_variable: Weight,
 }
@@ -42,67 +48,68 @@ pub struct Edge {
     /// total weight of this edge
     pub weight: Weight,
     /// left node (always with smaller index)
-    pub left: Arc<Mutex<Node>>,
+    pub left: NodePointer,
     /// right node (always with larger index)
-    pub right: Arc<Mutex<Node>>,
+    pub right: NodePointer,
     /// growth from the left point
     pub left_growth: Weight,
     /// growth from the right point
     pub right_growth: Weight,
-    /// left side stack of tree nodes
-    pub left_stack: Vec<Arc<Mutex<TreeNode>>>,
-    /// right side stack of tree nodes
-    pub right_stack: Vec<Arc<Mutex<TreeNode>>>,
+    /// left active tree node (if applicable)
+    pub left_tree_node: Option<TreeNodePointer>,
+    /// right active tree node (if applicable)
+    pub right_tree_node: Option<TreeNodePointer>,
 }
 
 pub struct FusionSingleThread {
     /// all nodes including virtual
-    pub nodes: Vec<Arc<Mutex<Node>>>,
+    pub nodes: Vec<NodePointer>,
     /// keep edges, which can also be accessed in [`Self::nodes`]
-    pub edges: Vec<Arc<Mutex<Edge>>>,
+    pub edges: Vec<EdgePointer>,
     /// keep union-find information of different [`TreeNode`], note that it's never called if solving exact MWPM result;
     /// it's only union together when falling back to UF decoder 
     pub union_clusters: UnionFindGeneric<FusionUnionNode>,
     /// alternating tree nodes; can be either a vertex or a blossom
-    pub tree_nodes: Vec<Arc<Mutex<TreeNode>>>,
+    pub tree_nodes: Vec<TreeNodePointer>,
 }
 
 impl FusionSingleThread {
     /// create a fusion decoder
     pub fn new(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>) -> Self {
-        let nodes: Vec<Arc<Mutex<Node>>> = (0..node_num).map(|node_index| Arc::new(Mutex::new(Node {
+        let nodes: Vec<NodePointer> = (0..node_num).map(|node_index| Arc::new(RwLock::new(Node {
             node_index: node_index,
             is_virtual: false,
             is_syndrome: false,
             edges: Vec::new(),
             tree_node: None,
+            propagated_tree_node: None,
         }))).collect();
-        let mut edges = Vec::<Arc<Mutex<Edge>>>::new();
+        let mut edges = Vec::<EdgePointer>::new();
         for &virtual_node in virtual_nodes.iter() {
-            let mut node = nodes[virtual_node].lock();
+            let mut node = nodes[virtual_node].write();
             node.is_virtual = true;
         }
         for &(i, j, weight) in weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge between the same node {}", i);
             let left = usize::min(i, j);
             let right = usize::max(i, j);
-            let edge = Arc::new(Mutex::new(Edge {
+            let edge = Arc::new(RwLock::new(Edge {
                 edge_index: edges.len(),
                 weight: weight,
                 left: Arc::clone(&nodes[left]),
                 right: Arc::clone(&nodes[right]),
                 left_growth: 0,
                 right_growth: 0,
-                left_stack: Vec::new(),
-                right_stack: Vec::new(),
+                left_tree_node: None,
+                right_tree_node: None,
             }));
             edges.push(Arc::clone(&edge));
             for (a, b) in [(i, j), (j, i)] {
-                let mut node = nodes[a].lock();
+                let mut node = nodes[a].write();
                 debug_assert!({  // O(N^2) sanity check, debug mode only
                     let mut no_duplicate = true;
                     for edge in node.edges.iter() {
-                        let edge = edge.lock();
+                        let edge = edge.read();
                         if Arc::ptr_eq(&edge.left, &nodes[b]) || Arc::ptr_eq(&edge.right, &nodes[b]) {
                             no_duplicate = false;
                             eprintln!("duplicated edge {}-{} with weight {}", i, j, weight);
@@ -123,18 +130,31 @@ impl FusionSingleThread {
     }
 
     pub fn clear_growth(&mut self) {
+        // clear tree node
+        for node in self.nodes.iter() {
+            let mut node = node.write();
+            node.tree_node = None;
+            node.propagated_tree_node = None;
+        }
         // clear all growth
         for edge in self.edges.iter() {
-            let mut edge = edge.lock();
+            let mut edge = edge.write();
             edge.left_growth = 0;
             edge.right_growth = 0;
+            edge.left_tree_node = None;
+            edge.right_tree_node = None;
         }
+        // clear union_find
+        self.union_clusters.clear();
+        // clear tree nodes
+        self.tree_nodes.clear();
+        // TODO: clear alternating tree structure
     }
 
     // /// create a new blossom
-    // pub fn add_tree_node_blossom(&mut self, tree_nodes: Vec<Arc<Mutex<TreeNode>>>) -> Arc<Mutex<TreeNode>> {
+    // pub fn add_tree_node_blossom(&mut self, tree_nodes: Vec<TreeNodePointer>) -> TreeNodePointer {
     //     // merge the boundaries of these tree nodes
-    //     let tree_node = Arc::new(Mutex::new(TreeNode {
+    //     let tree_node = Arc::new(RwLock::new(TreeNode {
     //         tree_node_index: self.tree_nodes.len(),
     //         blossom: vertices,
     //         boundary: boundary,
@@ -147,25 +167,29 @@ impl FusionSingleThread {
     // }
 
     /// create a new tree node with single syndrome node
-    pub fn add_tree_node_vertex(&mut self, syndrome_node: Arc<Mutex<Node>>) -> Arc<Mutex<TreeNode>> {
+    pub fn add_tree_node_vertex(&mut self, syndrome_node: &NodePointer) -> TreeNodePointer {
         // iterate other the edges of this vertex and add them to boundary
         let boundary = {
             let mut boundary = Vec::new();
-            let node = syndrome_node.lock();
+            let node = syndrome_node.read();
             if node.tree_node.is_some() {
                 eprintln!("add the same syndrome node {} twice as tree node, return the previously added", node.node_index);
                 return Arc::clone(node.tree_node.as_ref().unwrap())
             }
+            assert!(node.propagated_tree_node.is_none(), "cannot add tree node vertex where the node has already been propagated");
+            if !node.is_syndrome {
+                panic!("node without syndrome cannot become tree node");
+            }
             for edge in node.edges.iter() {
-                let edge_locked = edge.lock();
-                let is_left = Arc::ptr_eq(&syndrome_node, &edge_locked.left);
+                let edge_locked = edge.read();
+                let is_left = Arc::ptr_eq(syndrome_node, &edge_locked.left);
                 boundary.push((is_left, Arc::clone(edge)));
             }
             boundary
         };
-        let tree_node = Arc::new(Mutex::new(TreeNode {
+        let tree_node = Arc::new(RwLock::new(TreeNode {
             tree_node_index: self.tree_nodes.len(),
-            syndrome_node: Some(syndrome_node),
+            syndrome_node: Some(Arc::clone(syndrome_node)),
             fallback_union_find: false,
             blossom: Vec::new(),
             boundary: boundary,
@@ -174,23 +198,98 @@ impl FusionSingleThread {
         self.tree_nodes.push(Arc::clone(&tree_node));
         self.union_clusters.insert(FusionUnionNode::default());  // when created, each cluster is on its own
         assert_eq!(self.tree_nodes.len(), self.union_clusters.payload.len(), "these two are one-to-one corresponding");
+        let mut node = syndrome_node.write();
+        node.tree_node = Some(Arc::clone(&tree_node));
+        node.propagated_tree_node = Some(Arc::clone(&tree_node));
         tree_node
     }
 
+    /// to reuse fusion blossom solver, call this function to clear all previous states and load new syndrome
     pub fn load_syndrome(&mut self, syndrome_nodes: &Vec<usize>) {
         // it loads a new syndrome, so it's necessary to clear all growth status
         self.clear_growth();
         // clear all syndrome
         for node in self.nodes.iter() {
-            let mut node = node.lock();
+            let mut node = node.write();
             node.is_syndrome = false;
         }
         // set syndromes
         for &syndrome_node in syndrome_nodes.iter() {
-            let mut node = self.nodes[syndrome_node].lock();
-            assert_eq!(node.is_virtual, false, "virtual node cannot have syndrome");
-            node.is_syndrome = true;
+            {
+                let mut node = self.nodes[syndrome_node].write();
+                assert_eq!(node.is_virtual, false, "virtual node cannot have syndrome");
+                node.is_syndrome = true;
+            }
+            // each syndrome corresponds to a tree node
+            self.add_tree_node_vertex(&Arc::clone(&self.nodes[syndrome_node]));
         }
+    }
+
+    /// check if this tree node is still valid, i.e. not merged into another union-find cluster
+    pub fn is_tree_node_union_find_root(&mut self, tree_node_index: usize) -> bool {
+        let union_find_root = self.union_clusters.find(tree_node_index);
+        tree_node_index == union_find_root
+    }
+
+    pub fn is_tree_node_union_find_root_same(&mut self, tree_node_index_1: usize, tree_node_index_2: usize) -> bool {
+        let union_find_root_1 = self.union_clusters.find(tree_node_index_1);
+        let union_find_root_2 = self.union_clusters.find(tree_node_index_2);
+        union_find_root_1 == union_find_root_2
+    }
+
+    /// grow specific tree node by given length, panic if error occur
+    pub fn grow_tree_node(&mut self, tree_node: &TreeNodePointer, length: Weight) {
+        let tree_node_index = tree_node.read().tree_node_index;
+        assert!(self.is_tree_node_union_find_root(tree_node_index), "only union-find root can grow");
+        let (remove_indices, propagating_nodes) = {
+            let tree_node = tree_node.read();
+            let mut remove_indices = Vec::<usize>::new();
+            let mut propagating_nodes = Vec::<NodePointer>::new();
+            for (idx, (is_left, edge)) in tree_node.boundary.iter().enumerate() {
+                let is_left = *is_left;
+                let (growth, weight) = {  // minimize writer lock acquisition
+                    let mut edge = edge.write();
+                    if is_left {
+                        edge.left_growth += length;
+                    } else {
+                        edge.right_growth += length;
+                    }
+                    (edge.left_growth + edge.right_growth, edge.weight)
+                };
+                if growth > weight {
+                    // first check for if both side belongs to the same tree node
+                    let tree_node_index_2: Option<usize> = if is_left {
+                        edge.read().right_tree_node.as_ref().map(|right_tree_node| right_tree_node.read().tree_node_index)
+                    } else {
+                        edge.read().left_tree_node.as_ref().map(|left_tree_node| left_tree_node.read().tree_node_index)
+                    };
+                    if tree_node_index_2 == None || !self.is_tree_node_union_find_root_same(tree_node_index, tree_node_index_2.unwrap()) {
+                        panic!("over-grown edge {}: {}/{}", edge.read().edge_index, growth, weight);
+                    }
+                } else if growth == weight {
+                    // only propagate to new node if the other side of edge is not yet growing
+                    let peer_node_is_none = if is_left {
+                        edge.read().right_tree_node.is_none()
+                    } else {
+                        edge.read().left_tree_node.is_none()
+                    };
+                    if peer_node_is_none {
+                        let peer_node = if is_left {
+                            Arc::clone(&edge.read().right)
+                        } else {
+                            Arc::clone(&edge.read().left)
+                        };
+                        if peer_node.read().propagated_tree_node.is_none() {
+                            propagating_nodes.push(peer_node);
+                        }
+                        remove_indices.push(idx);
+                    }
+                }
+            }
+            (remove_indices, propagating_nodes)
+        };
+        assert_eq!(propagating_nodes.len(), 0, "TODO");
+        assert_eq!(remove_indices.len(), 0, "TODO");
     }
 }
 
@@ -198,7 +297,7 @@ impl FusionVisualizer for FusionSingleThread {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let mut nodes = Vec::<serde_json::Value>::new();
         for node in self.nodes.iter() {
-            let node = node.lock();
+            let node = node.read();
             nodes.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: if node.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if node.is_syndrome { 1 } else { 0 },
@@ -206,11 +305,11 @@ impl FusionVisualizer for FusionSingleThread {
         }
         let mut edges = Vec::<serde_json::Value>::new();
         for edge in self.edges.iter() {
-            let edge = edge.lock();
+            let edge = edge.read();
             edges.push(json!({
                 if abbrev { "w" } else { "weight" }: edge.weight,
-                if abbrev { "l" } else { "left" }: edge.left.lock().node_index,
-                if abbrev { "r" } else { "right" }: edge.right.lock().node_index,
+                if abbrev { "l" } else { "left" }: edge.left.read().node_index,
+                if abbrev { "r" } else { "right" }: edge.right.read().node_index,
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
             }));
