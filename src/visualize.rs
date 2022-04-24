@@ -178,7 +178,8 @@ mod tests {
         };
         // hardcode syndrome
         let mut syndrome_nodes = Vec::new();
-        syndrome_nodes.push(pos[&(4, 3)]);
+        // syndrome_nodes.push(pos[&(4, 3)]);
+        syndrome_nodes.push(pos[&(4, 0)]);
         // run single-thread fusion blossom algorithm
         let visualize_filename = static_visualize_data_filename();
         print_visualize_link(&visualize_filename);
@@ -194,16 +195,13 @@ mod tests {
         visualizer.set_positions(positions, true);  // automatic center all nodes
         let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
         fusion_solver.load_syndrome(&syndrome_nodes);
-        visualizer.snapshot(format!("start"), &fusion_solver).unwrap();
+        visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
         let syndrome_node_4_3 = Arc::clone(&fusion_solver.tree_nodes[0]);
         {
             fusion_solver.grow_tree_node(&syndrome_node_4_3, half_weight);
             visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
         }
-        
-
-        visualizer.snapshot(format!("end"), &fusion_solver).unwrap();
-
+        // visualizer.snapshot(format!("end"), &fusion_solver).unwrap();
     }
 
 }

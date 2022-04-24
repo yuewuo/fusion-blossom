@@ -32,7 +32,7 @@ const App = {
             this.error_message = "fetch file error"
             throw e
         }
-        this.show_snapshot(fusion_data.snapshots[0][1])  // load the first snapshot
+        this.show_snapshot(0)  // load the first snapshot
         this.snapshot_num = fusion_data.snapshots.length
         for (let [idx, [name, _]] of fusion_data.snapshots.entries()) {
             this.snapshot_labels.push(`[${idx}] ${name}`)
@@ -66,9 +66,9 @@ const App = {
         }
     },
     methods: {
-        show_snapshot(snapshot) {
+        show_snapshot(snapshot_idx) {
             try {
-                gui3d.show_snapshot(snapshot, fusion_data)
+                gui3d.show_snapshot(snapshot_idx, fusion_data)
             } catch (e) {
                 this.error_message = "load data error"
                 throw e
@@ -81,7 +81,7 @@ const App = {
     watch: {
         snapshot_select() {
             // console.log(this.snapshot_select)
-            this.show_snapshot(fusion_data.snapshots[this.snapshot_select][1])  // load the snapshot
+            this.show_snapshot(this.snapshot_select)  // load the snapshot
             this.snapshot_select_label = this.snapshot_labels[this.snapshot_select]
         },
         snapshot_select_label() {

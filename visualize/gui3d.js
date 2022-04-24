@@ -120,11 +120,17 @@ const unit_up_vector = new THREE.Vector3( 0, 1, 0 )
 const segment = parseInt(urlParams.get('segment') || 128)  // higher segment will consume more GPU resources
 const node_radius = parseFloat(urlParams.get('node_radius') || 0.15)
 export const node_radius_scale = ref(1)
+const scaled_node_radius = computed(() => {
+    return node_radius * node_radius_scale.value
+})
 const node_geometry = new THREE.SphereGeometry( node_radius, segment, segment )
 const edge_radius = parseFloat(urlParams.get('edge_radius') || 0.03)
 const edge_radius_scale = ref(1)
-const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 0.5, segment, 1, true )
-edge_geometry.translate(0, 0.25, 0)
+const scaled_edge_radius = computed(() => {
+    return edge_radius * edge_radius_scale.value
+})
+const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 1, segment, 1, true )
+edge_geometry.translate(0, 0.5, 0)
 
 // create common materials
 const syndrome_node_material = new THREE.MeshStandardMaterial({
@@ -155,7 +161,13 @@ const edge_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 0.1,
     transparent: true,
-    side: THREE.FrontSide,  // TODO: add dynamic option to adjust this
+    side: THREE.FrontSide,
+})
+const grown_edge_material = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    opacity: 1,
+    transparent: true,
+    side: THREE.DoubleSide,
 })
 
 // meshes that can be reused across different snapshots
@@ -164,19 +176,26 @@ window.node_meshes = node_meshes
 export const outline_ratio = ref(1.2)
 export var node_outline_meshes = []
 window.node_outline_meshes = node_outline_meshes
+const scaled_node_outline_radius = computed(() => {
+    return scaled_node_radius.value * outline_ratio.value
+})
 export var left_edge_meshes = []
 export var right_edge_meshes = []
+export var middle_edge_meshes = []
 window.left_edge_meshes = left_edge_meshes
 window.right_edge_meshes = right_edge_meshes
+window.middle_edge_meshes = middle_edge_meshes
 
 // update the sizes of objects
 watch(node_radius_scale, (newVal, oldVal) => {
     node_geometry.scale(1/oldVal, 1/oldVal, 1/oldVal)
     node_geometry.scale(newVal, newVal, newVal)
+    refresh_snapshot_data()
 })
 watch(edge_radius_scale, (newVal, oldVal) => {
     edge_geometry.scale(1/oldVal, 1, 1/oldVal)
     edge_geometry.scale(newVal, 1, newVal)
+    refresh_snapshot_data()
 })
 function update_mesh_outline(mesh) {
     mesh.scale.x = outline_ratio.value
@@ -201,61 +220,103 @@ export function load_position(mesh_position, data_position) {
     mesh_position.y = data_position.t
 }
 
-export function show_snapshot(snapshot, fusion_data) {
-    for (let [i, node] of snapshot.nodes.entries()) {
-        let position = fusion_data.positions[i]
-        if (node_meshes.length <= i) {
-            const node_mesh = new THREE.Mesh( node_geometry, syndrome_node_material )
-            scene.add( node_mesh )
-            load_position(node_mesh.position, position)
-            node_meshes.push(node_mesh)
-            const node_outline_mesh = new THREE.Mesh( node_geometry, node_outline_material )
-            update_mesh_outline(node_outline_mesh)
-            scene.add( node_outline_mesh )
-            load_position(node_outline_mesh.position, position)
-            node_outline_meshes.push(node_outline_mesh)
-        }
-        const node_mesh = node_meshes[i]
-        if (node.s) {
-            node_mesh.material = syndrome_node_material
-        } else if (node.v) {
-            node_mesh.material = virtual_node_material
-        } else {
-            node_mesh.material = real_node_material
-        }
-        node_mesh.visible = true
-    }
-    for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
-        node_meshes[i].visible = false
-    }
-    for (let [i, edge] of snapshot.edges.entries()) {
-        const left_position = fusion_data.positions[edge.l]
-        const right_position = fusion_data.positions[edge.r]
-        for (let [edge_meshes, a_position, b_position] of [[left_edge_meshes, left_position, right_position], [right_edge_meshes, right_position, left_position]]) {
-            if (edge_meshes.length <= i) {
-                const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
-                scene.add( edge_mesh )
-                edge_meshes.push(edge_mesh)
+const active_fusion_data = ref(null)
+const active_snapshot_idx = ref(0)
+function refresh_snapshot_data() {
+    if (active_fusion_data.value != null) {  // no fusion data provided
+        const fusion_data = active_fusion_data.value
+        const snapshot_idx = active_snapshot_idx.value
+        const snapshot = fusion_data.snapshots[snapshot_idx][1]
+        for (let [i, node] of snapshot.nodes.entries()) {
+            let position = fusion_data.positions[i]
+            if (node_meshes.length <= i) {
+                const node_mesh = new THREE.Mesh( node_geometry, syndrome_node_material )
+                scene.add( node_mesh )
+                load_position(node_mesh.position, position)
+                node_meshes.push(node_mesh)
+                const node_outline_mesh = new THREE.Mesh( node_geometry, node_outline_material )
+                update_mesh_outline(node_outline_mesh)
+                scene.add( node_outline_mesh )
+                load_position(node_outline_mesh.position, position)
+                node_outline_meshes.push(node_outline_mesh)
             }
-            const edge_mesh = edge_meshes[i]
-            load_position(edge_mesh.position, a_position)
-            const direction = compute_vector3(b_position).add(compute_vector3(a_position).multiplyScalar(-1))
-            const edge_length = direction.length()
+            const node_mesh = node_meshes[i]
+            if (node.s) {
+                node_mesh.material = syndrome_node_material
+            } else if (node.v) {
+                node_mesh.material = virtual_node_material
+            } else {
+                node_mesh.material = real_node_material
+            }
+            node_mesh.visible = true
+            const node_outline_mesh = node_outline_meshes[i]
+            node_outline_mesh.visible = true
+        }
+        for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
+            node_meshes[i].visible = false
+            node_outline_meshes[i].visible = false
+        }
+        // compute edge properties
+        let edge_offset = 0
+        console.log(scaled_node_outline_radius.value)
+        if (scaled_edge_radius.value < scaled_node_outline_radius.value) {
+            edge_offset = Math.sqrt(Math.pow(scaled_node_outline_radius.value, 2) - Math.pow(scaled_edge_radius.value, 2))
+        }
+        for (let [i, edge] of snapshot.edges.entries()) {
+            const left_position = fusion_data.positions[edge.l]
+            const right_position = fusion_data.positions[edge.r]
+            const relative = compute_vector3(right_position).add(compute_vector3(left_position).multiplyScalar(-1))
+            const direction = relative.normalize()
             // console.log(direction)
             const quaternion = new THREE.Quaternion()
-            quaternion.setFromUnitVectors(unit_up_vector, direction.normalize())
-            edge_mesh.scale.set(1, edge_length, 1)
-            edge_mesh.setRotationFromQuaternion(quaternion)
+            quaternion.setFromUnitVectors(unit_up_vector, direction)
+            const distance = relative.length()
+            let local_edge_offset = edge_offset
+            let edge_length = distance - 2 * edge_offset
+            if (edge_length < 0) {  // edge length should be non-negative
+                local_edge_offset = distance / 2
+                edge_length = 0
+            }
+            const left_start = local_edge_offset
+            let left_end = local_edge_offset + edge_length * (edge.lg / edge.w)
+            let right_end = local_edge_offset + edge_length * ((edge.w - edge.rg) / edge.w)
+            if (left_end > right_end) {  // over grown, typically happen at boundaries inside blossom
+                const middle = (left_end + right_end) / 2
+                left_end = middle
+                right_end = middle
+            }
+            const right_start = local_edge_offset + edge_length
+            // console.log(`${left_start}, ${left_end}, ${right_end}, ${right_start}`)
+            for (let [start, end, edge_meshes, is_grown_part] of [[left_start, left_end, left_edge_meshes, true], [left_end, right_end, middle_edge_meshes, false]
+                    , [right_end, right_start, right_edge_meshes, true]]) {
+                if (edge_meshes.length <= i) {
+                    const edge_mesh = new THREE.Mesh( edge_geometry, is_grown_part ? grown_edge_material : edge_material )
+                    scene.add( edge_mesh )
+                    edge_meshes.push(edge_mesh)
+                }
+                const edge_mesh = edge_meshes[i]
+                const start_position = compute_vector3(left_position).add(relative.clone().multiplyScalar(start / distance))
+                edge_mesh.position.copy(start_position)
+                edge_mesh.scale.set(1, end - start, 1)
+                edge_mesh.setRotationFromQuaternion(quaternion)
+                edge_mesh.visible = true
+                if (start >= end) {
+                    edge_mesh.visible = false
+                }
+            }
+        }
+        for (let i = snapshot.edges.length; i < left_edge_meshes.length; ++i) {
+            left_edge_meshes[i].visible = false
+            right_edge_meshes[i].visible = false
+            middle_edge_meshes[i].visible = false
         }
     }
-    for (let i = snapshot.edges.length; i < left_edge_meshes.length; ++i) {
-        left_edge_meshes[i].visible = false
-    }
-    for (let i = snapshot.edges.length; i < right_edge_meshes.length; ++i) {
-        right_edge_meshes[i].visible = false
-    }
 }
-
+watch([active_fusion_data, active_snapshot_idx], refresh_snapshot_data)
+export function show_snapshot(snapshot_idx, fusion_data) {
+    active_snapshot_idx.value = snapshot_idx
+    active_fusion_data.value = fusion_data
+}
 
 // configurations
 const gui = new GUI( { width: 400 } )
