@@ -46,7 +46,7 @@ export const perspective_camera = new THREE.PerspectiveCamera( 75, sizes.canvas_
 const orthogonal_camera_init_scale = 6
 export const orthogonal_camera = new THREE.OrthographicCamera( sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
     , sizes.canvas_width / sizes.canvas_height * orthogonal_camera_init_scale, orthogonal_camera_init_scale, -orthogonal_camera_init_scale, 0.1, 10000 )
-export const renderer = new THREE.WebGLRenderer({ alpha: true })
+export const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
 
 document.body.appendChild( renderer.domElement )
 
@@ -161,13 +161,13 @@ const edge_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 0.1,
     transparent: true,
-    side: THREE.BackSide,
+    side: THREE.FrontSide,
 })
 const grown_edge_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     opacity: 1,
     transparent: true,
-    side: THREE.BackSide,
+    side: THREE.FrontSide,
 })
 
 // meshes that can be reused across different snapshots
@@ -360,25 +360,33 @@ const conf = {
     virtual_node_opacity: virtual_node_material.opacity,
     edge_color: edge_material.color,
     edge_opacity: edge_material.opacity,
+    edge_side: edge_material.side,
     grown_edge_color: grown_edge_material.color,
     grown_edge_opacity: grown_edge_material.opacity,
+    grown_edge_side: grown_edge_material.side,
     outline_ratio: outline_ratio.value,
     node_radius_scale: node_radius_scale.value,
     edge_radius_scale: edge_radius_scale.value,
 }
-gui.addColor( conf, 'syndrome_node_color' ).onChange( function ( value ) { syndrome_node_material.color = value } )
-gui.add( conf, 'syndrome_node_opacity', 0, 1 ).onChange( function ( value ) { syndrome_node_material.opacity = Number(value) } )
-gui.addColor( conf, 'real_node_color' ).onChange( function ( value ) { real_node_material.color = value } )
-gui.add( conf, 'real_node_opacity', 0, 1 ).onChange( function ( value ) { real_node_material.opacity = Number(value) } )
-gui.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
-gui.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
-gui.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
-gui.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
-gui.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
-gui.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
-gui.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
-gui.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
-gui.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
+const side_options = { "FrontSide": THREE.FrontSide, "BackSide": THREE.BackSide, "DoubleSide": THREE.DoubleSide } 
+const node_folder = gui.addFolder( 'node' );
+node_folder.addColor( conf, 'syndrome_node_color' ).onChange( function ( value ) { syndrome_node_material.color = value } )
+node_folder.add( conf, 'syndrome_node_opacity', 0, 1 ).onChange( function ( value ) { syndrome_node_material.opacity = Number(value) } )
+node_folder.addColor( conf, 'real_node_color' ).onChange( function ( value ) { real_node_material.color = value } )
+node_folder.add( conf, 'real_node_opacity', 0, 1 ).onChange( function ( value ) { real_node_material.opacity = Number(value) } )
+node_folder.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
+node_folder.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
+const edge_folder = gui.addFolder( 'edge' );
+edge_folder.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
+edge_folder.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
+edge_folder.add( conf, 'edge_side', side_options ).onChange( function ( value ) { edge_material.side = Number(value) } )
+edge_folder.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
+edge_folder.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
+edge_folder.add( conf, 'grown_edge_side', side_options ).onChange( function ( value ) { grown_edge_material.side = Number(value) } )
+const size_folder = gui.addFolder( 'size' );
+size_folder.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
+size_folder.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
+size_folder.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
 watch(sizes, () => {
     gui.domElement.style.transform = `scale(${sizes.scale})`
     gui.domElement.style["transform-origin"] = "right top"
