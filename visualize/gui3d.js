@@ -161,13 +161,13 @@ const edge_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 0.1,
     transparent: true,
-    side: THREE.FrontSide,
+    side: THREE.BackSide,
 })
 const grown_edge_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     opacity: 1,
     transparent: true,
-    side: THREE.DoubleSide,
+    side: THREE.BackSide,
 })
 
 // meshes that can be reused across different snapshots
@@ -190,11 +190,12 @@ window.middle_edge_meshes = middle_edge_meshes
 watch(node_radius_scale, (newVal, oldVal) => {
     node_geometry.scale(1/oldVal, 1/oldVal, 1/oldVal)
     node_geometry.scale(newVal, newVal, newVal)
-    refresh_snapshot_data()
 })
 watch(edge_radius_scale, (newVal, oldVal) => {
     edge_geometry.scale(1/oldVal, 1, 1/oldVal)
     edge_geometry.scale(newVal, 1, newVal)
+})
+watch([scaled_edge_radius, scaled_node_outline_radius], () => {
     refresh_snapshot_data()
 })
 function update_mesh_outline(mesh) {
@@ -227,6 +228,7 @@ function refresh_snapshot_data() {
         const fusion_data = active_fusion_data.value
         const snapshot_idx = active_snapshot_idx.value
         const snapshot = fusion_data.snapshots[snapshot_idx][1]
+        // draw nodes
         for (let [i, node] of snapshot.nodes.entries()) {
             let position = fusion_data.positions[i]
             if (node_meshes.length <= i) {
@@ -234,11 +236,6 @@ function refresh_snapshot_data() {
                 scene.add( node_mesh )
                 load_position(node_mesh.position, position)
                 node_meshes.push(node_mesh)
-                const node_outline_mesh = new THREE.Mesh( node_geometry, node_outline_material )
-                update_mesh_outline(node_outline_mesh)
-                scene.add( node_outline_mesh )
-                load_position(node_outline_mesh.position, position)
-                node_outline_meshes.push(node_outline_mesh)
             }
             const node_mesh = node_meshes[i]
             if (node.s) {
@@ -249,16 +246,12 @@ function refresh_snapshot_data() {
                 node_mesh.material = real_node_material
             }
             node_mesh.visible = true
-            const node_outline_mesh = node_outline_meshes[i]
-            node_outline_mesh.visible = true
         }
         for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
             node_meshes[i].visible = false
-            node_outline_meshes[i].visible = false
         }
-        // compute edge properties
+        // draw edges
         let edge_offset = 0
-        console.log(scaled_node_outline_radius.value)
         if (scaled_edge_radius.value < scaled_node_outline_radius.value) {
             edge_offset = Math.sqrt(Math.pow(scaled_node_outline_radius.value, 2) - Math.pow(scaled_edge_radius.value, 2))
         }
@@ -270,6 +263,8 @@ function refresh_snapshot_data() {
             // console.log(direction)
             const quaternion = new THREE.Quaternion()
             quaternion.setFromUnitVectors(unit_up_vector, direction)
+            const reverse_quaternion = new THREE.Quaternion()
+            reverse_quaternion.setFromUnitVectors(unit_up_vector, direction.clone().multiplyScalar(-1))
             const distance = relative.length()
             let local_edge_offset = edge_offset
             let edge_length = distance - 2 * edge_offset
@@ -290,36 +285,61 @@ function refresh_snapshot_data() {
             for (let [start, end, edge_meshes, is_grown_part] of [[left_start, left_end, left_edge_meshes, true], [left_end, right_end, middle_edge_meshes, false]
                     , [right_end, right_start, right_edge_meshes, true]]) {
                 if (edge_meshes.length <= i) {
-                    const edge_mesh = new THREE.Mesh( edge_geometry, is_grown_part ? grown_edge_material : edge_material )
-                    scene.add( edge_mesh )
-                    edge_meshes.push(edge_mesh)
+                    let two_edges = [null, null]
+                    for (let j of [0, 1]) {
+                        const edge_mesh = new THREE.Mesh( edge_geometry, is_grown_part ? grown_edge_material : edge_material )
+                        scene.add( edge_mesh )
+                        two_edges[j] = edge_mesh
+                    }
+                    edge_meshes.push(two_edges)
                 }
-                const edge_mesh = edge_meshes[i]
                 const start_position = compute_vector3(left_position).add(relative.clone().multiplyScalar(start / distance))
-                edge_mesh.position.copy(start_position)
-                edge_mesh.scale.set(1, end - start, 1)
-                edge_mesh.setRotationFromQuaternion(quaternion)
-                edge_mesh.visible = true
-                if (start >= end) {
-                    edge_mesh.visible = false
+                const end_position = compute_vector3(left_position).add(relative.clone().multiplyScalar(end / distance))
+                for (let j of [0, 1]) {
+                    const edge_mesh = edge_meshes[i][j]
+                    edge_mesh.position.copy(j == 0 ? start_position : end_position)
+                    edge_mesh.scale.set(1, (end - start) / 2, 1)
+                    edge_mesh.setRotationFromQuaternion(j == 0 ? quaternion : reverse_quaternion)
+                    edge_mesh.visible = true
+                    if (start >= end) {
+                        edge_mesh.visible = false
+                    }
                 }
             }
         }
         for (let i = snapshot.edges.length; i < left_edge_meshes.length; ++i) {
-            left_edge_meshes[i].visible = false
-            right_edge_meshes[i].visible = false
-            middle_edge_meshes[i].visible = false
+            for (let j of [0, 1]) {
+                left_edge_meshes[i][j].visible = false
+                right_edge_meshes[i][j].visible = false
+                middle_edge_meshes[i][j].visible = false
+            }
+        }
+        // draw node outlines
+        for (let [i, node] of snapshot.nodes.entries()) {
+            let position = fusion_data.positions[i]
+            if (node_outline_meshes.length <= i) {
+                const node_outline_mesh = new THREE.Mesh( node_geometry, node_outline_material )
+                update_mesh_outline(node_outline_mesh)
+                scene.add( node_outline_mesh )
+                load_position(node_outline_mesh.position, position)
+                node_outline_meshes.push(node_outline_mesh)
+            }
+            const node_outline_mesh = node_outline_meshes[i]
+            node_outline_mesh.visible = true
+        }
+        for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
+            node_outline_meshes[i].visible = false
         }
     }
 }
-watch([active_fusion_data, active_snapshot_idx], refresh_snapshot_data)
+watch([active_fusion_data, active_snapshot_idx, scaled_node_outline_radius], refresh_snapshot_data)
 export function show_snapshot(snapshot_idx, fusion_data) {
     active_snapshot_idx.value = snapshot_idx
     active_fusion_data.value = fusion_data
 }
 
 // configurations
-const gui = new GUI( { width: 400 } )
+const gui = new GUI( { width: 400, title: "render configurations" } )
 export const show_config = ref(false)
 watch(show_config, () => {
     if (show_config.value) {
@@ -327,6 +347,9 @@ watch(show_config, () => {
     } else {
         gui.domElement.style.display = "none"
     }
+}, { immediate: true })
+watch(sizes, () => {
+    gui.domElement.style.right = sizes.control_bar_width + "px"
 }, { immediate: true })
 const conf = {
     syndrome_node_color: syndrome_node_material.color,
@@ -337,6 +360,8 @@ const conf = {
     virtual_node_opacity: virtual_node_material.opacity,
     edge_color: edge_material.color,
     edge_opacity: edge_material.opacity,
+    grown_edge_color: grown_edge_material.color,
+    grown_edge_opacity: grown_edge_material.opacity,
     outline_ratio: outline_ratio.value,
     node_radius_scale: node_radius_scale.value,
     edge_radius_scale: edge_radius_scale.value,
@@ -349,6 +374,8 @@ gui.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtua
 gui.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
 gui.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
 gui.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
+gui.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
+gui.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
 gui.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
 gui.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
 gui.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
