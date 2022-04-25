@@ -27,6 +27,7 @@ const App = {
             current_selected: gui3d.current_selected,
             selected_node_neighbor_edges: ref([]),
             selected_node_attributes: ref(""),
+            selected_edge: ref(null),
         }
     },
     async mounted() {
@@ -80,33 +81,6 @@ const App = {
                 event.stopPropagation()
             }
         }
-        this.current_selected = {type: "node", node_index: 49}
-        this.selected_node_neighbor_edges = [
-            {
-                edge_index: 0,
-                left_grown: 40,
-                unexplored: 0,
-                right_grown: 0,
-                weight: 40,
-                node_index: 3,
-            },
-            {
-                edge_index: 1,
-                left_grown: 10,
-                unexplored: 20,
-                right_grown: 10,
-                weight: 40,
-                node_index: 4,
-            },
-            {
-                edge_index: 2,
-                left_grown: 0,
-                unexplored: 0,
-                right_grown: 40,
-                weight: 40,
-                node_index: 2,
-            },
-        ]
     },
     methods: {
         show_snapshot(snapshot_idx) {
@@ -121,10 +95,10 @@ const App = {
             gui3d.reset_camera_position(direction)
         },
         update_selected_display() {
+            if (this.current_selected == null) return
             if (this.current_selected.type == "node") {
                 let node_index = this.current_selected.node_index
-                let snapshot = fusion_data.snapshots[this.snapshot_select][1]
-                let node = snapshot.nodes[node_index]
+                let node = this.snapshot.nodes[node_index]
                 this.selected_node_attributes = ""
                 if (node.s == 1) {
                     this.selected_node_attributes = "(syndrome)"
@@ -134,7 +108,7 @@ const App = {
                 console.assert(!(node.s == 1 && node.v == 1), "a node cannot be both syndrome and virtual")
                 // fetch edge list
                 let neighbor_edges = []
-                for (let [edge_index, edge] of snapshot.edges.entries()) {
+                for (let [edge_index, edge] of this.snapshot.edges.entries()) {
                     if (edge.l == node_index) {
                         neighbor_edges.push({
                             edge_index: edge_index,
@@ -156,6 +130,19 @@ const App = {
                     }
                 }
                 this.selected_node_neighbor_edges = neighbor_edges
+            }
+            if (this.current_selected.type == "edge") {
+                let edge_index = this.current_selected.edge_index
+                let edge = this.snapshot.edges[edge_index]
+                this.selected_edge = {
+                    edge_index: edge_index,
+                    left_grown: edge.lg,
+                    unexplored: edge.w - edge.lg - edge.rg,
+                    right_grown: edge.rg,
+                    weight: edge.w,
+                    left_node_index: edge.l,
+                    right_node_index: edge.r,
+                }
             }
         },
         jump_to(type, data, is_click=true) {
@@ -234,6 +221,9 @@ const App = {
                 height: `9px`,
                 opacity: 0.2
             }
+        },
+        snapshot() {
+            return fusion_data.snapshots[this.snapshot_select][1]
         },
     },
 }
