@@ -168,13 +168,13 @@ h3 {
                         </div>
                     </q-btn>
                     <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.left_grown / edge.weight})` }">
+                        <div class="left-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
                             {{ edge.left_grown == 0 ? "|" : edge.left_grown }}
                         </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.unexplored / edge.weight})` }">
+                        <div class="unexplored" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
                             {{ edge.unexplored == 0 ? "|" : edge.unexplored }}
                         </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.right_grown / edge.weight})` }">
+                        <div class="right-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
                             {{ edge.right_grown == 0 ? "|" : edge.right_grown }}
                         </div>
                     </div>
@@ -187,7 +187,7 @@ h3 {
                             peer node
                         </q-tooltip> -->
                     </q-btn>
-                    <q-circular-progress show-value :value="(edge.left_grown + edge.right_grown) / edge.weight * 100" style="margin-left: 10px;"
+                    <q-circular-progress show-value :value="(edge.translated_left_grown + edge.translated_right_grown) / edge.weight * 100" style="margin-left: 10px;"
                             size="40px" font-size="18px" :thickness="0.15" color="red" track-color="grey-3">
                         {{ edge.weight }}
                         <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
@@ -211,13 +211,13 @@ h3 {
                         </div>
                     </q-btn>
                     <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', selected_edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.left_grown / selected_edge.weight})` }">
+                        <div class="left-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.translated_left_grown / selected_edge.weight})` }">
                             {{ selected_edge.left_grown == 0 ? "|" : selected_edge.left_grown }}
                         </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.unexplored / selected_edge.weight})` }">
+                        <div class="unexplored" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.translated_unexplored / selected_edge.weight})` }">
                             {{ selected_edge.unexplored == 0 ? "|" : selected_edge.unexplored }}
                         </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.right_grown / selected_edge.weight})` }">
+                        <div class="right-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.translated_right_grown / selected_edge.weight})` }">
                             {{ selected_edge.right_grown == 0 ? "|" : selected_edge.right_grown }}
                         </div>
                     </div>
@@ -227,7 +227,7 @@ h3 {
                             Node</span><br>{{ selected_edge.right_node_index }}
                         </div>
                     </q-btn>
-                    <q-circular-progress show-value :value="(selected_edge.left_grown + selected_edge.right_grown) / selected_edge.weight * 100" style="margin-left: 10px;"
+                    <q-circular-progress show-value :value="(selected_edge.translated_left_grown + selected_edge.translated_right_grown) / selected_edge.weight * 100" style="margin-left: 10px;"
                             size="40px" font-size="18px" :thickness="0.15" color="red" track-color="grey-3">
                         {{ selected_edge.weight }}
                         <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">

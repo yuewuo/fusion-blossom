@@ -17,6 +17,7 @@ function on_resize() {
 }
 on_resize()
 window.addEventListener('resize', on_resize)
+window.addEventListener('orientationchange', on_resize)
 
 export const sizes = reactive({
     control_bar_width: 0,
@@ -30,8 +31,12 @@ watch([window_inner_width, window_inner_height], () => {
     if (sizes.scale > window_inner_height.value / 1080) {  // ultra-wide
         sizes.scale = window_inner_height.value / 1080
     }
-    if (sizes.scale * window_inner_width.value < 300) {
-        sizes.scale = 300 / window_inner_width.value
+    if (sizes.scale < 0.5) {
+        sizes.scale = 0.5
+    }
+    console.log(sizes.scale)
+    if (window_inner_width.value * 0.9 < 300) {
+        sizes.scale = window_inner_width.value / 600 * 0.9
     }
     root.style.setProperty('--s', sizes.scale)
     // sizes.scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s'))
@@ -235,6 +240,23 @@ export function load_position(mesh_position, data_position) {
     mesh_position.y = data_position.t
 }
 
+/// translate to a format that is easy to plot (gracefully handle the overgrown edges)
+export function translate_edge(left_grown, right_grown, weight) {
+    console.assert(left_grown >= 0 && right_grown >= 0, "grown should be non-negative")
+    if (left_grown + right_grown <= weight) {
+        return [left_grown, right_grown]
+    } else {
+        const middle = (left_grown + weight - right_grown) / 2
+        if (middle < 0) {
+            return [0, weight]
+        }
+        if (middle > weight) {
+            return [weight, 0]
+        }
+        return [middle, weight - middle]
+    }
+}
+
 const active_fusion_data = ref(null)
 const active_snapshot_idx = ref(0)
 function refresh_snapshot_data() {
@@ -291,13 +313,9 @@ function refresh_snapshot_data() {
                 edge_length = 0
             }
             const left_start = local_edge_offset
-            let left_end = local_edge_offset + edge_length * (edge.lg / edge.w)
-            let right_end = local_edge_offset + edge_length * ((edge.w - edge.rg) / edge.w)
-            if (left_end > right_end) {  // over grown, typically happen at boundaries inside blossom
-                const middle = (left_end + right_end) / 2
-                left_end = middle
-                right_end = middle
-            }
+            const [left_grown, right_grown] = translate_edge(edge.lg, edge.rg, edge.w)
+            let left_end = local_edge_offset + edge_length * (left_grown / edge.w)
+            let right_end = local_edge_offset + edge_length * ((edge.w - right_grown) / edge.w)
             const right_start = local_edge_offset + edge_length
             // console.log(`${left_start}, ${left_end}, ${right_end}, ${right_start}`)
             for (let [start, end, edge_meshes, is_grown_part] of [[left_start, left_end, left_edge_meshes, true], [left_end, right_end, middle_edge_meshes, false]
@@ -352,6 +370,15 @@ function refresh_snapshot_data() {
         for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
             node_outline_meshes[i].visible = false
         }
+        // clear hover and select
+        previous_hover_material = null
+        current_hover.value = null
+        previous_selected_material = null
+        let current_selected_value = JSON.parse(JSON.stringify(current_selected.value))
+        current_selected.value = null
+        Vue.nextTick(() => {  // wait after hover cleaned its data
+            current_selected.value = current_selected_value
+        })
     }
 }
 watch([active_fusion_data, active_snapshot_idx, scaled_node_outline_radius], refresh_snapshot_data)
@@ -454,7 +481,7 @@ function set_material_with_user_data(user_data, material) {  // return the previ
 }
 watch(current_hover, (newVal, oldVal) => {
     // console.log(`${oldVal} -> ${newVal}`)
-    if (oldVal != null) {
+    if (oldVal != null && previous_hover_material != null) {
         set_material_with_user_data(oldVal, previous_hover_material)
         previous_hover_material = null
     }
@@ -467,7 +494,7 @@ watch(current_selected, (newVal, oldVal) => {
         current_hover.value = null
     }
     Vue.nextTick(() => {  // wait after hover cleaned its data
-        if (oldVal != null) {
+        if (oldVal != null && previous_selected_material != null) {
             set_material_with_user_data(oldVal, previous_selected_material)
             previous_selected_material = null
         }

@@ -135,7 +135,7 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn visualize_single_node_grow() {  // cargo test visualize_single_node_grow -- --nocapture
+    fn visualize_test_1() {  // cargo test visualize_test_1 -- --nocapture
         let d = 11usize;
         let p = 0.2f64;
         let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -177,9 +177,7 @@ mod tests {
             virtual_nodes
         };
         // hardcode syndrome
-        let mut syndrome_nodes = Vec::new();
-        // syndrome_nodes.push(pos[&(4, 3)]);
-        syndrome_nodes.push(pos[&(4, 0)]);
+        let syndrome_nodes = vec![39, 63, 52, 100, 90];
         // run single-thread fusion blossom algorithm
         let visualize_filename = static_visualize_data_filename();
         print_visualize_link(&visualize_filename);
@@ -196,9 +194,11 @@ mod tests {
         let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
         fusion_solver.load_syndrome(&syndrome_nodes);
         visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
-        let syndrome_node_4_3 = Arc::clone(&fusion_solver.tree_nodes[0]);
-        {
-            fusion_solver.grow_tree_node(&syndrome_node_4_3, half_weight);
+        let syndrome_tree_nodes: Vec<TreeNodePointer> = syndrome_nodes.iter().map(|&node_index| {
+            Arc::clone(fusion_solver.nodes[node_index].read().tree_node.as_ref().unwrap())
+        }).collect();
+        for i in 0..syndrome_tree_nodes.len() {
+            fusion_solver.grow_tree_node(&syndrome_tree_nodes[i], half_weight);
             visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
         }
         // visualizer.snapshot(format!("end"), &fusion_solver).unwrap();

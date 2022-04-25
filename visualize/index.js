@@ -110,6 +110,8 @@ const App = {
                 let neighbor_edges = []
                 for (let [edge_index, edge] of this.snapshot.edges.entries()) {
                     if (edge.l == node_index) {
+                        const [translated_left_grown, translated_right_grown] = gui3d.translate_edge(edge.lg, edge.rg, edge.w)
+                        const translated_unexplored = edge.w - translated_left_grown - translated_right_grown
                         neighbor_edges.push({
                             edge_index: edge_index,
                             left_grown: edge.lg,
@@ -117,8 +119,13 @@ const App = {
                             right_grown: edge.rg,
                             weight: edge.w,
                             node_index: edge.r,
+                            translated_left_grown,
+                            translated_right_grown,
+                            translated_unexplored,
                         })
                     } else if (edge.r == node_index) {
+                        const [translated_left_grown, translated_right_grown] = gui3d.translate_edge(edge.rg, edge.lg, edge.w)
+                        const translated_unexplored = edge.w - translated_left_grown - translated_right_grown
                         neighbor_edges.push({
                             edge_index: edge_index,
                             left_grown: edge.rg,
@@ -126,14 +133,19 @@ const App = {
                             right_grown: edge.lg,
                             weight: edge.w,
                             node_index: edge.l,
+                            translated_left_grown,
+                            translated_right_grown,
+                            translated_unexplored,
                         })
                     }
                 }
                 this.selected_node_neighbor_edges = neighbor_edges
             }
             if (this.current_selected.type == "edge") {
-                let edge_index = this.current_selected.edge_index
-                let edge = this.snapshot.edges[edge_index]
+                const edge_index = this.current_selected.edge_index
+                const edge = this.snapshot.edges[edge_index]
+                const [translated_left_grown, translated_right_grown] = gui3d.translate_edge(edge.lg, edge.rg, edge.w)
+                const translated_unexplored = edge.w - translated_left_grown - translated_right_grown
                 this.selected_edge = {
                     edge_index: edge_index,
                     left_grown: edge.lg,
@@ -142,6 +154,9 @@ const App = {
                     weight: edge.w,
                     left_node_index: edge.l,
                     right_node_index: edge.r,
+                    translated_left_grown,
+                    translated_right_grown,
+                    translated_unexplored,
                 }
             }
         },
