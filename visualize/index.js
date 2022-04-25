@@ -21,6 +21,12 @@ const App = {
             // GUI related states
             show_stats: gui3d.show_stats,
             show_config: gui3d.show_config,
+            show_hover_effect: gui3d.show_hover_effect,
+            lock_view: ref(false),
+            // select
+            current_selected: gui3d.current_selected,
+            selected_node_neighbor_edges: ref([]),
+            selected_node_attributes: ref(""),
         }
     },
     async mounted() {
@@ -49,6 +55,16 @@ const App = {
                     this.reset_camera("left")
                 } else if (event.key == "f" || event.key == "F") {
                     this.reset_camera("front")
+                } else if (event.key == "c" || event.key == "C") {
+                    this.show_config = !this.show_config
+                } else if (event.key == "s" || event.key == "S") {
+                    this.show_stats = !this.show_stats
+                } else if (event.key == "v" || event.key == "V") {
+                    this.lock_view = !this.lock_view
+                } else if (event.key == "o" || event.key == "O") {
+                    this.use_perspective_camera = false
+                } else if (event.key == "p" || event.key == "P") {
+                    this.use_perspective_camera = true
                 } else if (event.key == "ArrowRight") {
                     if (this.snapshot_select < this.snapshot_num - 1) {
                         this.snapshot_select += 1
@@ -64,6 +80,33 @@ const App = {
                 event.stopPropagation()
             }
         }
+        this.current_selected = {type: "node", node_index: 49}
+        this.selected_node_neighbor_edges = [
+            {
+                edge_index: 0,
+                left_grown: 40,
+                unexplored: 0,
+                right_grown: 0,
+                weight: 40,
+                node_index: 3,
+            },
+            {
+                edge_index: 1,
+                left_grown: 10,
+                unexplored: 20,
+                right_grown: 10,
+                weight: 40,
+                node_index: 4,
+            },
+            {
+                edge_index: 2,
+                left_grown: 0,
+                unexplored: 0,
+                right_grown: 40,
+                weight: 40,
+                node_index: 2,
+            },
+        ]
     },
     methods: {
         show_snapshot(snapshot_idx) {
@@ -77,15 +120,79 @@ const App = {
         reset_camera(direction) {
             gui3d.reset_camera_position(direction)
         },
+        update_selected_display() {
+            if (this.current_selected.type == "node") {
+                let node_index = this.current_selected.node_index
+                let snapshot = fusion_data.snapshots[this.snapshot_select][1]
+                let node = snapshot.nodes[node_index]
+                this.selected_node_attributes = ""
+                if (node.s == 1) {
+                    this.selected_node_attributes = "(syndrome)"
+                } else if (node.v == 1) {
+                    this.selected_node_attributes = "(virtual)"
+                }
+                console.assert(!(node.s == 1 && node.v == 1), "a node cannot be both syndrome and virtual")
+                // fetch edge list
+                let neighbor_edges = []
+                for (let [edge_index, edge] of snapshot.edges.entries()) {
+                    if (edge.l == node_index) {
+                        neighbor_edges.push({
+                            edge_index: edge_index,
+                            left_grown: edge.lg,
+                            unexplored: edge.w - edge.lg - edge.rg,
+                            right_grown: edge.rg,
+                            weight: edge.w,
+                            node_index: edge.r,
+                        })
+                    } else if (edge.r == node_index) {
+                        neighbor_edges.push({
+                            edge_index: edge_index,
+                            left_grown: edge.rg,
+                            unexplored: edge.w - edge.lg - edge.rg,
+                            right_grown: edge.lg,
+                            weight: edge.w,
+                            node_index: edge.l,
+                        })
+                    }
+                }
+                this.selected_node_neighbor_edges = neighbor_edges
+            }
+        },
+        jump_to(type, data, is_click=true) {
+            let current_ref = is_click ? gui3d.current_selected : gui3d.current_hover
+            if (type == "edge") {
+                current_ref.value = {
+                    type, edge_index: data
+                }
+            }
+            if (type == "node") {
+                current_ref.value = {
+                    type, node_index: data
+                }
+            }
+        },
+        mouseenter(type, data) {
+            this.jump_to(type, data, false)
+        },
+        mouseleave() {
+            gui3d.current_hover.value = null
+        },
     },
     watch: {
         snapshot_select() {
             // console.log(this.snapshot_select)
             this.show_snapshot(this.snapshot_select)  // load the snapshot
             this.snapshot_select_label = this.snapshot_labels[this.snapshot_select]
+            this.update_selected_display()
         },
         snapshot_select_label() {
             this.snapshot_select = parseInt(this.snapshot_select_label.split(']')[0].split('[')[1])
+        },
+        current_selected() {
+            this.update_selected_display()
+        },
+        lock_view() {
+            gui3d.enable_control.value = !this.lock_view
         },
     },
     computed: {

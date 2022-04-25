@@ -68,6 +68,12 @@ watch(sizes, () => {
 
 export const orbit_control_perspective = new OrbitControls( perspective_camera, renderer.domElement )
 export const orbit_control_orthogonal = new OrbitControls( orthogonal_camera, renderer.domElement )
+export const enable_control = ref(true)
+watch(enable_control, (enabled) => {
+    orbit_control_perspective.enabled = enabled
+    orbit_control_orthogonal.enabled = enabled
+}, { immediate: true })
+window.enable_control = enable_control
 
 export const use_perspective_camera = ref(false)
 export const camera = computed(() => {
@@ -169,6 +175,14 @@ const grown_edge_material = new THREE.MeshStandardMaterial({
     transparent: true,
     side: THREE.FrontSide,
 })
+const hover_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (node or edge)
+    color: 0x6FDFDF,
+    side: THREE.DoubleSide,
+})
+const selected_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (node or edge)
+    color: 0x4B7BE5,
+    side: THREE.DoubleSide,
+})
 
 // meshes that can be reused across different snapshots
 export var node_meshes = []
@@ -233,6 +247,10 @@ function refresh_snapshot_data() {
             let position = fusion_data.positions[i]
             if (node_meshes.length <= i) {
                 const node_mesh = new THREE.Mesh( node_geometry, syndrome_node_material )
+                node_mesh.userData = {
+                    type: "node",
+                    node_index: i,
+                }
                 scene.add( node_mesh )
                 load_position(node_mesh.position, position)
                 node_meshes.push(node_mesh)
@@ -288,6 +306,10 @@ function refresh_snapshot_data() {
                     let two_edges = [null, null]
                     for (let j of [0, 1]) {
                         const edge_mesh = new THREE.Mesh( edge_geometry, is_grown_part ? grown_edge_material : edge_material )
+                        edge_mesh.userData = {
+                            type: "edge",
+                            edge_index: i,
+                        }
                         scene.add( edge_mesh )
                         two_edges[j] = edge_mesh
                     }
@@ -391,3 +413,121 @@ watch(sizes, () => {
     gui.domElement.style.transform = `scale(${sizes.scale})`
     gui.domElement.style["transform-origin"] = "right top"
 }, { immediate: true })
+
+// select logic
+const raycaster = new THREE.Raycaster()
+const mouse = new THREE.Vector2()
+var previous_hover_material = null
+export const current_hover = ref(null)
+window.current_hover = current_hover
+var previous_selected_material = null
+export const current_selected = ref(null)
+window.current_selected = current_selected
+export const show_hover_effect = ref(true)
+function set_material_with_user_data(user_data, material) {  // return the previous material
+    if (user_data.type == "node") {
+        let node_index = user_data.node_index
+        let node_mesh = node_meshes[node_index]
+        let previous_material = node_mesh.material
+        node_mesh.material = material
+        return previous_material
+    }
+    if (user_data.type == "edge") {
+        let expanded_material = material
+        if (!Array.isArray(material)) {
+            expanded_material = [[material, material], [material, material], [material, material]]
+        }
+        let edge_index = user_data.edge_index
+        let meshes_lists = [left_edge_meshes, right_edge_meshes, middle_edge_meshes]
+        let previous_material = [[null,null],[null,null],[null,null]]
+        for (let i = 0; i < meshes_lists.length; ++i) {
+            let meshes_list = meshes_lists[i][edge_index]
+            for (let j of [0, 1]) {
+                let edge_mesh = meshes_list[j]
+                previous_material[i][j] = edge_mesh.material
+                edge_mesh.material = expanded_material[i][j]
+            }
+        }
+        return previous_material
+    }
+    console.error(`unknown type ${user_data.type}`)
+}
+watch(current_hover, (newVal, oldVal) => {
+    // console.log(`${oldVal} -> ${newVal}`)
+    if (oldVal != null) {
+        set_material_with_user_data(oldVal, previous_hover_material)
+        previous_hover_material = null
+    }
+    if (newVal != null) {
+        previous_hover_material = set_material_with_user_data(newVal, hover_material)
+    }
+})
+watch(current_selected, (newVal, oldVal) => {
+    if (newVal != null) {
+        current_hover.value = null
+    }
+    Vue.nextTick(() => {  // wait after hover cleaned its data
+        if (oldVal != null) {
+            set_material_with_user_data(oldVal, previous_selected_material)
+            previous_selected_material = null
+        }
+        if (newVal != null) {
+            previous_selected_material = set_material_with_user_data(newVal, selected_material)
+        }
+    })
+})
+function on_mouse_change(event, is_click) {
+    mouse.x = ( event.clientX / sizes.canvas_width ) * 2 - 1
+    mouse.y = - ( event.clientY / sizes.canvas_height ) * 2 + 1
+    raycaster.setFromCamera( mouse, camera.value )
+    const intersects = raycaster.intersectObjects( scene.children, false )
+    if (intersects.length == 0) {
+        if (is_click) {
+            current_selected.value = null
+        } else {
+            current_hover.value = null
+        }
+        return
+    }
+    for (let intersect of intersects) {
+        let user_data = intersect.object.userData
+        if (user_data.type == null) continue  // doesn't contain enough information
+        // swap back to the original material
+        if (is_click) {
+            current_selected.value = user_data
+        } else {
+            if (show_hover_effect.value) {
+                current_hover.value = user_data
+            } else {
+                current_hover.value = null
+            }
+        }
+        break
+    }
+}
+var mousedown_position = null
+var is_mouse_currently_down = false
+window.addEventListener( 'mousedown', (event) => {
+    if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
+    mousedown_position = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+    }
+    is_mouse_currently_down = true
+} )
+window.addEventListener( 'mouseup', (event) => {
+    if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
+    // to prevent triggering select while moving camera
+    if (mousedown_position.clientX == event.clientX && mousedown_position.clientY == event.clientY) {
+        on_mouse_change(event, true)
+    }
+    is_mouse_currently_down = false
+} )
+window.addEventListener( 'mousemove', (event) => {
+    if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
+    // to prevent triggering hover while moving camera
+    if (!is_mouse_currently_down) {
+        on_mouse_change(event, false)
+    }
+} )
+
