@@ -3,10 +3,10 @@ A fast minimum-weight perfect matching solver for quantum error correction
 
 ## Interface
 
-Since the weights in QEC decoding graph are computed by taking the log of error probability, e.g. $w_e = \log{\frac{1-p}{p}}$ or simply $w_e = -\log{p}$, 
-we can safely use integers to save weights by e.g. scaling the weights by 1e6 and truncate to nearest integer.
-In this way, the truncation error $\Delta w_e =$ 1e6 of integer weights corresponds to relative error $\frac{\Delta p}{p}=10^{-6}$ which is small enough.
-Suppose physical error rate $p$ is in the range of a `f64` variable (2.2e-308 to 1), the maximum weight is 7e7,which is well below
+Since the weights in QEC decoding graph are computed by taking the log of error probability, e.g. <!-- $w_e = \log\{(1-p)/p\}$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=w_e%20%3D%20%5Clog%5C%7B(1-p)%2Fp%5C%7D">
+or simply <!-- $w_e = -\log{p}$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=w_e%20%3D%20-%5Clog%7Bp%7D">, we can safely use integers to save weights by e.g. scaling the weights by 1e6 and truncate to nearest integer.
+In this way, the truncation error <!-- $\Delta w_e = 1$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=%5CDelta%20w_e%20%3D%201"> of integer weights corresponds to relative error <!-- $\Delta p /{p}=10^{-6}$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=%5CDelta%20p%20%2F%7Bp%7D%3D10%5E%7B-6%7D"> which is small enough.
+Suppose physical error rate <!-- $p$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=p"> is in the range of a `f64` variable (2.2e-308 to 1), the maximum weight is 7e7,which is well below
 the maximum number of a `u32` variable (4.3e9). Since weights only sum up (no multiplication), `u32` is large enough and accurate enough.
 
 We use integer also for ease of migrating to FPGA implementation. In order to fit more vertices into a single FPGA, it's necessary to reduce the
