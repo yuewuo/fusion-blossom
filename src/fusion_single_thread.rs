@@ -7,11 +7,14 @@ use crate::parking_lot::RwLock;  // in single thread implementation, it has "Inl
 use crate::serde_json;
 use super::union_find::*;
 use super::visualize::*;
+use crate::derivative::Derivative;
 
-pub type EdgePointer = Arc<RwLock<Edge>>;
-pub type NodePointer = Arc<RwLock<Node>>;
-pub type TreeNodePointer = Arc<RwLock<TreeNode>>;
+pub type EdgePtr = Arc<RwLock<Edge>>;
+pub type NodePtr = Arc<RwLock<Node>>;
+pub type TreeNodePtr = Arc<RwLock<TreeNode>>;
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Node {
     /// the index of this node in [`FusionSingleThread::nodes`]
     pub node_index: usize,
@@ -20,63 +23,75 @@ pub struct Node {
     /// if a node is syndrome
     pub is_syndrome: bool,
     /// all neighbor edges, in surface code this should be constant number of edges, (`peer_node_index`, `edge`)
-    pub edges: Vec<EdgePointer>,
+    #[derivative(Debug="ignore")]
+    pub edges: Vec<EdgePtr>,
     /// corresponding tree node if exist (only applies if this is syndrome vertex)
-    pub tree_node: Option<TreeNodePointer>,
+    #[derivative(Debug="ignore")]
+    pub tree_node: Option<TreeNodePtr>,
     /// propagated tree node from other tree node
-    pub propagated_tree_node: Option<TreeNodePointer>,
+    #[derivative(Debug="ignore")]
+    pub propagated_tree_node: Option<TreeNodePtr>,
 }
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct TreeNode {
     /// the index of this tree node in [`FusionSingleThread::tree_nodes`]
     pub tree_node_index: usize,
     /// if set, this node has already fall back to UF decoder cluster which can only grow and never shrink
     pub fallback_union_find: bool,
     /// if this tree node is a single vertex, this is the corresponding syndrome node
-    pub syndrome_node: Option<NodePointer>,
+    pub syndrome_node: Option<NodePtr>,
     /// the odd cycle of tree nodes if it's a blossom; otherwise this will be empty
-    pub blossom: Vec<TreeNodePointer>,
+    pub blossom: Vec<TreeNodePtr>,
     /// edges on the boundary of this vertex or blossom's dual cluster, (`is_left`, `edge`)
-    pub boundary: Vec<(bool, EdgePointer)>,
+    pub boundary: Vec<(bool, EdgePtr)>,
     /// dual variable of this node
     pub dual_variable: Weight,
 }
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Edge {
     /// the index of this edge in [`FusionSingleThread::edges`]
     pub edge_index: usize,
     /// total weight of this edge
     pub weight: Weight,
     /// left node (always with smaller index)
-    pub left: NodePointer,
+    #[derivative(Debug="ignore")]
+    pub left: NodePtr,
     /// right node (always with larger index)
-    pub right: NodePointer,
+    #[derivative(Debug="ignore")]
+    pub right: NodePtr,
     /// growth from the left point
     pub left_growth: Weight,
     /// growth from the right point
     pub right_growth: Weight,
     /// left active tree node (if applicable)
-    pub left_tree_node: Option<TreeNodePointer>,
+    #[derivative(Debug="ignore")]
+    pub left_tree_node: Option<TreeNodePtr>,
     /// right active tree node (if applicable)
-    pub right_tree_node: Option<TreeNodePointer>,
+    #[derivative(Debug="ignore")]
+    pub right_tree_node: Option<TreeNodePtr>,
 }
 
+#[derive(Debug)]
 pub struct FusionSingleThread {
     /// all nodes including virtual
-    pub nodes: Vec<NodePointer>,
+    pub nodes: Vec<NodePtr>,
     /// keep edges, which can also be accessed in [`Self::nodes`]
-    pub edges: Vec<EdgePointer>,
+    pub edges: Vec<EdgePtr>,
     /// keep union-find information of different [`TreeNode`], note that it's never called if solving exact MWPM result;
     /// it's only union together when falling back to UF decoder 
     pub union_clusters: UnionFindGeneric<FusionUnionNode>,
     /// alternating tree nodes; can be either a vertex or a blossom
-    pub tree_nodes: Vec<TreeNodePointer>,
+    pub tree_nodes: Vec<TreeNodePtr>,
 }
 
 impl FusionSingleThread {
     /// create a fusion decoder
     pub fn new(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>) -> Self {
-        let nodes: Vec<NodePointer> = (0..node_num).map(|node_index| Arc::new(RwLock::new(Node {
+        let nodes: Vec<NodePtr> = (0..node_num).map(|node_index| Arc::new(RwLock::new(Node {
             node_index: node_index,
             is_virtual: false,
             is_syndrome: false,
@@ -84,7 +99,7 @@ impl FusionSingleThread {
             tree_node: None,
             propagated_tree_node: None,
         }))).collect();
-        let mut edges = Vec::<EdgePointer>::new();
+        let mut edges = Vec::<EdgePtr>::new();
         for &virtual_node in virtual_nodes.iter() {
             let mut node = nodes[virtual_node].write();
             node.is_virtual = true;
@@ -106,7 +121,7 @@ impl FusionSingleThread {
             edges.push(Arc::clone(&edge));
             for (a, b) in [(i, j), (j, i)] {
                 let mut node = nodes[a].write();
-                debug_assert!({  // O(N^2) sanity check, debug mode only
+                debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge has effect)
                     let mut no_duplicate = true;
                     for edge in node.edges.iter() {
                         let edge = edge.read();
@@ -152,7 +167,7 @@ impl FusionSingleThread {
     }
 
     // /// create a new blossom
-    // pub fn add_tree_node_blossom(&mut self, tree_nodes: Vec<TreeNodePointer>) -> TreeNodePointer {
+    // pub fn add_tree_node_blossom(&mut self, tree_nodes: Vec<TreeNodePtr>) -> TreeNodePtr {
     //     // merge the boundaries of these tree nodes
     //     let tree_node = Arc::new(RwLock::new(TreeNode {
     //         tree_node_index: self.tree_nodes.len(),
@@ -167,8 +182,16 @@ impl FusionSingleThread {
     // }
 
     /// create a new tree node with single syndrome node
-    pub fn add_tree_node_vertex(&mut self, syndrome_node: &NodePointer) -> TreeNodePointer {
+    pub fn add_tree_node_vertex(&mut self, syndrome_node: &NodePtr) -> TreeNodePtr {
         // iterate other the edges of this vertex and add them to boundary
+        let tree_node = Arc::new(RwLock::new(TreeNode {
+            tree_node_index: self.tree_nodes.len(),
+            syndrome_node: Some(Arc::clone(syndrome_node)),
+            fallback_union_find: false,
+            blossom: Vec::new(),
+            boundary: Vec::new(),
+            dual_variable: 0,
+        }));
         let boundary = {
             let mut boundary = Vec::new();
             let node = syndrome_node.read();
@@ -180,21 +203,20 @@ impl FusionSingleThread {
             if !node.is_syndrome {
                 panic!("node without syndrome cannot become tree node");
             }
-            for edge in node.edges.iter() {
-                let edge_locked = edge.read();
-                let is_left = Arc::ptr_eq(syndrome_node, &edge_locked.left);
-                boundary.push((is_left, Arc::clone(edge)));
+            for edge_ptr in node.edges.iter() {
+                let mut edge = edge_ptr.write();
+                let is_left = Arc::ptr_eq(syndrome_node, &edge.left);
+                assert!(if is_left { edge.left_tree_node.is_none() } else { edge.right_tree_node.is_none() }, "tree node of edge should be none");
+                if is_left {
+                    edge.left_tree_node = Some(Arc::clone(&tree_node));
+                } else {
+                    edge.right_tree_node = Some(Arc::clone(&tree_node));
+                }
+                boundary.push((is_left, Arc::clone(edge_ptr)));
             }
             boundary
         };
-        let tree_node = Arc::new(RwLock::new(TreeNode {
-            tree_node_index: self.tree_nodes.len(),
-            syndrome_node: Some(Arc::clone(syndrome_node)),
-            fallback_union_find: false,
-            blossom: Vec::new(),
-            boundary: boundary,
-            dual_variable: 0,
-        }));
+        tree_node.write().boundary = boundary;
         self.tree_nodes.push(Arc::clone(&tree_node));
         self.union_clusters.insert(FusionUnionNode::default());  // when created, each cluster is on its own
         assert_eq!(self.tree_nodes.len(), self.union_clusters.payload.len(), "these two are one-to-one corresponding");
@@ -238,17 +260,139 @@ impl FusionSingleThread {
     }
 
     /// grow specific tree node by given length, panic if error occur
-    pub fn grow_tree_node(&mut self, tree_node: &TreeNodePointer, length: Weight) {
-        let tree_node_index = tree_node.read().tree_node_index;
+    pub fn grow_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, length: Weight) {
+        let tree_node_index = tree_node_ptr.read().tree_node_index;
         assert!(self.is_tree_node_union_find_root(tree_node_index), "only union-find root can grow");
-        let (remove_indices, propagating_nodes) = {
-            let tree_node = tree_node.read();
-            let mut remove_indices = Vec::<usize>::new();
-            let mut propagating_nodes = Vec::<NodePointer>::new();
-            for (idx, (is_left, edge)) in tree_node.boundary.iter().enumerate() {
+        if length == 0 {
+            eprintln!("[warning] calling `grow_tree_node` with zero length, nothing to do");
+            return
+        }
+        let mut updated_boundary = Vec::<(bool, EdgePtr)>::new();
+        let mut propagating_nodes = Vec::<NodePtr>::new();
+        if length > 0 {  // gracefully update the boundary to ease growing
+            let tree_node = tree_node_ptr.read();
+            for (is_left, edge_ptr) in tree_node.boundary.iter() {
+                let is_left = *is_left;
+                let edge = edge_ptr.read();
+                let peer_tree_node: &Option<TreeNodePtr> = if is_left {
+                    &edge.right_tree_node
+                } else {
+                    &edge.left_tree_node
+                };
+                if edge.left_growth + edge.right_growth == edge.weight && peer_tree_node.is_none() {
+                    // need to propagate to a new node
+                    let peer_node = if is_left {
+                        Arc::clone(&edge.right)
+                    } else {
+                        Arc::clone(&edge.left)
+                    };
+                    // to avoid already occupied node being propagated
+                    assert!(peer_node.read().propagated_tree_node.is_none(), "growing into another propagated node forbidden");
+                    propagating_nodes.push(peer_node);
+                } else {  // keep other edges
+                    updated_boundary.push((is_left, Arc::clone(edge_ptr)));
+                }
+            }
+            // propagating nodes may be duplicated, but it's easy to check by `propagated_tree_node`
+            for node_ptr in propagating_nodes.iter() {
+                let mut node = node_ptr.write();
+                if node.propagated_tree_node.is_none() {
+                    node.propagated_tree_node = Some(Arc::clone(tree_node_ptr));
+                    for edge_ptr in node.edges.iter() {
+                        let (is_left, newly_propagated_edge) = {
+                            let edge = edge_ptr.read();
+                            let is_left = Arc::ptr_eq(node_ptr, &edge.left);
+                            let not_fully_grown = edge.left_growth + edge.right_growth < edge.weight;
+                            let newly_propagated_edge = not_fully_grown && if is_left {
+                                edge.left_tree_node.is_none()
+                            } else {
+                                edge.right_tree_node.is_none()
+                            };
+                            (is_left, newly_propagated_edge)
+                        };
+                        if newly_propagated_edge {
+                            updated_boundary.push((is_left, Arc::clone(edge_ptr)));
+                            let mut edge = edge_ptr.write();
+                            if is_left {
+                                edge.left_tree_node = Some(Arc::clone(tree_node_ptr));
+                            } else {
+                                edge.right_tree_node = Some(Arc::clone(tree_node_ptr));
+                            };
+                        }
+                    }
+                }
+            }
+        } else if length < 0 {  // gracefully update the boundary to ease shrinking
+            let tree_node = tree_node_ptr.read();
+            for (is_left, edge_ptr) in tree_node.boundary.iter() {
+                let is_left = *is_left;
+                let edge = edge_ptr.read();
+                let this_growth = if is_left {
+                    edge.left_growth
+                } else {
+                    edge.right_growth
+                };
+                if this_growth == 0 {
+                    // need to shrink before this vertex
+                    let this_node = if is_left {
+                        Arc::clone(&edge.left)
+                    } else {
+                        Arc::clone(&edge.right)
+                    };
+                    // to avoid already occupied node being propagated
+                    assert!(this_node.read().propagated_tree_node.is_some(), "unexpected shrink into an empty node");
+                    propagating_nodes.push(this_node);
+                } else {  // keep other edges
+                    updated_boundary.push((is_left, Arc::clone(edge_ptr)));
+                }
+            }
+            // propagating nodes may be duplicated, but it's easy to check by `propagated_tree_node`
+            for node_ptr in propagating_nodes.iter() {
+                let mut node = node_ptr.write();
+                if node.propagated_tree_node.is_some() {
+                    node.propagated_tree_node = None;
+                    for edge_ptr in node.edges.iter() {
+                        let (is_left, newly_propagated_edge) = {
+                            let edge = edge_ptr.read();
+                            let is_left = Arc::ptr_eq(node_ptr, &edge.left);
+                            // fully grown edge is where to shrink
+                            let newly_propagated_edge = edge.left_growth + edge.right_growth == edge.weight;
+                            (is_left, newly_propagated_edge)
+                        };
+                        if newly_propagated_edge {
+                            updated_boundary.push((!is_left, Arc::clone(edge_ptr)));
+                            let edge = edge_ptr.read();
+                            if is_left {
+                                assert!(edge.right_tree_node.is_some(), "unexpected shrinking to empty edge");
+                                assert!(Arc::ptr_eq(edge.right_tree_node.as_ref().unwrap(), tree_node_ptr), "shrinking edge should be same tree node");
+                            } else {
+                                assert!(edge.left_tree_node.is_some(), "unexpected shrinking to empty edge");
+                                assert!(Arc::ptr_eq(edge.left_tree_node.as_ref().unwrap(), tree_node_ptr), "shrinking edge should be same tree node");
+                            };
+                        } else {
+                            let mut edge = edge_ptr.write();
+                            if is_left {
+                                edge.left_tree_node = None;
+                            } else {
+                                edge.right_tree_node = None;
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        {  // update the boundary
+            let mut tree_node = tree_node_ptr.write();
+            std::mem::swap(&mut updated_boundary, &mut tree_node.boundary);
+            // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
+            assert!(tree_node.boundary.len() > 0, "the boundary of a dual cluster is never empty");
+        }
+        {  // grow and shrink
+            let tree_node = tree_node_ptr.read();
+            for (is_left, edge_ptr) in tree_node.boundary.iter() {
                 let is_left = *is_left;
                 let (growth, weight) = {  // minimize writer lock acquisition
-                    let mut edge = edge.write();
+                    let mut edge = edge_ptr.write();
                     if is_left {
                         edge.left_growth += length;
                     } else {
@@ -256,40 +400,22 @@ impl FusionSingleThread {
                     }
                     (edge.left_growth + edge.right_growth, edge.weight)
                 };
+                let edge = edge_ptr.read();
                 if growth > weight {
                     // first check for if both side belongs to the same tree node
                     let tree_node_index_2: Option<usize> = if is_left {
-                        edge.read().right_tree_node.as_ref().map(|right_tree_node| right_tree_node.read().tree_node_index)
+                        edge.right_tree_node.as_ref().map(|right_tree_node| right_tree_node.read().tree_node_index)
                     } else {
-                        edge.read().left_tree_node.as_ref().map(|left_tree_node| left_tree_node.read().tree_node_index)
+                        edge.left_tree_node.as_ref().map(|left_tree_node| left_tree_node.read().tree_node_index)
                     };
                     if tree_node_index_2 == None || !self.is_tree_node_union_find_root_same(tree_node_index, tree_node_index_2.unwrap()) {
-                        panic!("over-grown edge {}: {}/{}", edge.read().edge_index, growth, weight);
+                        panic!("over-grown edge {}: {}/{}", edge.edge_index, growth, weight);
                     }
-                } else if growth == weight {
-                    // only propagate to new node if the other side of edge is not yet growing
-                    let peer_node_is_none = if is_left {
-                        edge.read().right_tree_node.is_none()
-                    } else {
-                        edge.read().left_tree_node.is_none()
-                    };
-                    if peer_node_is_none {
-                        let peer_node = if is_left {
-                            Arc::clone(&edge.read().right)
-                        } else {
-                            Arc::clone(&edge.read().left)
-                        };
-                        if peer_node.read().propagated_tree_node.is_none() {
-                            propagating_nodes.push(peer_node);
-                        }
-                        remove_indices.push(idx);
-                    }
+                } else if growth < 0 {
+                    panic!("under-grown edge {}: {}/{}", edge.edge_index, growth, weight);
                 }
             }
-            (remove_indices, propagating_nodes)
-        };
-        assert_eq!(propagating_nodes.len(), 0, "TODO");
-        assert_eq!(remove_indices.len(), 0, "TODO");
+        }
     }
 }
 

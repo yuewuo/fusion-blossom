@@ -34,7 +34,6 @@ watch([window_inner_width, window_inner_height], () => {
     if (sizes.scale < 0.5) {
         sizes.scale = 0.5
     }
-    console.log(sizes.scale)
     if (window_inner_width.value * 0.9 < 300) {
         sizes.scale = window_inner_width.value / 600 * 0.9
     }
@@ -397,8 +396,9 @@ watch(show_config, () => {
         gui.domElement.style.display = "none"
     }
 }, { immediate: true })
-watch(sizes, () => {
-    gui.domElement.style.right = sizes.control_bar_width + "px"
+watch(sizes, () => {  // move render configuration GUI to 3D canvas
+    // gui.domElement.style.right = sizes.control_bar_width + "px"
+    gui.domElement.style.right = 0
 }, { immediate: true })
 const conf = {
     syndrome_node_color: syndrome_node_material.color,
@@ -407,6 +407,8 @@ const conf = {
     real_node_opacity: real_node_material.opacity,
     virtual_node_color: virtual_node_material.color,
     virtual_node_opacity: virtual_node_material.opacity,
+    node_outline_color: node_outline_material.color,
+    node_outline_opacity: node_outline_material.opacity,
     edge_color: edge_material.color,
     edge_opacity: edge_material.opacity,
     edge_side: edge_material.side,
@@ -425,6 +427,8 @@ node_folder.addColor( conf, 'real_node_color' ).onChange( function ( value ) { r
 node_folder.add( conf, 'real_node_opacity', 0, 1 ).onChange( function ( value ) { real_node_material.opacity = Number(value) } )
 node_folder.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
 node_folder.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
+node_folder.addColor( conf, 'node_outline_color' ).onChange( function ( value ) { node_outline_material.color = value } )
+node_folder.add( conf, 'node_outline_opacity', 0, 1 ).onChange( function ( value ) { node_outline_material.opacity = Number(value) } )
 const edge_folder = gui.addFolder( 'edge' );
 edge_folder.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
 edge_folder.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )

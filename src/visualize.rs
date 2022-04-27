@@ -194,13 +194,31 @@ mod tests {
         let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
         fusion_solver.load_syndrome(&syndrome_nodes);
         visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
-        let syndrome_tree_nodes: Vec<TreeNodePointer> = syndrome_nodes.iter().map(|&node_index| {
+        let syndrome_tree_nodes: Vec<TreeNodePtr> = syndrome_nodes.iter().map(|&node_index| {
             Arc::clone(fusion_solver.nodes[node_index].read().tree_node.as_ref().unwrap())
         }).collect();
-        for i in 0..syndrome_tree_nodes.len() {
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes[i], half_weight);
+        // test basic grow and shrink of a single tree node
+        for _ in 0..4 {
+            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], half_weight);
             visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
         }
+        for _ in 0..4 {
+            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], -half_weight);
+            visualizer.snapshot(format!("shrink half weight"), &fusion_solver).unwrap();
+        }
+        for _ in 0..3 {
+            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], half_weight);
+        }
+        visualizer.snapshot(format!("grow 3 half weight"), &fusion_solver).unwrap();
+        for _ in 0..3 {
+            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], -half_weight);
+        }
+        visualizer.snapshot(format!("shrink 3 half weight"), &fusion_solver).unwrap();
+        // // test all
+        // for i in 0..syndrome_tree_nodes.len() {
+        //     fusion_solver.grow_tree_node(&syndrome_tree_nodes[i], half_weight);
+        //     visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
+        // }
         // visualizer.snapshot(format!("end"), &fusion_solver).unwrap();
     }
 

@@ -6,6 +6,7 @@ extern crate parking_lot;
 extern crate serde;
 #[macro_use] extern crate serde_json;
 extern crate chrono;
+extern crate derivative;
 
 pub mod blossom_v;
 pub mod util;

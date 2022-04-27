@@ -81,6 +81,23 @@ const App = {
                 event.stopPropagation()
             }
         }
+        // get command from url parameters
+        Vue.nextTick(() => {
+            let snapshot_idx = urlParams.get('si') || urlParams.get('snapshot_idx')
+            if (snapshot_idx != null) {
+                snapshot_idx = parseInt(snapshot_idx)
+                if (snapshot_idx < 0) {  // iterate from the end, like python list[-1]
+                    snapshot_idx = this.snapshot_num + snapshot_idx
+                    if (snapshot_idx < 0) {  // too small
+                        snapshot_idx = 0
+                    }
+                }
+                if (snapshot_idx >= this.snapshot_num) {
+                    snapshot_idx = this.snapshot_num - 1
+                }
+                this.snapshot_select = snapshot_idx
+            }
+        })
     },
     methods: {
         show_snapshot(snapshot_idx) {
