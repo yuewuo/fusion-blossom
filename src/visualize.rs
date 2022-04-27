@@ -195,7 +195,7 @@ mod tests {
         fusion_solver.load_syndrome(&syndrome_nodes);
         visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
         let syndrome_tree_nodes: Vec<TreeNodePtr> = syndrome_nodes.iter().map(|&node_index| {
-            Arc::clone(fusion_solver.nodes[node_index].read().tree_node.as_ref().unwrap())
+            Arc::clone(fusion_solver.nodes[node_index].read_recursive().tree_node.as_ref().unwrap())
         }).collect();
         // test basic grow and shrink of a single tree node
         for _ in 0..4 {

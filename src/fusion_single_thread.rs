@@ -1,5 +1,10 @@
 //! Single-thread implementation of fusion blossom algorithm
 //! 
+//! It's designed to be used in single thread, but will leverage locks to be extend to multiple threads.
+//! All read acquisition of [`RwLock`] is made through [`RwLock::read_recursive`] because it prevents deadlock.
+//! Although it may cause writer starvation in other applications, it suits very well in fusion blossom algorithm
+//! because we always partition the code so that no writer and reader are competing.
+//! 
 
 use super::util::*;
 use std::sync::Arc;
@@ -48,6 +53,8 @@ pub struct TreeNode {
     pub boundary: Vec<(bool, EdgePtr)>,
     /// dual variable of this node
     pub dual_variable: Weight,
+    /// unit growth, can be -1 (shrink), 0 (stop), 1 (grow)
+    pub unit_growth: Weight,
 }
 
 #[derive(Derivative)]
@@ -73,6 +80,13 @@ pub struct Edge {
     /// right active tree node (if applicable)
     #[derivative(Debug="ignore")]
     pub right_tree_node: Option<TreeNodePtr>,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub enum MaximumUpdateLength {
+    /// non-zero maximum update length
+    NonZeroGrow(Weight),
 }
 
 #[derive(Debug)]
@@ -124,7 +138,7 @@ impl FusionSingleThread {
                 debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge has effect)
                     let mut no_duplicate = true;
                     for edge in node.edges.iter() {
-                        let edge = edge.read();
+                        let edge = edge.read_recursive();
                         if Arc::ptr_eq(&edge.left, &nodes[b]) || Arc::ptr_eq(&edge.right, &nodes[b]) {
                             no_duplicate = false;
                             eprintln!("duplicated edge {}-{} with weight {}", i, j, weight);
@@ -191,10 +205,11 @@ impl FusionSingleThread {
             blossom: Vec::new(),
             boundary: Vec::new(),
             dual_variable: 0,
+            unit_growth: 0,
         }));
         let boundary = {
             let mut boundary = Vec::new();
-            let node = syndrome_node.read();
+            let node = syndrome_node.read_recursive();
             if node.tree_node.is_some() {
                 eprintln!("add the same syndrome node {} twice as tree node, return the previously added", node.node_index);
                 return Arc::clone(node.tree_node.as_ref().unwrap())
@@ -259,21 +274,15 @@ impl FusionSingleThread {
         union_find_root_1 == union_find_root_2
     }
 
-    /// grow specific tree node by given length, panic if error occur
-    pub fn grow_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, length: Weight) {
-        let tree_node_index = tree_node_ptr.read().tree_node_index;
-        assert!(self.is_tree_node_union_find_root(tree_node_index), "only union-find root can grow");
-        if length == 0 {
-            eprintln!("[warning] calling `grow_tree_node` with zero length, nothing to do");
-            return
-        }
+    /// adjust the boundary of each tree node to fit into the need of growing (`length` > 0) or shrinking (`length` < 0)
+    pub fn prepare_tree_node_growth(&mut self, tree_node_ptr: &TreeNodePtr, is_grow: bool) {
         let mut updated_boundary = Vec::<(bool, EdgePtr)>::new();
         let mut propagating_nodes = Vec::<NodePtr>::new();
-        if length > 0 {  // gracefully update the boundary to ease growing
-            let tree_node = tree_node_ptr.read();
+        if is_grow {  // gracefully update the boundary to ease growing
+            let tree_node = tree_node_ptr.read_recursive();
             for (is_left, edge_ptr) in tree_node.boundary.iter() {
                 let is_left = *is_left;
-                let edge = edge_ptr.read();
+                let edge = edge_ptr.read_recursive();
                 let peer_tree_node: &Option<TreeNodePtr> = if is_left {
                     &edge.right_tree_node
                 } else {
@@ -287,7 +296,7 @@ impl FusionSingleThread {
                         Arc::clone(&edge.left)
                     };
                     // to avoid already occupied node being propagated
-                    assert!(peer_node.read().propagated_tree_node.is_none(), "growing into another propagated node forbidden");
+                    assert!(peer_node.read_recursive().propagated_tree_node.is_none(), "growing into another propagated node forbidden");
                     propagating_nodes.push(peer_node);
                 } else {  // keep other edges
                     updated_boundary.push((is_left, Arc::clone(edge_ptr)));
@@ -300,7 +309,7 @@ impl FusionSingleThread {
                     node.propagated_tree_node = Some(Arc::clone(tree_node_ptr));
                     for edge_ptr in node.edges.iter() {
                         let (is_left, newly_propagated_edge) = {
-                            let edge = edge_ptr.read();
+                            let edge = edge_ptr.read_recursive();
                             let is_left = Arc::ptr_eq(node_ptr, &edge.left);
                             let not_fully_grown = edge.left_growth + edge.right_growth < edge.weight;
                             let newly_propagated_edge = not_fully_grown && if is_left {
@@ -322,11 +331,11 @@ impl FusionSingleThread {
                     }
                 }
             }
-        } else if length < 0 {  // gracefully update the boundary to ease shrinking
-            let tree_node = tree_node_ptr.read();
+        } else {  // gracefully update the boundary to ease shrinking
+            let tree_node = tree_node_ptr.read_recursive();
             for (is_left, edge_ptr) in tree_node.boundary.iter() {
                 let is_left = *is_left;
-                let edge = edge_ptr.read();
+                let edge = edge_ptr.read_recursive();
                 let this_growth = if is_left {
                     edge.left_growth
                 } else {
@@ -340,7 +349,7 @@ impl FusionSingleThread {
                         Arc::clone(&edge.right)
                     };
                     // to avoid already occupied node being propagated
-                    assert!(this_node.read().propagated_tree_node.is_some(), "unexpected shrink into an empty node");
+                    assert!(this_node.read_recursive().propagated_tree_node.is_some(), "unexpected shrink into an empty node");
                     propagating_nodes.push(this_node);
                 } else {  // keep other edges
                     updated_boundary.push((is_left, Arc::clone(edge_ptr)));
@@ -353,7 +362,7 @@ impl FusionSingleThread {
                     node.propagated_tree_node = None;
                     for edge_ptr in node.edges.iter() {
                         let (is_left, newly_propagated_edge) = {
-                            let edge = edge_ptr.read();
+                            let edge = edge_ptr.read_recursive();
                             let is_left = Arc::ptr_eq(node_ptr, &edge.left);
                             // fully grown edge is where to shrink
                             let newly_propagated_edge = edge.left_growth + edge.right_growth == edge.weight;
@@ -361,7 +370,7 @@ impl FusionSingleThread {
                         };
                         if newly_propagated_edge {
                             updated_boundary.push((!is_left, Arc::clone(edge_ptr)));
-                            let edge = edge_ptr.read();
+                            let edge = edge_ptr.read_recursive();
                             if is_left {
                                 assert!(edge.right_tree_node.is_some(), "unexpected shrinking to empty edge");
                                 assert!(Arc::ptr_eq(edge.right_tree_node.as_ref().unwrap(), tree_node_ptr), "shrinking edge should be same tree node");
@@ -381,41 +390,68 @@ impl FusionSingleThread {
                 }
             }
         }
-        {  // update the boundary
-            let mut tree_node = tree_node_ptr.write();
-            std::mem::swap(&mut updated_boundary, &mut tree_node.boundary);
-            // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
-            assert!(tree_node.boundary.len() > 0, "the boundary of a dual cluster is never empty");
+        // update the boundary
+        let mut tree_node = tree_node_ptr.write();
+        std::mem::swap(&mut updated_boundary, &mut tree_node.boundary);
+        // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
+        assert!(tree_node.boundary.len() > 0, "the boundary of a dual cluster is never empty");
+    }
+
+    /// grow specific tree node by given length, panic if error occur
+    pub fn grow_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, length: Weight) {
+        let tree_node_index = tree_node_ptr.read_recursive().tree_node_index;
+        assert!(self.is_tree_node_union_find_root(tree_node_index), "only union-find root can grow");
+        if length == 0 {
+            eprintln!("[warning] calling `grow_tree_node` with zero length, nothing to do");
+            return
         }
-        {  // grow and shrink
-            let tree_node = tree_node_ptr.read();
-            for (is_left, edge_ptr) in tree_node.boundary.iter() {
-                let is_left = *is_left;
-                let (growth, weight) = {  // minimize writer lock acquisition
-                    let mut edge = edge_ptr.write();
-                    if is_left {
-                        edge.left_growth += length;
-                    } else {
-                        edge.right_growth += length;
-                    }
-                    (edge.left_growth + edge.right_growth, edge.weight)
-                };
-                let edge = edge_ptr.read();
-                if growth > weight {
-                    // first check for if both side belongs to the same tree node
-                    let tree_node_index_2: Option<usize> = if is_left {
-                        edge.right_tree_node.as_ref().map(|right_tree_node| right_tree_node.read().tree_node_index)
-                    } else {
-                        edge.left_tree_node.as_ref().map(|left_tree_node| left_tree_node.read().tree_node_index)
-                    };
-                    if tree_node_index_2 == None || !self.is_tree_node_union_find_root_same(tree_node_index, tree_node_index_2.unwrap()) {
-                        panic!("over-grown edge {}: {}/{}", edge.edge_index, growth, weight);
-                    }
-                } else if growth < 0 {
-                    panic!("under-grown edge {}: {}/{}", edge.edge_index, growth, weight);
+        self.prepare_tree_node_growth(tree_node_ptr, length > 0);
+        let tree_node = tree_node_ptr.read_recursive();
+        for (is_left, edge_ptr) in tree_node.boundary.iter() {
+            let is_left = *is_left;
+            let (growth, weight) = {  // minimize writer lock acquisition
+                let mut edge = edge_ptr.write();
+                if is_left {
+                    edge.left_growth += length;
+                } else {
+                    edge.right_growth += length;
                 }
+                (edge.left_growth + edge.right_growth, edge.weight)
+            };
+            let edge = edge_ptr.read_recursive();
+            if growth > weight {
+                // first check for if both side belongs to the same tree node
+                let tree_node_index_2: Option<usize> = if is_left {
+                    edge.right_tree_node.as_ref().map(|right_tree_node| right_tree_node.read_recursive().tree_node_index)
+                } else {
+                    edge.left_tree_node.as_ref().map(|left_tree_node| left_tree_node.read_recursive().tree_node_index)
+                };
+                if tree_node_index_2 == None || !self.is_tree_node_union_find_root_same(tree_node_index, tree_node_index_2.unwrap()) {
+                    panic!("over-grown edge {}: {}/{}", edge.edge_index, growth, weight);
+                }
+            } else if growth < 0 {
+                panic!("under-grown edge {}: {}/{}", edge.edge_index, growth, weight);
             }
         }
+    }
+
+    /// check the maximum length to grow (shrink) specific tree node, if length is 0, give the reason of why it cannot further grow (shrink).
+    /// if `is_grow` is false, return `length` <= 0, in any case |`length`| is maximized so that at least one edge becomes fully grown or fully not-grown.
+    /// if `simultaneous_update` is true, also check for the peer node according to [`TreeNode::unit_growth`]
+    pub fn compute_maximum_update_length_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, is_grow: bool, simultaneous_update: bool) -> MaximumUpdateLength {
+        let tree_node_index = tree_node_ptr.read_recursive().tree_node_index;
+        assert!(self.is_tree_node_union_find_root(tree_node_index), "only union-find root can compute maximum update length");
+        self.prepare_tree_node_growth(tree_node_ptr, is_grow);
+        let mut max_length_abs = Weight::MAX;
+
+
+        MaximumUpdateLength::NonZeroGrow(max_length_abs)
+    }
+
+    /// iteratively grow specific tree node by given length, used as a helper function
+    #[allow(dead_code)]
+    pub fn iterative_grow_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, length: Weight) {
+        unimplemented!()
     }
 }
 
@@ -423,7 +459,7 @@ impl FusionVisualizer for FusionSingleThread {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let mut nodes = Vec::<serde_json::Value>::new();
         for node in self.nodes.iter() {
-            let node = node.read();
+            let node = node.read_recursive();
             nodes.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: if node.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if node.is_syndrome { 1 } else { 0 },
@@ -431,11 +467,11 @@ impl FusionVisualizer for FusionSingleThread {
         }
         let mut edges = Vec::<serde_json::Value>::new();
         for edge in self.edges.iter() {
-            let edge = edge.read();
+            let edge = edge.read_recursive();
             edges.push(json!({
                 if abbrev { "w" } else { "weight" }: edge.weight,
-                if abbrev { "l" } else { "left" }: edge.left.read().node_index,
-                if abbrev { "r" } else { "right" }: edge.right.read().node_index,
+                if abbrev { "l" } else { "left" }: edge.left.read_recursive().node_index,
+                if abbrev { "r" } else { "right" }: edge.right.read_recursive().node_index,
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
             }));
