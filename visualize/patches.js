@@ -51,11 +51,57 @@ export async function visualize_paper_weighted_union_find_decoder() {
         map: bottom_image_loader.load('./img/basic_CSS_3D_bottom_image.png'),
         side: THREE.DoubleSide,
     })
-    const bottom_image_geometry = new THREE.PlaneGeometry(5, 5)
+    const bottom_image_geometry = new THREE.PlaneGeometry(5, 5, 100, 100)
     const bottom_image_mesh = new THREE.Mesh(bottom_image_geometry, bottom_image_material)
     bottom_image_mesh.position.set(0, -2.8, 0)
     bottom_image_mesh.rotateX(-Math.PI / 2)
     gui3d.scene.add(bottom_image_mesh)
+    if (true) {  // add transparent layers
+        // change the color of nodes
+        const stab_z_material = gui3d.real_node_material.clone()
+        stab_z_material.color = new THREE.Color(0xCFE2F3)
+        const stab_x_material = gui3d.real_node_material.clone()
+        stab_x_material.color = new THREE.Color(0xFFFF00)
+        for (let [i, node] of snapshot.nodes.entries()) {
+            let position = fusion_data.positions[i]
+            const node_mesh = node_meshes[i]
+            if (!node.s && !node.v) {
+                node_mesh.material = position.i % 2 == 0 ? stab_z_material : stab_x_material
+            }
+        }
+        // remove all edges, otherwise too messy
+        for (let [i, edge] of snapshot.edges.entries()) {
+            if (edge.lg + edge.rg == 0) {
+                const left_position = fusion_data.positions[edge.l]
+                const right_position = fusion_data.positions[edge.r]
+                let same_i_j = (left_position.i == right_position.i) && (left_position.j == right_position.j)
+                if (!same_i_j) {
+                    for (let edge_meshes of [gui3d.left_edge_meshes, gui3d.middle_edge_meshes, gui3d.right_edge_meshes]) {
+                        for (let j of [0, 1]) {
+                            const edge_mesh = edge_meshes[i][j]
+                            edge_mesh.visible = false
+                        }
+                    }
+                }
+            }
+        }
+        const transparent_layer_material = new THREE.MeshStandardMaterial({
+            // color: 0xffff00,
+            map: bottom_image_loader.load('./img/basic_CSS_3D_bottom_image.png'),
+            opacity: 0.5,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false,  // otherwise it will block something...
+        })
+        for (let i=0; i<3; ++i) {
+            const transparent_layer_mesh = new THREE.Mesh(bottom_image_geometry, transparent_layer_material)
+            transparent_layer_mesh.position.set(0, -1 + i * 2 -0.01, 0)
+            transparent_layer_mesh.rotateX(-Math.PI / 2)
+            gui3d.scene.add(transparent_layer_mesh)
+        }
+    }
+    // set background as white to prevent strange pixels around bottom image
+    gui3d.scene.background = new THREE.Color( 0xffffff )
     // set output scale
     this.export_scale_selected = Math.pow(10, 3/10)
 }

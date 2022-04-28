@@ -145,53 +145,53 @@ const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 1, s
 edge_geometry.translate(0, 0.5, 0)
 
 // create common materials
-const syndrome_node_material = new THREE.MeshStandardMaterial({
+export const syndrome_node_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     opacity: 1,
     transparent: true,
     side: THREE.FrontSide,
 })
-const real_node_material = new THREE.MeshStandardMaterial({
+export const real_node_material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     opacity: 0.1,
     transparent: true,
     side: THREE.FrontSide,
 })
-const virtual_node_material = new THREE.MeshStandardMaterial({
+export const virtual_node_material = new THREE.MeshStandardMaterial({
     color: 0xffff00,
     opacity: 0.5,
     transparent: true,
     side: THREE.FrontSide,
 })
-const node_outline_material = new THREE.MeshStandardMaterial({
+export const node_outline_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 1,
     transparent: true,
     side: THREE.BackSide,
 })
-const virtual_node_outline_material = new THREE.MeshStandardMaterial({
+export const virtual_node_outline_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 1,
     transparent: true,
     side: THREE.BackSide,
 })
-const edge_material = new THREE.MeshStandardMaterial({
+export const edge_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 0.1,
     transparent: true,
     side: THREE.FrontSide,
 })
-const grown_edge_material = new THREE.MeshStandardMaterial({
+export const grown_edge_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     opacity: 1,
     transparent: true,
     side: THREE.FrontSide,
 })
-const hover_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (node or edge)
+export const hover_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (node or edge)
     color: 0x6FDFDF,
     side: THREE.DoubleSide,
 })
-const selected_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (node or edge)
+export const selected_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (node or edge)
     color: 0x4B7BE5,
     side: THREE.DoubleSide,
 })
