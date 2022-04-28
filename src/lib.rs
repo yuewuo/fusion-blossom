@@ -7,6 +7,7 @@ extern crate serde;
 #[macro_use] extern crate serde_json;
 extern crate chrono;
 extern crate derivative;
+extern crate urlencoding;
 
 pub mod blossom_v;
 pub mod util;

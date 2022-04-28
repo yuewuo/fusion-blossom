@@ -16,6 +16,7 @@ body, html {
 }
 :root {
     --s: 1;  /* scale */
+    --control-visibility: hidden;
 }
 .control-bar {
     position: fixed;
@@ -25,6 +26,8 @@ body, html {
     right: 0;
     overflow-y: hidden;
     overflow-x: hidden;
+    z-index: 0;
+    visibility: var(--control-visibility);
 }
 .control-bar-inner {
     width: 600px;
@@ -106,8 +109,14 @@ h3 {
     <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
         <div class="flex-center-div"><h1>Fusion Blossom</h1></div>
+        <q-banner inline-actions class="text-white bg-red" v-if="!is_browser_supported" style="margin-top: 20px;">
+            Please use Chrome or Firefox browser (It has known issue in Safari)
+        </q-banner>
         <q-banner inline-actions class="text-white bg-red" v-if="error_message != null" style="margin-top: 20px;">
             {{ error_message }}
+        </q-banner>
+        <q-banner inline-actions class="text-black bg-yellow" v-if="warning_message != null" style="margin-top: 20px;">
+            {{ warning_message }}
         </q-banner>
         <div class="selector">
             <q-select filled v-model="snapshot_select_label" :options="snapshot_labels" options-dense behavior="menu" rounded>
@@ -153,6 +162,13 @@ h3 {
             <q-toggle v-model="show_stats" label="performance stats" size="md"/>
             <q-toggle v-model="lock_view" label="lock view" size="md"/>
             <!-- <q-toggle v-model="show_hover_effect" label="hover effect" size="md"/> -->
+        </div>
+        <div class="flex-center-div">
+            <span style="margin: 0 15px 0 15px; line-height: 40px; font-size: 20px;">export image:</span>
+            <q-select rounded outlined v-model="export_scale_selected" :options="export_resolution_options" label="resolution" style="width: 200px;"
+                emit-value behavior="menu" map-options dense></q-select>
+            <q-btn push color="brown-5" rounded label="preview" style="margin-left: 10px;" no-caps @click="preview_image"></q-btn>
+            <q-btn push color="brown-5" rounded label="download" style="margin-left: 10px;" no-caps @click="download_image"></q-btn>
         </div>
         <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'node'">
             <q-card-section class="bg-cyan text-white">
@@ -241,7 +257,6 @@ h3 {
     </q-scroll-area>
 </div>
 
-<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 <script type="importmap">
 {
     "imports": {
@@ -252,6 +267,7 @@ h3 {
     }
 }
 </script>
+<script src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
 <script type="module" src="./index.js"></script>
 <!-- <script>

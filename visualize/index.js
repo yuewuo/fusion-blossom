@@ -1,5 +1,6 @@
 import * as gui3d from './gui3d.js'
-const { ref, reactive } = Vue
+import * as patches from './patches.js'
+const { ref, watch } = Vue
 
 // fetch fusion blossom runtime data
 const urlParams = new URLSearchParams(window.location.search)
@@ -12,12 +13,15 @@ const App = {
     setup() {
         return {
             error_message: ref(null),
+            warning_message: ref(null),
             snapshot_num: ref(1),
             snapshot_select: ref(0),
-            snapshot_select_label: ref(""),
-            snapshot_labels: reactive([]),
+            snapshot_select_label: ref(1),
+            snapshot_labels: ref([]),
             use_perspective_camera: gui3d.use_perspective_camera,
             sizes: gui3d.sizes,
+            export_scale_selected: ref(1),
+            export_resolution_options: ref([]),
             // GUI related states
             show_stats: gui3d.show_stats,
             show_config: gui3d.show_config,
@@ -31,6 +35,7 @@ const App = {
         }
     },
     async mounted() {
+        gui3d.root.style.setProperty('--control-visibility', 'visible')
         try {
             let response = await fetch('./data/' + filename, { cache: 'no-cache', })
             fusion_data = await response.json()
@@ -98,6 +103,17 @@ const App = {
                 this.snapshot_select = snapshot_idx
             }
         })
+        // update resolution options when sizes changed
+        watch(gui3d.sizes, this.update_export_resolutions, { immediate: true })
+        // execute patch scripts
+        setTimeout(() => {
+            const patch_name = urlParams.get('patch')
+            if (patch_name != null) {
+                console.log(`running patch ${patch_name}`)
+                const patch_function = patches[patch_name]
+                patch_function.bind(this)()
+            }
+        }, 100);
     },
     methods: {
         show_snapshot(snapshot_idx) {
@@ -196,6 +212,39 @@ const App = {
         mouseleave() {
             gui3d.current_hover.value = null
         },
+        update_export_resolutions() {
+            this.export_resolution_options.splice(0, this.export_resolution_options.length)
+            let exists_in_new_resolution = false
+            for (let i=-100; i<100; ++i) {
+                let scale = 1 * Math.pow(10, i/10)
+                let width = Math.round(this.sizes.canvas_width * scale)
+                let height = Math.round(this.sizes.canvas_height * scale)
+                if (width > 5000 || height > 5000) {  // to large, likely exceeds WebGL maximum buffer size
+                    break
+                }
+                if (width >= 300 || height >= 300) {
+                    let label = `${width} x ${height}`
+                    this.export_resolution_options.push({
+                        label: label,
+                        value: scale,
+                    })
+                    if (scale == this.export_scale_selected) {
+                        exists_in_new_resolution = true
+                    }
+                }
+            }
+            if (!exists_in_new_resolution) {
+                this.export_scale_selected = null
+            }
+        },
+        preview_image() {
+            const data = gui3d.render_png(this.export_scale_selected)
+            gui3d.open_png(data)
+        },
+        download_image() {
+            const data = gui3d.render_png(this.export_scale_selected)
+            gui3d.download_png(data)
+        },
     },
     watch: {
         snapshot_select() {
@@ -256,6 +305,12 @@ const App = {
         },
         snapshot() {
             return fusion_data.snapshots[this.snapshot_select][1]
+        },
+        is_browser_supported() {
+            // console.log(navigator.userAgent)
+            const is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome/') > -1
+            const is_firefox = navigator.userAgent.toLowerCase().indexOf('firefox/') > -1
+            return is_chrome || is_firefox
         },
     },
 }

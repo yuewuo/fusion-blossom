@@ -83,6 +83,7 @@ export const use_perspective_camera = ref(false)
 export const camera = computed(() => {
     return use_perspective_camera.value ? perspective_camera : orthogonal_camera
 })
+window.camera = camera
 export const orbit_control = computed(() => {
     return use_perspective_camera.value ? orbit_control_perspective : orbit_control_orthogonal
 })
@@ -119,6 +120,7 @@ export function animate() {
     requestAnimationFrame( animate )
     orbit_control.value.update()
     renderer.render( scene, camera.value )
+    
     stats.update()
 }
 
@@ -162,6 +164,12 @@ const virtual_node_material = new THREE.MeshStandardMaterial({
     side: THREE.FrontSide,
 })
 const node_outline_material = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    opacity: 1,
+    transparent: true,
+    side: THREE.BackSide,
+})
+const virtual_node_outline_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 1,
     transparent: true,
@@ -256,8 +264,8 @@ export function translate_edge(left_grown, right_grown, weight) {
     }
 }
 
-const active_fusion_data = ref(null)
-const active_snapshot_idx = ref(0)
+export const active_fusion_data = ref(null)
+export const active_snapshot_idx = ref(0)
 function refresh_snapshot_data() {
     if (active_fusion_data.value != null) {  // no fusion data provided
         const fusion_data = active_fusion_data.value
@@ -298,14 +306,14 @@ function refresh_snapshot_data() {
             const left_position = fusion_data.positions[edge.l]
             const right_position = fusion_data.positions[edge.r]
             const relative = compute_vector3(right_position).add(compute_vector3(left_position).multiplyScalar(-1))
-            const direction = relative.normalize()
+            const direction = relative.clone().normalize()
             // console.log(direction)
             const quaternion = new THREE.Quaternion()
             quaternion.setFromUnitVectors(unit_up_vector, direction)
             const reverse_quaternion = new THREE.Quaternion()
             reverse_quaternion.setFromUnitVectors(unit_up_vector, direction.clone().multiplyScalar(-1))
-            const distance = relative.length()
             let local_edge_offset = edge_offset
+            const distance = relative.length()
             let edge_length = distance - 2 * edge_offset
             if (edge_length < 0) {  // edge length should be non-negative
                 local_edge_offset = distance / 2
@@ -364,6 +372,11 @@ function refresh_snapshot_data() {
                 node_outline_meshes.push(node_outline_mesh)
             }
             const node_outline_mesh = node_outline_meshes[i]
+            if (node.v) {
+                node_outline_mesh.material = virtual_node_outline_material
+            } else {
+                node_outline_mesh.material = node_outline_material
+            }
             node_outline_mesh.visible = true
         }
         for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
@@ -409,6 +422,8 @@ const conf = {
     virtual_node_opacity: virtual_node_material.opacity,
     node_outline_color: node_outline_material.color,
     node_outline_opacity: node_outline_material.opacity,
+    virtual_node_outline_color: virtual_node_outline_material.color,
+    virtual_node_outline_opacity: virtual_node_outline_material.opacity,
     edge_color: edge_material.color,
     edge_opacity: edge_material.opacity,
     edge_side: edge_material.side,
@@ -420,26 +435,31 @@ const conf = {
     edge_radius_scale: edge_radius_scale.value,
 }
 const side_options = { "FrontSide": THREE.FrontSide, "BackSide": THREE.BackSide, "DoubleSide": THREE.DoubleSide } 
-const node_folder = gui.addFolder( 'node' );
-node_folder.addColor( conf, 'syndrome_node_color' ).onChange( function ( value ) { syndrome_node_material.color = value } )
-node_folder.add( conf, 'syndrome_node_opacity', 0, 1 ).onChange( function ( value ) { syndrome_node_material.opacity = Number(value) } )
-node_folder.addColor( conf, 'real_node_color' ).onChange( function ( value ) { real_node_material.color = value } )
-node_folder.add( conf, 'real_node_opacity', 0, 1 ).onChange( function ( value ) { real_node_material.opacity = Number(value) } )
-node_folder.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
-node_folder.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
-node_folder.addColor( conf, 'node_outline_color' ).onChange( function ( value ) { node_outline_material.color = value } )
-node_folder.add( conf, 'node_outline_opacity', 0, 1 ).onChange( function ( value ) { node_outline_material.opacity = Number(value) } )
-const edge_folder = gui.addFolder( 'edge' );
-edge_folder.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
-edge_folder.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
-edge_folder.add( conf, 'edge_side', side_options ).onChange( function ( value ) { edge_material.side = Number(value) } )
-edge_folder.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
-edge_folder.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
-edge_folder.add( conf, 'grown_edge_side', side_options ).onChange( function ( value ) { grown_edge_material.side = Number(value) } )
-const size_folder = gui.addFolder( 'size' );
-size_folder.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
-size_folder.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
-size_folder.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
+const node_folder = gui.addFolder( 'node' )
+export const controller = {}
+window.controller = controller
+controller.syndrome_node_color = node_folder.addColor( conf, 'syndrome_node_color' ).onChange( function ( value ) { syndrome_node_material.color = value } )
+controller.syndrome_node_opacity = node_folder.add( conf, 'syndrome_node_opacity', 0, 1 ).onChange( function ( value ) { syndrome_node_material.opacity = Number(value) } )
+controller.real_node_color = node_folder.addColor( conf, 'real_node_color' ).onChange( function ( value ) { real_node_material.color = value } )
+controller.real_node_opacity = node_folder.add( conf, 'real_node_opacity', 0, 1 ).onChange( function ( value ) { real_node_material.opacity = Number(value) } )
+controller.virtual_node_color = node_folder.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
+controller.virtual_node_opacity = node_folder.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
+const node_outline_folder = gui.addFolder( 'node outline' )
+controller.node_outline_color = node_outline_folder.addColor( conf, 'node_outline_color' ).onChange( function ( value ) { node_outline_material.color = value } )
+controller.node_outline_opacity = node_outline_folder.add( conf, 'node_outline_opacity', 0, 1 ).onChange( function ( value ) { node_outline_material.opacity = Number(value) } )
+controller.virtual_node_outline_color = node_outline_folder.addColor( conf, 'virtual_node_outline_color' ).onChange( function ( value ) { virtual_node_outline_material.color = value } )
+controller.virtual_node_outline_opacity = node_outline_folder.add( conf, 'virtual_node_outline_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_outline_material.opacity = Number(value) } )
+const edge_folder = gui.addFolder( 'edge' )
+controller.edge_color = edge_folder.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
+controller.edge_opacity = edge_folder.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
+controller.edge_side = edge_folder.add( conf, 'edge_side', side_options ).onChange( function ( value ) { edge_material.side = Number(value) } )
+controller.grown_edge_color = edge_folder.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
+controller.grown_edge_opacity = edge_folder.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
+controller.grown_edge_side = edge_folder.add( conf, 'grown_edge_side', side_options ).onChange( function ( value ) { grown_edge_material.side = Number(value) } )
+const size_folder = gui.addFolder( 'size' )
+controller.outline_ratio = size_folder.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
+controller.node_radius_scale = size_folder.add( conf, 'node_radius_scale', 0.1, 5 ).onChange( function ( value ) { node_radius_scale.value = Number(value) } )
+controller.edge_radius_scale = size_folder.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
 watch(sizes, () => {
     gui.domElement.style.transform = `scale(${sizes.scale})`
     gui.domElement.style["transform-origin"] = "right top"
@@ -562,3 +582,31 @@ window.addEventListener( 'mousemove', (event) => {
     }
 } )
 
+// export current scene to high-resolution png, useful when generating figures for publication
+// (I tried svg renderer but it doesn't work very well... shaders are poorly supported)
+export function render_png(scale=1) {
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true })
+    renderer.setSize( sizes.canvas_width * scale, sizes.canvas_height * scale, false )
+    renderer.setPixelRatio( window.devicePixelRatio * scale )
+    renderer.render( scene, camera.value )
+    return renderer.domElement.toDataURL()
+}
+window.render_png = render_png
+export function open_png(data_url) {
+    const w = window.open('', '')
+    w.document.title = "rendered image"
+    w.document.body.style.backgroundColor = "white"
+    w.document.body.style.margin = "0"
+    const img = new Image()
+    img.src = data_url
+    img.style = "width: 100%; height: 100%; object-fit: contain;"
+    w.document.body.appendChild(img)
+}
+window.open_png = open_png
+export function download_png(data_url) {
+    const a = document.createElement('a')
+    a.href = data_url.replace("image/png", "image/octet-stream")
+    a.download = 'rendered.png'
+    a.click()
+}
+window.download_png = download_png

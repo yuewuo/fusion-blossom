@@ -8,6 +8,7 @@ use std::fs::File;
 use crate::serde::{Serialize};
 use std::io::{Write, Seek, SeekFrom};
 use crate::chrono::Local;
+use crate::urlencoding;
 
 pub trait FusionVisualizer {
     /// take a snapshot, set `abbrev` to true to save space
@@ -119,9 +120,19 @@ pub fn auto_visualize_data_filename() -> String {
     format!("{}.json", Local::now().format("%Y%m%d-%H-%M-%S%.3f"))
 }
 
-pub fn print_visualize_link(filename: &String) {
-    let link = format!("http://localhost:8066?filename={}", filename);
+pub fn print_visualize_link_with_parameters(filename: &String, parameters: Vec<(String, String)>) {
+    let mut link = format!("http://localhost:8066?filename={}", filename);
+    for (key, value) in parameters.iter() {
+        link.push_str("&");
+        link.push_str(&urlencoding::encode(key));
+        link.push_str("=");
+        link.push_str(&urlencoding::encode(value));
+    }
     println!("opening link {} (you need to start local server by running ./visualize/server.sh)", link)
+}
+
+pub fn print_visualize_link(filename: &String) {
+    print_visualize_link_with_parameters(filename, Vec::new())
 }
 
 
@@ -220,6 +231,118 @@ mod tests {
         //     visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
         // }
         // visualizer.snapshot(format!("end"), &fusion_solver).unwrap();
+    }
+
+
+    #[test]
+    fn visualize_paper_weighted_union_find_decoder() {  // cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
+        let d = 3usize;
+        let td = 4usize;
+        let p = 0.2f64;
+        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
+        let t_node_num = row_node_num * d;  // `d` rows
+        let half_node_num = t_node_num * td;  // `td` layers
+        let node_num = half_node_num * 2;  // both X and Z type stabilizers altogether
+        let half_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
+        let weight = half_weight * 2;  // to make sure weight is even number for ease of this test function
+        let weighted_edges = {
+            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
+            for is_z in [true, false] {
+                for t in 0..td {
+                    let t_bias = t * t_node_num + if is_z { 0 } else { half_node_num };
+                    for row in 0..d {
+                        let bias = t_bias + row * row_node_num;
+                        for i in 0..d-1 {
+                            weighted_edges.push((bias + i, bias + i+1, weight));
+                        }
+                        weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
+                        if row + 1 < d {
+                            for i in 0..d-1 {
+                                weighted_edges.push((bias + i, bias + i + row_node_num, weight));
+                            }
+                        }
+                    }
+                    // inter-layer connection
+                    if t + 1 < td {
+                        for row in 0..d {
+                            let bias = t_bias + row * row_node_num;
+                            for i in 0..d-1 {
+                                weighted_edges.push((bias + i, bias + i + t_node_num, weight));
+                                // diagonal edges
+                                let diagonal_diffs: Vec<(isize, isize)> = if is_z {
+                                    vec![(0, 1), (1, 0), (1, 1)]
+                                } else {
+                                    // i and j are reversed if x stabilizer, not vec![(0, -2), (2, 0), (2, -2)]
+                                    vec![(-1, 0), (0, 1), (-1, 1)]
+                                };
+                                for (di, dj) in diagonal_diffs {
+                                    let new_row = row as isize + di;  // row corresponds to `i`
+                                    let new_i = i as isize + dj;  // i corresponds to `j`
+                                    if new_row >= 0 && new_i >= 0 && new_row < d as isize && new_i < (d-1) as isize {
+                                        let new_bias = t_bias + (new_row as usize) * row_node_num + t_node_num;
+                                        weighted_edges.push((bias + i, new_bias + new_i as usize, weight));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            weighted_edges
+        };
+        let virtual_nodes = {
+            let mut virtual_nodes = Vec::new();
+            for is_z in [true, false] {
+                for t in 0..td {
+                    let t_bias = t * t_node_num + if is_z { 0 } else { half_node_num };
+                    for row in 0..d {
+                        let bias = t_bias + row * row_node_num;
+                        virtual_nodes.push(bias + d - 1);
+                        virtual_nodes.push(bias + d);
+                    }
+                }
+            }
+            virtual_nodes
+        };
+        // hardcode syndrome
+        let syndrome_nodes = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
+        let grow_edges = vec![48, 156, 169, 81, 38, 135];
+        // run single-thread fusion blossom algorithm
+        let visualize_filename = static_visualize_data_filename();
+        print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))]);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        let mut positions = Vec::new();
+        let scale = 2f64;
+        for is_z in [true, false] {
+            for t in 0..td {
+                let pos_t = t as f64;
+                for row in 0..d {
+                    let pos_i = row as f64;
+                    for i in 0..d {
+                        if is_z {
+                            positions.push(VisualizePosition::new(pos_i * scale, (i as f64 + 0.5) * scale, pos_t * scale));
+                        } else {
+                            positions.push(VisualizePosition::new((i as f64 + 0.5) * scale, pos_i * scale, pos_t * scale));
+                        }
+                    }
+                    if is_z {
+                        positions.push(VisualizePosition::new(pos_i * scale, (-1. + 0.5) * scale, pos_t * scale));
+                    } else {
+                        positions.push(VisualizePosition::new((-1. + 0.5) * scale, pos_i * scale, pos_t * scale));
+                    }
+                }
+            }
+        }
+        visualizer.set_positions(positions, true);  // automatic center all nodes
+        let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
+        fusion_solver.load_syndrome(&syndrome_nodes);
+        // grow edges
+        for &edge_index in grow_edges.iter() {
+            let mut edge = fusion_solver.edges[edge_index].write();
+            edge.left_growth = edge.weight;
+        }
+        // save snapshot
+        visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
     }
 
 }
