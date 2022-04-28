@@ -2,7 +2,7 @@ import * as gui3d from './gui3d.js'
 import * as THREE from 'three'
 
 export async function visualize_paper_weighted_union_find_decoder() {
-    this.warning_message = "please adjust your screen to 1920 * 1080 in order to get best draw effect (use developer tool of your browser if your screen resolution is not native 1920 * 1080)"
+    this.warning_message = "please adjust your screen to 1920 * 1080 in order to get best draw effect (use developer tool of your browser if your screen resolution is not native 1920 * 1080); The default output image is set to 2634 * 2155 in this case, click \"download\" to save it."
     this.lock_view = true
     // hide virtual nodes
     gui3d.controller.virtual_node_opacity.setValue(0)
@@ -45,4 +45,17 @@ export async function visualize_paper_weighted_union_find_decoder() {
             }
         }
     }
+    // add bottom image
+    const bottom_image_loader = new THREE.TextureLoader()
+    const bottom_image_material = new THREE.MeshStandardMaterial({
+        map: bottom_image_loader.load('./img/basic_CSS_3D_bottom_image.png'),
+        side: THREE.DoubleSide,
+    })
+    const bottom_image_geometry = new THREE.PlaneGeometry(5, 5)
+    const bottom_image_mesh = new THREE.Mesh(bottom_image_geometry, bottom_image_material)
+    bottom_image_mesh.position.set(0, -2.8, 0)
+    bottom_image_mesh.rotateX(-Math.PI / 2)
+    gui3d.scene.add(bottom_image_mesh)
+    // set output scale
+    this.export_scale_selected = Math.pow(10, 3/10)
 }

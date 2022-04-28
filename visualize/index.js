@@ -316,6 +316,5 @@ const App = {
 }
 const app = Vue.createApp(App)
 app.use(Quasar)
-Quasar.Screen.setSizes({ sm: 1200, md: 1600, lg: 2880, xl: 3840 })
 app.mount("#app")
 window.app = app
