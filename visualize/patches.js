@@ -19,7 +19,6 @@ function base64_encode (arraybuffer) {
     }
     return base64;
 }
-//# sourceMappingURL=base64-arraybuffer.es5.js.map
 
 
 export async function visualize_paper_weighted_union_find_decoder() {
@@ -83,6 +82,7 @@ export async function visualize_paper_weighted_union_find_decoder() {
         const image = await mocker.read_from_png_buffer(image_buffer)
         bottom_image_texture = new THREE.DataTexture( image.bitmap.data, image.bitmap.width, image.bitmap.height )
         bottom_image_texture.minFilter = THREE.LinearFilter
+        bottom_image_texture.flipY = true  // otherwise it's inconsistent with image loader
         bottom_image_texture.needsUpdate = true
     } else {
         const bottom_image_loader = new THREE.TextureLoader()

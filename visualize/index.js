@@ -25,6 +25,11 @@ const filename = urlParams.get('filename') || "default.json"
 var fusion_data
 var patch_done = ref(false)
 
+// alert(navigator.userAgent)
+const is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome/') > -1
+const is_firefox = navigator.userAgent.toLowerCase().indexOf('firefox/') > -1
+const is_browser_supported = ref(is_chrome || is_firefox)
+
 // create vue3 app
 const App = {
     setup() {
@@ -44,6 +49,7 @@ const App = {
             show_config: gui3d.show_config,
             show_hover_effect: gui3d.show_hover_effect,
             lock_view: ref(false),
+            is_browser_supported: is_browser_supported,
             // select
             current_selected: gui3d.current_selected,
             selected_node_neighbor_edges: ref([]),
@@ -326,12 +332,6 @@ const App = {
         },
         snapshot() {
             return fusion_data.snapshots[this.snapshot_select][1]
-        },
-        is_browser_supported() {
-            // console.log(navigator.userAgent)
-            const is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome/') > -1
-            const is_firefox = navigator.userAgent.toLowerCase().indexOf('firefox/') > -1
-            return is_chrome || is_firefox
         },
     },
 }

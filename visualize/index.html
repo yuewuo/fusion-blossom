@@ -26,7 +26,6 @@ body, html {
     right: 0;
     overflow-y: hidden;
     overflow-x: hidden;
-    z-index: 0;
     visibility: var(--control-visibility);
 }
 .control-bar-inner {
@@ -109,8 +108,11 @@ h3 {
     <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
         <div class="flex-center-div"><h1>Fusion Blossom</h1></div>
-        <q-banner inline-actions class="text-white bg-red" v-if="!is_browser_supported" style="margin-top: 20px;">
+        <q-banner inline-actions class="text-white bg-yellow-10" v-if="!is_browser_supported" style="margin-top: 20px;">
             Please use Chrome or Firefox browser (It has known issue in Safari)
+            <template v-slot:action>
+                <q-btn flat color="white" label="Dismiss" @click="is_browser_supported = true" />
+            </template>
         </q-banner>
         <q-banner inline-actions class="text-white bg-red" v-if="error_message != null" style="margin-top: 20px;">
             {{ error_message }}
