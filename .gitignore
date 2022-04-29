@@ -16,3 +16,7 @@ Cargo.lock
 
 # visualization data
 /visualize/data/*.json
+
+# nodejs packages
+node_modules/
+visualize/rendered.png

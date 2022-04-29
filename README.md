@@ -28,3 +28,15 @@ wget -c https://pub.ist.ac.at/~vnk/software/blossom5-v2.05.src.tar.gz -O - | tar
 cp -r blossom5-v2.05.src/* blossomV/
 rm -r blossom5-v2.05.src
 ```
+
+# Visualize
+
+To start a server, run the following
+```sh
+cd visualize
+npm install  # to download packages
+node index.js <url> <width> <height>
+# for example you can run the following command to get url
+cd ..
+cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
+```

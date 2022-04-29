@@ -1,12 +1,29 @@
 import * as gui3d from './gui3d.js'
 import * as patches from './patches.js'
-const { ref, watch } = Vue
+
+if (typeof window === 'undefined' || typeof document === 'undefined') {
+    await import('./mocker.js')
+}
+
+window.gui3d = gui3d
+
+const is_mock = typeof mockgl !== 'undefined'
+if (is_mock) {
+    global.mocker = await import('./mocker.js')
+}
+
+// to work both in browser and nodejs
+if (typeof Vue === 'undefined') {
+    global.Vue = await import('vue')
+}
+const { ref, reactive, watch, computed } = Vue
 
 // fetch fusion blossom runtime data
 const urlParams = new URLSearchParams(window.location.search)
 const filename = urlParams.get('filename') || "default.json"
 
 var fusion_data
+var patch_done = ref(false)
 
 // create vue3 app
 const App = {
@@ -39,7 +56,7 @@ const App = {
         try {
             let response = await fetch('./data/' + filename, { cache: 'no-cache', })
             fusion_data = await response.json()
-            console.log(fusion_data)
+            // console.log(fusion_data)
         } catch (e) {
             this.error_message = "fetch file error"
             throw e
@@ -51,7 +68,9 @@ const App = {
         }
         this.snapshot_select_label = this.snapshot_labels[0]
         // only if data loads successfully will the animation starts
-        gui3d.animate()
+        if (!is_mock) {  // if mock, no need to refresh all the time
+            gui3d.animate()
+        }
         // add keyboard shortcuts
         document.onkeydown = (event) => {
             if (!event.metaKey) {
@@ -106,13 +125,15 @@ const App = {
         // update resolution options when sizes changed
         watch(gui3d.sizes, this.update_export_resolutions, { immediate: true })
         // execute patch scripts
-        setTimeout(() => {
+        setTimeout(async () => {
             const patch_name = urlParams.get('patch')
             if (patch_name != null) {
                 console.log(`running patch ${patch_name}`)
                 const patch_function = patches[patch_name]
-                patch_function.bind(this)()
+                await patch_function.bind(this)()
+                patch_done.value = true
             }
+            patch_done.value = true
         }, 100);
     },
     methods: {
@@ -314,7 +335,20 @@ const App = {
         },
     },
 }
-const app = Vue.createApp(App)
-app.use(Quasar)
-app.mount("#app")
-window.app = app
+if (!is_mock) {
+    const app = Vue.createApp(App)
+    app.use(Quasar)
+    window.app = app.mount("#app")
+} else {
+    global.Element = window.Element
+    global.SVGElement = window.SVGElement  // https://github.com/jsdom/jsdom/issues/2734
+    const app = Vue.createApp(App)
+    window.app = app.mount("#app")
+    while (!patch_done.value) {
+        await sleep(50)
+    }
+    console.log("[rendering]")
+    const pixels = await gui3d.nodejs_render_png()
+    console.log("[saving]")
+    mocker.save_pixels(pixels, "rendered")
+}

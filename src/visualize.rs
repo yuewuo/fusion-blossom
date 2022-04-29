@@ -128,7 +128,7 @@ pub fn print_visualize_link_with_parameters(filename: &String, parameters: Vec<(
         link.push_str("=");
         link.push_str(&urlencoding::encode(value));
     }
-    println!("opening link {} (you need to start local server by running ./visualize/server.sh)", link)
+    println!("opening link {} (start local server by running ./visualize/server.sh) or call `node index.js <link>` to render locally", link)
 }
 
 pub fn print_visualize_link(filename: &String) {

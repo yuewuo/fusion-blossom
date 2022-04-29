@@ -1,13 +1,25 @@
 // 3d related apis
 
 import * as THREE from 'three'
-import { OrbitControls } from 'OrbitControls'
-import Stats from 'Stats'
-import GUI from 'GUI'
+import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js'
+import Stats from './node_modules/three/examples/jsm/libs/stats.module.js'
+import GUI from './node_modules/three/examples/jsm/libs/lil-gui.module.min.js'
+
+if (typeof window === 'undefined' || typeof document === 'undefined') {
+    global.mocker = await import('./mocker.js')
+}
+
+// to work both in browser and nodejs
+if (typeof Vue === 'undefined') {
+    global.Vue = await import('vue')
+}
 const { ref, reactive, watch, computed } = Vue
 
 const urlParams = new URLSearchParams(window.location.search)
 export const root = document.documentElement
+
+export const is_mock = typeof mockgl !== 'undefined'
+export const webgl_renderer_context = is_mock ? mockgl : () => undefined
 
 export const window_inner_width = ref(0)
 export const window_inner_height = ref(0)
@@ -43,6 +55,10 @@ watch([window_inner_width, window_inner_height], () => {
     sizes.canvas_width = window_inner_width.value - sizes.control_bar_width
     sizes.canvas_height = window_inner_height.value
 }, { immediate: true })
+if (is_mock) {
+    sizes.canvas_width = mocker.mock_canvas_width
+    sizes.canvas_height = mocker.mock_canvas_height
+}
 
 export const scene = new THREE.Scene()
 scene.add( new THREE.AmbientLight( 0xffffff ) )
@@ -50,7 +66,7 @@ export const perspective_camera = new THREE.PerspectiveCamera( 75, sizes.canvas_
 const orthogonal_camera_init_scale = 6
 export const orthogonal_camera = new THREE.OrthographicCamera( sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
     , sizes.canvas_width / sizes.canvas_height * orthogonal_camera_init_scale, orthogonal_camera_init_scale, -orthogonal_camera_init_scale, 0.1, 10000 )
-export const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
+export const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, context: webgl_renderer_context() })
 
 document.body.appendChild( renderer.domElement )
 
@@ -101,27 +117,29 @@ reset_camera_position()
 // const axesHelper = new THREE.AxesHelper( 5 )
 // scene.add( axesHelper )
 
-const stats = Stats()
-document.body.appendChild(stats.dom)
+var stats
 export const show_stats = ref(false)
-watch(show_stats, function() {
-    if (show_stats.value) {
-        stats.dom.style.display = "block"
-    } else {
-        stats.dom.style.display = "none"
-    }
-}, { immediate: true })
-watch(sizes, () => {
-    stats.dom.style.transform = `scale(${sizes.scale})`
-    stats.dom.style["transform-origin"] = "left top"
-}, { immediate: true })
+if (!is_mock) {
+    stats = Stats()
+    document.body.appendChild(stats.dom)
+    watch(show_stats, function() {
+        if (show_stats.value) {
+            stats.dom.style.display = "block"
+        } else {
+            stats.dom.style.display = "none"
+        }
+    }, { immediate: true })
+    watch(sizes, () => {
+        stats.dom.style.transform = `scale(${sizes.scale})`
+        stats.dom.style["transform-origin"] = "left top"
+    }, { immediate: true })
+}
 
 export function animate() {
     requestAnimationFrame( animate )
     orbit_control.value.update()
     renderer.render( scene, camera.value )
-    
-    stats.update()
+    if (stats) stats.update()
 }
 
 // commonly used vectors
@@ -585,7 +603,7 @@ window.addEventListener( 'mousemove', (event) => {
 // export current scene to high-resolution png, useful when generating figures for publication
 // (I tried svg renderer but it doesn't work very well... shaders are poorly supported)
 export function render_png(scale=1) {
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true })
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, context: webgl_renderer_context() })
     renderer.setSize( sizes.canvas_width * scale, sizes.canvas_height * scale, false )
     renderer.setPixelRatio( window.devicePixelRatio * scale )
     renderer.render( scene, camera.value )
@@ -610,3 +628,14 @@ export function download_png(data_url) {
     a.click()
 }
 window.download_png = download_png
+
+export async function nodejs_render_png(filename = "rendered") {  // works only in nodejs
+    let context = webgl_renderer_context()
+    var pixels = new Uint8Array(context.drawingBufferWidth * context.drawingBufferHeight * 4)
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, preserveDrawingBuffer: true, context })
+    renderer.setSize( sizes.canvas_width, sizes.canvas_height, false )
+    renderer.setPixelRatio( window.devicePixelRatio )
+    renderer.render( scene, camera.value )
+    context.readPixels(0, 0, context.drawingBufferWidth, context.drawingBufferHeight, context.RGBA, context.UNSIGNED_BYTE, pixels)
+    return pixels
+}
