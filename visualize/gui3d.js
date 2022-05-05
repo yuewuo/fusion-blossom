@@ -2,6 +2,7 @@
 
 import * as THREE from 'three'
 import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js'
+import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
 import Stats from './node_modules/three/examples/jsm/libs/stats.module.js'
 import GUI from './node_modules/three/examples/jsm/libs/lil-gui.module.min.js'
 
@@ -181,7 +182,13 @@ export const virtual_node_material = new THREE.MeshStandardMaterial({
     transparent: true,
     side: THREE.FrontSide,
 })
-export const node_outline_material = new THREE.MeshStandardMaterial({
+export const syndrome_node_outline_material = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    opacity: 1,
+    transparent: true,
+    side: THREE.BackSide,
+})
+export const real_node_outline_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 1,
     transparent: true,
@@ -213,6 +220,12 @@ export const selected_material = new THREE.MeshStandardMaterial({  // when mouse
     color: 0x4B7BE5,
     side: THREE.DoubleSide,
 })
+export const blossom_convex_material = new THREE.MeshStandardMaterial({
+    color: 0x82A284,
+    opacity: 0.7,
+    transparent: true,
+    side: THREE.BackSide,
+})
 
 // meshes that can be reused across different snapshots
 export var node_meshes = []
@@ -226,9 +239,12 @@ const scaled_node_outline_radius = computed(() => {
 export var left_edge_meshes = []
 export var right_edge_meshes = []
 export var middle_edge_meshes = []
+export var edge_caches = []  // store some information that can be useful
 window.left_edge_meshes = left_edge_meshes
 window.right_edge_meshes = right_edge_meshes
 window.middle_edge_meshes = middle_edge_meshes
+export var blossom_convex_meshes = []
+window.blossom_convex_meshes = blossom_convex_meshes
 
 // update the sizes of objects
 watch(node_radius_scale, (newVal, oldVal) => {
@@ -284,7 +300,8 @@ export function translate_edge(left_grown, right_grown, weight) {
 
 export const active_fusion_data = ref(null)
 export const active_snapshot_idx = ref(0)
-function refresh_snapshot_data() {
+export function refresh_snapshot_data() {
+    // console.log("refresh_snapshot_data")
     if (active_fusion_data.value != null) {  // no fusion data provided
         const fusion_data = active_fusion_data.value
         const snapshot_idx = active_snapshot_idx.value
@@ -299,10 +316,10 @@ function refresh_snapshot_data() {
                     node_index: i,
                 }
                 scene.add( node_mesh )
-                load_position(node_mesh.position, position)
                 node_meshes.push(node_mesh)
             }
             const node_mesh = node_meshes[i]
+            load_position(node_mesh.position, position)
             if (node.s) {
                 node_mesh.material = syndrome_node_material
             } else if (node.v) {
@@ -320,6 +337,7 @@ function refresh_snapshot_data() {
         if (scaled_edge_radius.value < scaled_node_outline_radius.value) {
             edge_offset = Math.sqrt(Math.pow(scaled_node_outline_radius.value, 2) - Math.pow(scaled_edge_radius.value, 2))
         }
+        edge_caches = []  // clear cache
         for (let [i, edge] of snapshot.edges.entries()) {
             const left_position = fusion_data.positions[edge.l]
             const right_position = fusion_data.positions[edge.r]
@@ -342,6 +360,14 @@ function refresh_snapshot_data() {
             let left_end = local_edge_offset + edge_length * (left_grown / edge.w)
             let right_end = local_edge_offset + edge_length * ((edge.w - right_grown) / edge.w)
             const right_start = local_edge_offset + edge_length
+            edge_caches.push({
+                position: {
+                    left_start: compute_vector3(left_position).add(relative.clone().multiplyScalar(left_start / distance)),
+                    left_end: compute_vector3(left_position).add(relative.clone().multiplyScalar(left_end / distance)),
+                    right_end: compute_vector3(left_position).add(relative.clone().multiplyScalar(right_end / distance)),
+                    right_start: compute_vector3(left_position).add(relative.clone().multiplyScalar(right_start / distance)),
+                }
+            })
             // console.log(`${left_start}, ${left_end}, ${right_end}, ${right_start}`)
             for (let [start, end, edge_meshes, is_grown_part] of [[left_start, left_end, left_edge_meshes, true], [left_end, right_end, middle_edge_meshes, false]
                     , [right_end, right_start, right_edge_meshes, true]]) {
@@ -383,22 +409,47 @@ function refresh_snapshot_data() {
         for (let [i, node] of snapshot.nodes.entries()) {
             let position = fusion_data.positions[i]
             if (node_outline_meshes.length <= i) {
-                const node_outline_mesh = new THREE.Mesh( node_geometry, node_outline_material )
+                const node_outline_mesh = new THREE.Mesh( node_geometry, real_node_outline_material )
                 update_mesh_outline(node_outline_mesh)
                 scene.add( node_outline_mesh )
-                load_position(node_outline_mesh.position, position)
                 node_outline_meshes.push(node_outline_mesh)
             }
             const node_outline_mesh = node_outline_meshes[i]
-            if (node.v) {
+            load_position(node_outline_mesh.position, position)
+            if (node.s) {
+                node_outline_mesh.material = syndrome_node_outline_material
+            } else if (node.v) {
                 node_outline_mesh.material = virtual_node_outline_material
             } else {
-                node_outline_mesh.material = node_outline_material
+                node_outline_mesh.material = real_node_outline_material
             }
             node_outline_mesh.visible = true
         }
         for (let i = snapshot.nodes.length; i < node_meshes.length; ++i) {
             node_outline_meshes[i].visible = false
+        }
+        // draw convex
+        for (let blossom_convex_mesh of blossom_convex_meshes) {
+            scene.remove( blossom_convex_mesh )
+            blossom_convex_mesh.geometry.dispose()
+        }
+        for (let [i, tree_node] of snapshot.tree_nodes.entries()) {
+            // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
+            if (tree_node.p == null && tree_node.d > 0) {
+                let points = []
+                for (let [is_left, edge_index] of tree_node.b) {
+                    let cached_position = edge_caches[edge_index].position
+                    if (is_left) {
+                        points.push(cached_position.left_end.clone())
+                    } else {
+                        points.push(cached_position.right_end.clone())
+                    }
+                }
+                const geometry = new ConvexGeometry( points )
+                const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
+                scene.add( blossom_convex_mesh )
+                blossom_convex_meshes.push(blossom_convex_mesh)
+            }
         }
         // clear hover and select
         previous_hover_material = null
@@ -438,8 +489,10 @@ const conf = {
     real_node_opacity: real_node_material.opacity,
     virtual_node_color: virtual_node_material.color,
     virtual_node_opacity: virtual_node_material.opacity,
-    node_outline_color: node_outline_material.color,
-    node_outline_opacity: node_outline_material.opacity,
+    syndrome_node_outline_color: syndrome_node_outline_material.color,
+    syndrome_node_outline_opacity: syndrome_node_outline_material.opacity,
+    real_node_outline_color: real_node_outline_material.color,
+    real_node_outline_opacity: real_node_outline_material.opacity,
     virtual_node_outline_color: virtual_node_outline_material.color,
     virtual_node_outline_opacity: virtual_node_outline_material.opacity,
     edge_color: edge_material.color,
@@ -463,8 +516,10 @@ controller.real_node_opacity = node_folder.add( conf, 'real_node_opacity', 0, 1 
 controller.virtual_node_color = node_folder.addColor( conf, 'virtual_node_color' ).onChange( function ( value ) { virtual_node_material.color = value } )
 controller.virtual_node_opacity = node_folder.add( conf, 'virtual_node_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_material.opacity = Number(value) } )
 const node_outline_folder = gui.addFolder( 'node outline' )
-controller.node_outline_color = node_outline_folder.addColor( conf, 'node_outline_color' ).onChange( function ( value ) { node_outline_material.color = value } )
-controller.node_outline_opacity = node_outline_folder.add( conf, 'node_outline_opacity', 0, 1 ).onChange( function ( value ) { node_outline_material.opacity = Number(value) } )
+controller.node_outline_color = node_outline_folder.addColor( conf, 'syndrome_node_outline_color' ).onChange( function ( value ) { syndrome_node_outline_material.color = value } )
+controller.node_outline_opacity = node_outline_folder.add( conf, 'syndrome_node_outline_opacity', 0, 1 ).onChange( function ( value ) { syndrome_node_outline_material.opacity = Number(value) } )
+controller.node_outline_color = node_outline_folder.addColor( conf, 'real_node_outline_color' ).onChange( function ( value ) { real_node_outline_material.color = value } )
+controller.node_outline_opacity = node_outline_folder.add( conf, 'real_node_outline_opacity', 0, 1 ).onChange( function ( value ) { real_node_outline_material.opacity = Number(value) } )
 controller.virtual_node_outline_color = node_outline_folder.addColor( conf, 'virtual_node_outline_color' ).onChange( function ( value ) { virtual_node_outline_material.color = value } )
 controller.virtual_node_outline_opacity = node_outline_folder.add( conf, 'virtual_node_outline_opacity', 0, 1 ).onChange( function ( value ) { virtual_node_outline_material.opacity = Number(value) } )
 const edge_folder = gui.addFolder( 'edge' )
@@ -550,15 +605,8 @@ function on_mouse_change(event, is_click) {
     mouse.y = - ( event.clientY / sizes.canvas_height ) * 2 + 1
     raycaster.setFromCamera( mouse, camera.value )
     const intersects = raycaster.intersectObjects( scene.children, false )
-    if (intersects.length == 0) {
-        if (is_click) {
-            current_selected.value = null
-        } else {
-            current_hover.value = null
-        }
-        return
-    }
     for (let intersect of intersects) {
+        if (!intersect.object.visible) continue  // don't select invisible object
         let user_data = intersect.object.userData
         if (user_data.type == null) continue  // doesn't contain enough information
         // swap back to the original material
@@ -571,8 +619,14 @@ function on_mouse_change(event, is_click) {
                 current_hover.value = null
             }
         }
-        break
+        return
     }
+    if (is_click) {
+        current_selected.value = null
+    } else {
+        current_hover.value = null
+    }
+    return
 }
 var mousedown_position = null
 var is_mouse_currently_down = false
@@ -587,7 +641,7 @@ window.addEventListener( 'mousedown', (event) => {
 window.addEventListener( 'mouseup', (event) => {
     if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
     // to prevent triggering select while moving camera
-    if (mousedown_position.clientX == event.clientX && mousedown_position.clientY == event.clientY) {
+    if (mousedown_position != null && mousedown_position.clientX == event.clientX && mousedown_position.clientY == event.clientY) {
         on_mouse_change(event, true)
     }
     is_mouse_currently_down = false

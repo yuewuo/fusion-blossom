@@ -22,13 +22,15 @@ const { ref, reactive, watch, computed } = Vue
 const urlParams = new URLSearchParams(window.location.search)
 const filename = urlParams.get('filename') || "default.json"
 
-var fusion_data
+export var fusion_data
 var patch_done = ref(false)
 
 // alert(navigator.userAgent)
 const is_chrome = navigator.userAgent.toLowerCase().indexOf('chrome/') > -1
 const is_firefox = navigator.userAgent.toLowerCase().indexOf('firefox/') > -1
 const is_browser_supported = ref(is_chrome || is_firefox)
+
+export const snapshot_select = ref(0)
 
 // create vue3 app
 const App = {
@@ -37,7 +39,7 @@ const App = {
             error_message: ref(null),
             warning_message: ref(null),
             snapshot_num: ref(1),
-            snapshot_select: ref(0),
+            snapshot_select: snapshot_select,
             snapshot_select_label: ref(1),
             snapshot_labels: ref([]),
             use_perspective_camera: gui3d.use_perspective_camera,

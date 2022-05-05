@@ -1,5 +1,7 @@
 import * as gui3d from './gui3d.js'
 import * as THREE from 'three'
+import * as index from './index.js'
+const { ref, reactive, watch, computed } = Vue
 
 // https://www.npmjs.com/package/base64-arraybuffer
 var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -147,4 +149,70 @@ export async function visualize_paper_weighted_union_find_decoder() {
     gui3d.scene.background = new THREE.Color( 0xffffff )
     // set output scale
     this.export_scale_selected = Math.pow(10, 3/10)
+}
+
+function retain_only_indices_smaller_than(snapshot_select, retain_index) {
+    const snapshot = index.fusion_data.snapshots[snapshot_select][1]
+    let nodes = []
+    for (let [i, node] of snapshot.nodes.entries()) {
+        if (i < retain_index) {
+            nodes.push(node)
+        }
+    }
+    snapshot.nodes = nodes
+    let edges = []
+    for (let [i, edge] of snapshot.edges.entries()) {
+        if (edge.l < retain_index || edge.r < retain_index) {
+            edges.push(edge)
+        }
+    }
+    snapshot.edges = edges
+    let tree_nodes = []
+    for (let [i, tree_node] of snapshot.tree_nodes.entries()) {
+        let has_tree_node = false
+        if (tree_node.s != null && tree_node.s < retain_index) {
+            has_tree_node = true
+        }
+        for (let node_index of tree_node.b) {
+            if (node_index < retain_index) {
+                has_tree_node = true
+            }
+        }
+        if (has_tree_node) {
+            tree_nodes.push(tree_node)
+        }
+    }
+    snapshot.tree_nodes = tree_nodes
+}
+
+function shift_all_positions_upward(shift_t = null) {
+    if (shift_t == null) {
+        shift_t = index.fusion_data.positions[0].t
+    }
+    for (let position of index.fusion_data.positions) {
+        position.t -= shift_t
+    }
+}
+
+export async function visualize_rough_idea_fusion_blossom() {
+    // select changed
+    watch(index.snapshot_select, () => {
+        // console.log(index.snapshot_select.value)
+    })
+    // shift all positions upwards so that the lowest t = 0
+    shift_all_positions_upward()
+    // keep only part of vertices for each step
+    const layer_amount = 56
+    let layer_counter = 0;
+    for (const _ of Array(4).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 1)
+    for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 2)
+    for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 3)
+    for (const _ of Array(3).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 4)
+    for (const _ of Array(5).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 5)
+    for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 6)
+    for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 7)
+    for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 8)
+    // updated the fusion data, redraw
+    window.app.show_snapshot(index.snapshot_select.value)
+    gui3d.refresh_snapshot_data()
 }

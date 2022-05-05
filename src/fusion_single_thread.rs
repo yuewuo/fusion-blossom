@@ -55,6 +55,8 @@ pub struct TreeNode {
     pub dual_variable: Weight,
     /// unit growth, can be -1 (shrink), 0 (stop), 1 (grow)
     pub unit_growth: Weight,
+    /// parent blossom tree node (if exists)
+    pub parent_blossom_node: Option<TreeNodePtr>,
 }
 
 #[derive(Derivative)]
@@ -206,6 +208,7 @@ impl FusionSingleThread {
             boundary: Vec::new(),
             dual_variable: 0,
             unit_growth: 0,
+            parent_blossom_node: None,
         }));
         let boundary = {
             let mut boundary = Vec::new();
@@ -406,6 +409,7 @@ impl FusionSingleThread {
             return
         }
         self.prepare_tree_node_growth(tree_node_ptr, length > 0);
+        tree_node_ptr.write().dual_variable += length;
         let tree_node = tree_node_ptr.read_recursive();
         for (is_left, edge_ptr) in tree_node.boundary.iter() {
             let is_left = *is_left;
@@ -476,9 +480,23 @@ impl FusionVisualizer for FusionSingleThread {
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
             }));
         }
+        let mut tree_nodes = Vec::<serde_json::Value>::new();
+        for tree_node in self.tree_nodes.iter() {
+            let tree_node = tree_node.read_recursive();
+            tree_nodes.push(json!({
+                if abbrev { "f" } else { "fallback_union_find" }: tree_node.fallback_union_find,
+                if abbrev { "s" } else { "syndrome_node" }: tree_node.syndrome_node.as_ref().map(|node_ptr| node_ptr.read_recursive().node_index),
+                if abbrev { "t" } else { "blossom" }: tree_node.blossom.iter().map(|tree_node_ptr| tree_node_ptr.read_recursive().tree_node_index).collect::<Vec<usize>>(),
+                if abbrev { "b" } else { "boundary" }: tree_node.boundary.iter().map(|(is_left, edge_ptr)| (*is_left, edge_ptr.read_recursive().edge_index)).collect::<Vec<(bool, usize)>>(),
+                if abbrev { "d" } else { "dual_variable" }: tree_node.dual_variable,
+                if abbrev { "u" } else { "unit_growth" }: tree_node.unit_growth,
+                if abbrev { "p" } else { "parent_blossom_node" }: tree_node.parent_blossom_node.as_ref().map(|tree_node_ptr| tree_node_ptr.read_recursive().tree_node_index),
+            }));
+        }
         json!({
             "nodes": nodes,
             "edges": edges,
+            "tree_nodes": tree_nodes,
         })
     }
 }
