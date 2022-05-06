@@ -255,8 +255,8 @@ watch(edge_radius_scale, (newVal, oldVal) => {
     edge_geometry.scale(1/oldVal, 1, 1/oldVal)
     edge_geometry.scale(newVal, 1, newVal)
 })
-watch([scaled_edge_radius, scaled_node_outline_radius], () => {
-    refresh_snapshot_data()
+watch([scaled_edge_radius, scaled_node_outline_radius], async () => {
+    await refresh_snapshot_data()
 })
 function update_mesh_outline(mesh) {
     mesh.scale.x = outline_ratio.value
@@ -300,12 +300,18 @@ export function translate_edge(left_grown, right_grown, weight) {
 
 export const active_fusion_data = ref(null)
 export const active_snapshot_idx = ref(0)
-export function refresh_snapshot_data() {
+export async function refresh_snapshot_data() {
     // console.log("refresh_snapshot_data")
     if (active_fusion_data.value != null) {  // no fusion data provided
         const fusion_data = active_fusion_data.value
         const snapshot_idx = active_snapshot_idx.value
         const snapshot = fusion_data.snapshots[snapshot_idx][1]
+        // clear hover and select
+        current_hover.value = null
+        let current_selected_value = JSON.parse(JSON.stringify(current_selected.value))
+        current_selected.value = null
+        await Vue.nextTick()
+        await Vue.nextTick()
         // draw nodes
         for (let [i, node] of snapshot.nodes.entries()) {
             let position = fusion_data.positions[i]
@@ -451,15 +457,11 @@ export function refresh_snapshot_data() {
                 blossom_convex_meshes.push(blossom_convex_mesh)
             }
         }
-        // clear hover and select
-        previous_hover_material = null
-        current_hover.value = null
-        previous_selected_material = null
-        let current_selected_value = JSON.parse(JSON.stringify(current_selected.value))
-        current_selected.value = null
-        Vue.nextTick(() => {  // wait after hover cleaned its data
+        // reset select
+        await Vue.nextTick()
+        if (is_user_data_valid(current_selected_value)) {
             current_selected.value = current_selected_value
-        })
+        }
     }
 }
 watch([active_fusion_data, active_snapshot_idx, scaled_node_outline_radius], refresh_snapshot_data)
@@ -548,6 +550,19 @@ var previous_selected_material = null
 export const current_selected = ref(null)
 window.current_selected = current_selected
 export const show_hover_effect = ref(true)
+function is_user_data_valid(user_data) {
+    if (user_data == null) return false
+    const fusion_data = active_fusion_data.value
+    const snapshot_idx = active_snapshot_idx.value
+    const snapshot = fusion_data.snapshots[snapshot_idx][1]
+    if (user_data.type == "node") {
+        return user_data.node_index < snapshot.nodes.length
+    }
+    if (user_data.type == "edge") {
+        return user_data.edge_index < snapshot.edges.length
+    }
+    return false
+}
 function set_material_with_user_data(user_data, material) {  // return the previous material
     if (user_data.type == "node") {
         let node_index = user_data.node_index

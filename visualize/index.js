@@ -276,10 +276,11 @@ const App = {
         },
     },
     watch: {
-        snapshot_select() {
+        async snapshot_select() {
             // console.log(this.snapshot_select)
             this.show_snapshot(this.snapshot_select)  // load the snapshot
             this.snapshot_select_label = this.snapshot_labels[this.snapshot_select]
+            for (const _ of Array(4).keys()) await Vue.nextTick()
             this.update_selected_display()
         },
         snapshot_select_label() {
