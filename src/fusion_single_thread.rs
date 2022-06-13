@@ -89,6 +89,8 @@ pub struct Edge {
 pub enum MaximumUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
+    /// unknown reason (TODO: only used during development, should be removed later)
+    Unknown,
 }
 
 #[derive(Debug)]
@@ -417,8 +419,10 @@ impl FusionSingleThread {
                 let mut edge = edge_ptr.write();
                 if is_left {
                     edge.left_growth += length;
+                    assert!(edge.left_growth >= 0, "negative growth forbidden");
                 } else {
                     edge.right_growth += length;
+                    assert!(edge.right_growth >= 0, "negative growth forbidden");
                 }
                 (edge.left_growth + edge.right_growth, edge.weight)
             };
@@ -443,19 +447,67 @@ impl FusionSingleThread {
     /// if `is_grow` is false, return `length` <= 0, in any case |`length`| is maximized so that at least one edge becomes fully grown or fully not-grown.
     /// if `simultaneous_update` is true, also check for the peer node according to [`TreeNode::unit_growth`]
     pub fn compute_maximum_update_length_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, is_grow: bool, simultaneous_update: bool) -> MaximumUpdateLength {
+        assert!(simultaneous_update == false, "unimplemented");
         let tree_node_index = tree_node_ptr.read_recursive().tree_node_index;
         assert!(self.is_tree_node_union_find_root(tree_node_index), "only union-find root can compute maximum update length");
         self.prepare_tree_node_growth(tree_node_ptr, is_grow);
         let mut max_length_abs = Weight::MAX;
-
-
+        let tree_node = tree_node_ptr.read_recursive();
+        for (is_left, edge_ptr) in tree_node.boundary.iter() {
+            let is_left = *is_left;
+            let edge = edge_ptr.read_recursive();
+            if is_grow {
+                // first check for if both side belongs to the same tree node, if so, no constraint on this edge
+                let tree_node_index_2: Option<usize> = if is_left {
+                    edge.right_tree_node.as_ref().map(|right_tree_node| right_tree_node.read_recursive().tree_node_index)
+                } else {
+                    edge.left_tree_node.as_ref().map(|left_tree_node| left_tree_node.read_recursive().tree_node_index)
+                };
+                if tree_node_index_2 == None || !self.is_tree_node_union_find_root_same(tree_node_index, tree_node_index_2.unwrap()) {
+                    let local_max_length_abs = edge.weight - edge.left_growth - edge.right_growth;
+                    if local_max_length_abs == 0 {
+                        return MaximumUpdateLength::Unknown;
+                    }
+                    max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
+                }
+            } else {
+                if is_left {
+                    if edge.left_growth == 0 {
+                        return MaximumUpdateLength::Unknown;
+                    }
+                    max_length_abs = std::cmp::min(max_length_abs, edge.left_growth);
+                } else {
+                    if edge.right_growth == 0 {
+                        return MaximumUpdateLength::Unknown;
+                    }
+                    max_length_abs = std::cmp::min(max_length_abs, edge.right_growth);
+                }
+            }
+        }
         MaximumUpdateLength::NonZeroGrow(max_length_abs)
     }
 
     /// iteratively grow specific tree node by given length, used as a helper function
     #[allow(dead_code)]
     pub fn iterative_grow_tree_node(&mut self, tree_node_ptr: &TreeNodePtr, length: Weight) {
-        unimplemented!()
+        if length == 0 {
+            return
+        }
+        let mut grown_abs = 0;
+        let length_abs = length.abs();
+        while grown_abs < length_abs {
+            let maximum_update_length = self.compute_maximum_update_length_tree_node(tree_node_ptr, length > 0, false);
+            match maximum_update_length {
+                MaximumUpdateLength::NonZeroGrow(maximum_grow_length_abs) => {
+                    let grow_length_abs = std::cmp::min(maximum_grow_length_abs, length_abs - grown_abs);
+                    self.grow_tree_node(tree_node_ptr, if length > 0 { grow_length_abs } else { -grow_length_abs });
+                    grown_abs += grow_length_abs;
+                },
+                _ => {
+                    panic!("cannot update after doing {}/{}", grown_abs, length_abs);
+                },
+            }
+        }
     }
 }
 
@@ -532,6 +584,7 @@ pub fn solve_mwpm_visualizer(node_num: usize, weighted_edges: &Vec<(usize, usize
     let mut fusion_solver = FusionSingleThread::new(node_num, weighted_edges, virtual_nodes);
     fusion_solver.load_syndrome(syndrome_nodes);
     if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("start"), &fusion_solver).unwrap(); }
+
     if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("form blossom"), &fusion_solver).unwrap(); }
     if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("end"), &fusion_solver).unwrap(); }
     unimplemented!()
@@ -640,7 +693,8 @@ mod tests {
         let mut errors: Vec<bool> = weighted_edges.iter().map(|_| false).collect();
         let mut measurements: Vec<bool> = (0..node_num).map(|_| false).collect();
         // load error
-        let error_nodes = vec![2, 10];
+        let error_nodes = vec![10];
+        // let error_nodes = vec![10, 0, 1, 4];
         println!("[debug] error_nodes: {:?}", error_nodes);
         for i in 0..node_num { measurements[i] = false; }  // clear measurement errors
         for &i in error_nodes.iter() {
@@ -858,5 +912,76 @@ mod tests {
         }
         println!("[debug] fusion_matchings: {:?}", fusion_matchings);
         println!("[debug] fusion_weight: {:?}", fusion_weight);
+    }
+
+    #[test]
+    fn single_thread_iterative_grow_tree_node() {  // cargo test single_thread_iterative_grow_tree_node -- --nocapture
+        let d = 11usize;
+        let p = 0.2f64;
+        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
+        let node_num = row_node_num * d;  // `d` rows
+        let half_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
+        let weight = half_weight * 2;  // to make sure weight is even number for ease of this test function
+        println!("half_weight: {}, weight: {}", half_weight, weight);
+        let weighted_edges = {
+            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
+            for row in 0..d {
+                let bias = row * row_node_num;
+                for i in 0..d-1 {
+                    weighted_edges.push((bias + i, bias + i+1, weight));
+                }
+                weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
+                if row + 1 < d {
+                    for i in 0..d-1 {
+                        weighted_edges.push((bias + i, bias + i + row_node_num, weight));
+                    }
+                }
+            }
+            weighted_edges
+        };
+        let virtual_nodes = {
+            let mut virtual_nodes = Vec::new();
+            for row in 0..d {
+                let bias = row * row_node_num;
+                virtual_nodes.push(bias + d - 1);
+                virtual_nodes.push(bias + d);
+            }
+            virtual_nodes
+        };
+        // hardcode syndrome
+        let syndrome_nodes = vec![52, 89];
+        // run single-thread fusion blossom algorithm
+        let visualize_filename = static_visualize_data_filename();
+        print_visualize_link(&visualize_filename);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        let mut positions = Vec::new();
+        for row in 0..d {
+            let pos_i = row as f64;
+            for i in 0..d {
+                positions.push(VisualizePosition::new(pos_i, i as f64, 0.));
+            }
+            positions.push(VisualizePosition::new(pos_i, -1., 0.));
+        }
+        visualizer.set_positions(positions, true);  // automatic center all nodes
+        let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
+        fusion_solver.load_syndrome(&syndrome_nodes);
+        visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
+        let syndrome_tree_nodes: Vec<TreeNodePtr> = syndrome_nodes.iter().map(|&node_index| {
+            Arc::clone(fusion_solver.nodes[node_index].read_recursive().tree_node.as_ref().unwrap())
+        }).collect();
+        fusion_solver.iterative_grow_tree_node(&syndrome_tree_nodes[0], weight + half_weight);
+        visualizer.snapshot(format!("grow 1.5x weight"), &fusion_solver).unwrap();
+        fusion_solver.iterative_grow_tree_node(&syndrome_tree_nodes[0], 2 * weight);
+        visualizer.snapshot(format!("grow 3.5x weight"), &fusion_solver).unwrap();
+        fusion_solver.iterative_grow_tree_node(&syndrome_tree_nodes[0], - 3 * weight);
+        visualizer.snapshot(format!("shrink 3x weight"), &fusion_solver).unwrap();
+        fusion_solver.iterative_grow_tree_node(&syndrome_tree_nodes[0], - half_weight);
+        visualizer.snapshot(format!("shrink half weight"), &fusion_solver).unwrap();
+        fusion_solver.iterative_grow_tree_node(&syndrome_tree_nodes[0], 4 * weight);
+        visualizer.snapshot(format!("shrink 4x weight"), &fusion_solver).unwrap();
+        if false {  // should panic if grow more
+            fusion_solver.iterative_grow_tree_node(&syndrome_tree_nodes[0], half_weight);
+            visualizer.snapshot(format!("shrink 4x weight"), &fusion_solver).unwrap();
+        }
     }
 }
