@@ -15,7 +15,7 @@ pub trait FusionVisualizer {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value;
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct VisualizePosition {
     /// vertical axis, -i is up, +i is down (left-up corner is smallest i,j)
     i: f64,

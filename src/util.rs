@@ -1,7 +1,6 @@
 use super::rand_xoshiro;
 use crate::rand_xoshiro::rand_core::RngCore;
 
-
 cfg_if::cfg_if! {
     if #[cfg(feature="i32_weight")] {
         /// use i32 to store weight to be compatible with blossom V library (c_int)
@@ -10,6 +9,20 @@ cfg_if::cfg_if! {
         pub type Weight = i64;
     }
 }
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="u32_index")] {
+        // use u32 to store index, for less memory usage
+        pub type VertexIndex = u32;  // the vertex index in the decoding graph
+        pub type NodeIndex = u32;
+        pub type SyndromeIndex = u32;
+    } else {
+        pub type VertexIndex = usize;
+        pub type NodeIndex = usize;
+        pub type SyndromeIndex = usize;
+    }
+}
+
 
 #[allow(dead_code)]
 /// use Xoshiro256StarStar for deterministic random number generator

@@ -15,6 +15,9 @@ pub mod fusion_single_thread;
 pub mod complete_graph;
 pub mod union_find;
 pub mod visualize;
+pub mod dual_module;
+pub mod dual_module_serial;
+pub mod example;
 
 use util::*;
 
