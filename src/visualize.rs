@@ -46,6 +46,131 @@ pub struct Visualizer {
     snapshots: Vec<(String, serde_json::Value)>,
 }
 
+pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) {
+    let value = value.as_object_mut().expect("snapshot must be an object");
+    // fix vertices missing fields
+    let vertices = value.get_mut("nodes").expect("missing unrecoverable field").as_array_mut().expect("vertices must be an array");
+    for vertex in vertices {
+        let vertex = vertex.as_object_mut().expect("each vertex must be an object");
+        let key_is_virtual = if abbrev { "v" } else { "is_virtual" };
+        let key_is_syndrome = if abbrev { "s" } else { "is_syndrome" };
+        // recover
+        assert!(vertex.contains_key(key_is_virtual), "missing unrecoverable field");
+        if !vertex.contains_key(key_is_syndrome) {
+            vertex[key_is_syndrome] = json!(0);  // by default no syndrome
+        }
+    }
+    // fix edges missing fields
+    let edges = value.get_mut("edges").expect("missing unrecoverable field").as_array_mut().expect("edges must be an array");
+    for edge in edges {
+        let edge = edge.as_object_mut().expect("each edge must be an object");
+        let key_weight = if abbrev { "w" } else { "weight" };
+        let key_left = if abbrev { "l" } else { "left" };
+        let key_right = if abbrev { "r" } else { "right" };
+        let key_left_growth = if abbrev { "lg" } else { "left_growth" };
+        let key_right_growth = if abbrev { "rg" } else { "right_growth" };
+        // recover
+        assert!(edge.contains_key(key_weight), "missing unrecoverable field");
+        assert!(edge.contains_key(key_left), "missing unrecoverable field");
+        assert!(edge.contains_key(key_right), "missing unrecoverable field");
+        if !edge.contains_key(key_left_growth) {
+            edge.insert(key_left_growth.to_string(), json!(0));  // by default no growth
+        }
+        if !edge.contains_key(key_right_growth) {
+            edge.insert(key_right_growth.to_string(), json!(0));  // by default no growth
+        }
+    }
+    // fix tree node missing fields
+    if !value.contains_key("tree_nodes") {
+        value.insert("tree_nodes".to_string(), json!([]));  // by default no tree nodes
+    }
+    let tree_nodes = value.get_mut("tree_nodes").unwrap().as_array_mut().expect("tree_nodes must be an array");
+    for _tree_node in tree_nodes {
+        unimplemented!();
+    }
+}
+
+pub type ObjectMap = serde_json::Map<String, serde_json::Value>;
+pub fn snapshot_combine_object_known_key(obj: &mut ObjectMap, obj_2: &mut ObjectMap, key: &str) {
+    match (obj.contains_key(key), obj_2.contains_key(key)) {
+        (_, false) => { },  // do nothing
+        (false, true) => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
+        (true, true) => { assert_eq!(obj[key], obj_2[key], "cannot combine different values: please make sure values don't conflict"); }
+    }
+}
+
+pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap) {
+    let mut keys = Vec::<String>::new();
+    for key in obj_2.keys() {
+        keys.push(key.clone());
+    }
+    for key in keys.iter() {
+        match obj.contains_key(key) {
+            false => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
+            true => { assert_eq!(obj[key], obj_2[key], "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function"); }
+        }
+    }
+}
+
+pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde_json::Value, abbrev: bool) {
+    let value = value.as_object_mut().expect("snapshot must be an object");
+    let value_2 = value_2.as_object_mut().expect("snapshot must be an object");
+    match (value.contains_key("nodes"), value_2.contains_key("nodes")) {
+        (_, false) => { },  // do nothing
+        (false, true) => { value.insert("nodes".to_string(), value_2.remove("nodes").unwrap()); }
+        (true, true) => {  // combine
+            let vertices = value.get_mut("nodes").unwrap().as_array_mut().expect("vertices must be an array");
+            let vertices_2 = value_2.get_mut("nodes").unwrap().as_array_mut().expect("vertices must be an array");
+            assert!(vertices.len() == vertices_2.len(), "vertices must be compatible");
+            for (vertex_idx, vertex) in vertices.iter_mut().enumerate() {
+                let vertex_2 = &mut vertices_2[vertex_idx];
+                let vertex = vertex.as_object_mut().expect("each vertex must be an object");
+                let vertex_2 = vertex_2.as_object_mut().expect("each vertex must be an object");
+                // list known keys
+                let key_is_virtual = if abbrev { "v" } else { "is_virtual" };
+                let key_is_syndrome = if abbrev { "s" } else { "is_syndrome" };
+                let known_keys = [key_is_virtual, key_is_syndrome];
+                for key in known_keys {
+                    snapshot_combine_object_known_key(vertex, vertex_2, key);
+                }
+                snapshot_copy_remaining_fields(vertex, vertex_2);
+            }
+        }
+    }
+    match (value.contains_key("edges"), value_2.contains_key("edges")) {
+        (_, false) => { },  // do nothing
+        (false, true) => { value.insert("edges".to_string(), value_2.remove("edges").unwrap()); }
+        (true, true) => {  // combine
+            let edges = value.get_mut("edges").unwrap().as_array_mut().expect("edges must be an array");
+            let edges_2 = value_2.get_mut("edges").unwrap().as_array_mut().expect("edges must be an array");
+            assert!(edges.len() == edges_2.len(), "edges must be compatible");
+            for (edge_idx, edge) in edges.iter_mut().enumerate() {
+                let edge_2 = &mut edges_2[edge_idx];
+                let edge = edge.as_object_mut().expect("each edge must be an object");
+                let edge_2 = edge_2.as_object_mut().expect("each edge must be an object");
+                // list known keys
+                let key_weight = if abbrev { "w" } else { "weight" };
+                let key_left = if abbrev { "l" } else { "left" };
+                let key_right = if abbrev { "r" } else { "right" };
+                let key_left_growth = if abbrev { "lg" } else { "left_growth" };
+                let key_right_growth = if abbrev { "rg" } else { "right_growth" };
+                let known_keys = [key_weight, key_left, key_right, key_left_growth, key_right_growth];
+                for key in known_keys {
+                    snapshot_combine_object_known_key(edge, edge_2, key);
+                }
+                snapshot_copy_remaining_fields(edge, edge_2);
+            }
+        }
+    }
+    match (value.contains_key("tree_nodes"), value_2.contains_key("tree_nodes")) {
+        (_, false) => { },  // do nothing
+        (false, true) => { value.insert("tree_nodes".to_string(), value_2.remove("tree_nodes").unwrap()); }
+        (true, true) => {  // combine
+            unimplemented!();
+        }
+    }
+}
+
 impl Visualizer {
     /// create a new visualizer with target filename and node layout
     pub fn new(filename: Option<String>) -> std::io::Result<Self> {
@@ -62,8 +187,25 @@ impl Visualizer {
     }
 
     /// append another snapshot of the fusion type, and also update the file in case 
-    pub fn snapshot<FusionType: FusionVisualizer>(&mut self, name: String, fusion_algorithm: &FusionType) -> std::io::Result<()> {
-        self.snapshots.push((name, fusion_algorithm.snapshot(true)));
+    pub fn snapshot_combined(&mut self, name: String, fusion_algorithms: Vec<&dyn FusionVisualizer>) -> std::io::Result<()> {
+        let abbrev = true;
+        let mut value = json!({});
+        for fusion_algorithm in fusion_algorithms.iter() {
+            let value_2 = fusion_algorithm.snapshot(abbrev);
+            snapshot_combine_values(&mut value, value_2, abbrev);
+        }
+        snapshot_fix_missing_fields(&mut value, abbrev);
+        self.snapshots.push((name, value));
+        self.save()?;
+        Ok(())
+    }
+
+    /// append another snapshot of the fusion type, and also update the file in case 
+    pub fn snapshot(&mut self, name: String, fusion_algorithm: &impl FusionVisualizer) -> std::io::Result<()> {
+        let abbrev = true;
+        let mut value = fusion_algorithm.snapshot(abbrev);
+        snapshot_fix_missing_fields(&mut value, abbrev);
+        self.snapshots.push((name, value));
         self.save()?;
         Ok(())
     }

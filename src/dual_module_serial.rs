@@ -14,6 +14,7 @@ use std::sync::Arc;
 use crate::parking_lot::RwLock;
 use super::dual_module::*;
 use std::any::Any;
+use super::visualize::*;
 
 
 pub struct DualModuleSerial {
@@ -75,14 +76,10 @@ pub struct Edge {
     pub timestamp: usize,
 }
 
-/*
-Interfaces to initialize [`DualModuleSerial`]
-*/
-
-impl DualModuleSerial {
+impl DualModule for DualModuleSerial {
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
-    pub fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>) -> Self {
+    fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>) -> Self {
         // create vertices
         let vertices: Vec<VertexPtr> = (0..vertex_num).map(|vertex_index| Arc::new(RwLock::new(Vertex {
             index: vertex_index,
@@ -135,14 +132,6 @@ impl DualModuleSerial {
             active_timestamp: 0,
         }
     }
-
-}
-
-/*
-Interfaces to dynamically configure [`DualModuleSerial`]
-*/
-
-impl DualModule for DualModuleSerial {
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
@@ -223,13 +212,54 @@ impl DualModuleSerial {
 
 }
 
+/*
+Implementing visualization functions
+*/
+
+impl FusionVisualizer for DualModuleSerial {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        let mut vertices = Vec::<serde_json::Value>::new();
+        for vertex in self.vertices.iter() {
+            let vertex = vertex.read_recursive();
+            vertices.push(json!({
+                if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
+            }));
+        }
+        let mut edges = Vec::<serde_json::Value>::new();
+        for edge in self.edges.iter() {
+            let edge = edge.read_recursive();
+            edges.push(json!({
+                if abbrev { "w" } else { "weight" }: edge.weight,
+                if abbrev { "l" } else { "left" }: edge.left.read_recursive().index,
+                if abbrev { "r" } else { "right" }: edge.right.read_recursive().index,
+                if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
+                if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
+            }));
+        }
+        json!({
+            "nodes": vertices,  // TODO: update HTML code to use the same language
+            "edges": edges,
+            "tree_nodes": [],
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::*;
-    use crate::rand_xoshiro::rand_core::SeedableRng;
+    use super::super::example::*;
 
-    
+    #[test]
+    fn dual_module_serial_basics() {  // cargo test dual_module_serial_basics -- --nocapture
+        let visualize_filename = format!("dual_module_serial_basics.json");
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, 500);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module out of code
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        visualizer.snapshot_combined(format!("code"), vec![&code, &dual_module]).unwrap();
+    }
 
 }

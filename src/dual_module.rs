@@ -58,6 +58,9 @@ pub struct DualNodeArray {
 /// common trait that must be implemented for each implementation of dual module
 pub trait DualModule {
 
+    /// create a new dual module
+    fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>) -> Self;
+
     /// clear all growth and existing dual nodes, prepared for the next decoding
     fn clear(&mut self);
 

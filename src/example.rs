@@ -148,6 +148,23 @@ pub trait ExampleCode {
         positions
     }
 
+    /// generate standard interface to instantiate Fussion blossom solver
+    fn get_initializer(&self) -> (usize, Vec<(usize, usize, Weight)>, Vec<usize>) {
+        let (vertices, edges) = self.immutable_vertices_edges();
+        let vertex_num = vertices.len();
+        let mut weighted_edges = Vec::with_capacity(edges.len());
+        for edge in edges.iter() {
+            weighted_edges.push((edge.vertices.0, edge.vertices.1, edge.half_weight * 2));
+        }
+        let mut virtual_vertices = Vec::new();
+        for (vertex_idx, vertex) in vertices.iter().enumerate() {
+            if vertex.is_virtual {
+                virtual_vertices.push(vertex_idx);
+            }
+        }
+        (vertex_num, weighted_edges, virtual_vertices)
+    }
+
 }
 
 impl<T> FusionVisualizer for T where T: ExampleCode {
@@ -167,14 +184,12 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
                 if abbrev { "w" } else { "weight" }: edge.half_weight * 2,
                 if abbrev { "l" } else { "left" }: edge.vertices.0,
                 if abbrev { "r" } else { "right" }: edge.vertices.1,
-                if abbrev { "lg" } else { "left_growth" }: 0,  // code itself is not capable of calculating growth
-                if abbrev { "rg" } else { "right_growth" }: 0,
+                // code itself is not capable of calculating growth
             }));
         }
         json!({
             "nodes": vertices,  // TODO: update HTML code to use the same language
             "edges": edges,
-            "tree_nodes": [],
         })
     }
 }
