@@ -18,11 +18,11 @@ pub trait FusionVisualizer {
 #[derive(Debug, Serialize, Clone)]
 pub struct VisualizePosition {
     /// vertical axis, -i is up, +i is down (left-up corner is smallest i,j)
-    i: f64,
+    pub i: f64,
     /// horizontal axis, -j is left, +j is right (left-up corner is smallest i,j)
-    j: f64,
+    pub j: f64,
     /// time axis, top and bottom (orthogonal to the initial view, which looks at -t direction)
-    t: f64,
+    pub t: f64,
 }
 
 impl VisualizePosition {

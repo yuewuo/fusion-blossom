@@ -4,7 +4,8 @@
 //! This helps to debug, but it doesn't corresponds to real error model, nor it's capable of simulating circuit-level noise model.
 //! For complex error model and simulator functionality, please see https://github.com/yuewuo/QEC-Playground
 //! 
-//! 
+//! Note that these examples are not optimized for cache coherency for simplicity.
+//! To maximize code efficiency, user should design how to group vertices such that memory coherency is preserved for arbitrary large code distance.
 //! 
 
 use super::visualize::*;
@@ -122,7 +123,7 @@ pub trait ExampleCode {
         let (vertices, edges) = self.vertices_edges();
         vertices.clear();
         vertices.reserve(vertex_num);
-        for i in 0..vertex_num {
+        for _ in 0..vertex_num {
             vertices.push(CodeVertex {
                 position: VisualizePosition::new(0., 0., 0.),
                 neighbor_edges: Vec::new(),
@@ -297,8 +298,210 @@ impl CodeCapacityPlanarCode {
         code
     }
 
+}
+
+/// phenomenological noise model is multiple measurement rounds adding only measurement errors
+/// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
+pub struct PhenomenologicalPlanarCode {
+    /// vertices in the code
+    vertices: Vec<CodeVertex>,
+    /// nearest-neighbor edges in the decoding graph
+    edges: Vec<CodeEdge>,
+}
+
+impl ExampleCode for PhenomenologicalPlanarCode {
+    fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
+    fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
+}
+
+impl PhenomenologicalPlanarCode {
+
+    pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
+        let mut code = Self::create_code(d, noisy_measurements);
+        code.set_probability(p);
+        code.compute_weights(max_half_weight);
+        code
+    }
+
+    pub fn create_code(d: usize, noisy_measurements: usize) -> Self {
+        assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
+        let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
+        let t_vertex_num = row_vertex_num * d;  // `d` rows
+        let td = noisy_measurements + 1;  // a perfect measurement round is capped at the end
+        let vertex_num = t_vertex_num * td;  // `td` layers
+        // create edges
+        let mut edges = Vec::new();
+        for t in 0..td {
+            let t_bias = t * t_vertex_num;
+            for row in 0..d {
+                let bias = t_bias + row * row_vertex_num;
+                for i in 0..d-1 {
+                    edges.push(CodeEdge::new(bias + i, bias + i+1));
+                }
+                edges.push(CodeEdge::new(bias + 0, bias + d));  // left most edge
+                if row + 1 < d {
+                    for i in 0..d-1 {
+                        edges.push(CodeEdge::new(bias + i, bias + i + row_vertex_num));
+                    }
+                }
+            }
+            // inter-layer connection
+            if t + 1 < td {
+                for row in 0..d {
+                    let bias = t_bias + row * row_vertex_num;
+                    for i in 0..d-1 {
+                        edges.push(CodeEdge::new(bias + i, bias + i + t_vertex_num));
+                    }
+                }
+            }
+        }
+        let mut code = Self {
+            vertices: Vec::new(),
+            edges: edges,
+        };
+        // create vertices
+        code.fill_vertices(vertex_num);
+        for t in 0..td {
+            let t_bias = t * t_vertex_num;
+            for row in 0..d {
+                let bias = t_bias + row * row_vertex_num;
+                code.vertices[bias + d - 1].is_virtual = true;
+                code.vertices[bias + d].is_virtual = true;
+            }
+        }
+        let mut positions = Vec::new();
+        for t in 0..td {
+            let pos_t = t as f64;
+            for row in 0..d {
+                let pos_i = row as f64;
+                for i in 0..d {
+                    positions.push(VisualizePosition::new(pos_i, i as f64 + 0.5, pos_t));
+                }
+                positions.push(VisualizePosition::new(pos_i, -1. + 0.5, pos_t));
+            }
+        }
+        for i in 0..vertex_num {
+            code.vertices[i].position = positions[i].clone();
+        }
+        code
+    }
 
 }
+
+/// (not accurate) circuit-level noise model is multiple measurement rounds with errors between each two-qubit gates
+/// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
+pub struct CircuitLevelPlanarCode {
+    /// vertices in the code
+    vertices: Vec<CodeVertex>,
+    /// nearest-neighbor edges in the decoding graph
+    edges: Vec<CodeEdge>,
+}
+
+impl ExampleCode for CircuitLevelPlanarCode {
+    fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
+    fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
+}
+
+impl CircuitLevelPlanarCode {
+
+    /// by default diagonal edge has error rate p/3 to mimic the behavior of unequal weights
+    pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
+        Self::new_diagonal(d, noisy_measurements, p, max_half_weight, p/3.)
+    }
+
+    pub fn new_diagonal(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight, diagonal_p: f64) -> Self {
+        let mut code = Self::create_code(d, noisy_measurements);
+        code.set_probability(p);
+        if diagonal_p != p {
+            let (vertices, edges) = code.vertices_edges();
+            for edge in edges.iter_mut() {
+                let (v1, v2) = edge.vertices;
+                let v1p = &vertices[v1].position;
+                let v2p = &vertices[v2].position;
+                let manhattan_distance = (v1p.i - v2p.i).abs() + (v1p.j - v2p.j).abs() + (v1p.t - v2p.t).abs();
+                if manhattan_distance > 1. {
+                    edge.p = diagonal_p;
+                }
+            }
+        }
+        code.compute_weights(max_half_weight);
+        code
+    }
+
+    pub fn create_code(d: usize, noisy_measurements: usize) -> Self {
+        assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
+        let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
+        let t_vertex_num = row_vertex_num * d;  // `d` rows
+        let td = noisy_measurements + 1;  // a perfect measurement round is capped at the end
+        let vertex_num = t_vertex_num * td;  // `td` layers
+        // create edges
+        let mut edges = Vec::new();
+        for t in 0..td {
+            let t_bias = t * t_vertex_num;
+            for row in 0..d {
+                let bias = t_bias + row * row_vertex_num;
+                for i in 0..d-1 {
+                    edges.push(CodeEdge::new(bias + i, bias + i+1));
+                }
+                edges.push(CodeEdge::new(bias + 0, bias + d));  // left most edge
+                if row + 1 < d {
+                    for i in 0..d-1 {
+                        edges.push(CodeEdge::new(bias + i, bias + i + row_vertex_num));
+                    }
+                }
+            }
+            // inter-layer connection
+            if t + 1 < td {
+                for row in 0..d {
+                    let bias = t_bias + row * row_vertex_num;
+                    for i in 0..d-1 {
+                        edges.push(CodeEdge::new(bias + i, bias + i + t_vertex_num));
+                        let diagonal_diffs: Vec<(isize, isize)> = vec![(0, 1), (1, 0), (1, 1)];
+                        for (di, dj) in diagonal_diffs {
+                            let new_row = row as isize + di;  // row corresponds to `i`
+                            let new_i = i as isize + dj;  // i corresponds to `j`
+                            if new_row >= 0 && new_i >= 0 && new_row < d as isize && new_i < (d-1) as isize {
+                                let new_bias = t_bias + (new_row as usize) * row_vertex_num + t_vertex_num;
+                                edges.push(CodeEdge::new(bias + i, new_bias + new_i as usize));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut code = Self {
+            vertices: Vec::new(),
+            edges: edges,
+        };
+        // create vertices
+        code.fill_vertices(vertex_num);
+        for t in 0..td {
+            let t_bias = t * t_vertex_num;
+            for row in 0..d {
+                let bias = t_bias + row * row_vertex_num;
+                code.vertices[bias + d - 1].is_virtual = true;
+                code.vertices[bias + d].is_virtual = true;
+            }
+        }
+        let mut positions = Vec::new();
+        for t in 0..td {
+            let pos_t = t as f64;
+            for row in 0..d {
+                let pos_i = row as f64;
+                for i in 0..d {
+                    positions.push(VisualizePosition::new(pos_i, i as f64 + 0.5, pos_t));
+                }
+                positions.push(VisualizePosition::new(pos_i, -1. + 0.5, pos_t));
+            }
+        }
+        for i in 0..vertex_num {
+            code.vertices[i].position = positions[i].clone();
+        }
+        code
+    }
+
+}
+
 
 
 #[cfg(test)]
@@ -314,16 +517,30 @@ mod tests {
 
     #[test]
     fn example_code_capacity_repetition_code() {  // cargo test example_code_capacity_repetition_code -- --nocapture
-        let mut code = CodeCapacityRepetitionCode::new(7, 0.1, 10000);
+        let mut code = CodeCapacityRepetitionCode::new(7, 0.1, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, format!("example_code_capacity_repetition_code.json"));
     }
 
     #[test]
     fn example_code_capacity_planar_code() {  // cargo test example_code_capacity_planar_code -- --nocapture
-        let mut code = CodeCapacityPlanarCode::new(7, 0.1, 10000);
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, format!("example_code_capacity_planar_code.json"));
+    }
+
+    #[test]
+    fn example_phenomenological_planar_code() {  // cargo test example_phenomenological_planar_code -- --nocapture
+        let mut code = PhenomenologicalPlanarCode::new(7, 7, 0.1, 500);
+        code.sanity_check().unwrap();
+        visualize_code(&mut code, format!("example_phenomenological_planar_code.json"));
+    }
+
+    #[test]
+    fn example_circuit_level_planar_code() {  // cargo test example_circuit_level_planar_code -- --nocapture
+        let mut code = CircuitLevelPlanarCode::new(7, 7, 0.1, 500);
+        code.sanity_check().unwrap();
+        visualize_code(&mut code, format!("example_circuit_level_planar_code.json"));
     }
 
 }
