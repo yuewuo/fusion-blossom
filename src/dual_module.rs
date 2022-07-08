@@ -33,9 +33,13 @@ pub enum DualNodeGrowState {
 /// gives the maximum absolute length to grow, if not possible, give the reason
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub enum MaximumUpdateLength {
+pub enum MaxUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
+    /// no more nodes to constrain: no growing or shrinking
+    NoMoreNodes,
+    /// conflicting growth
+    Conflicting(DualNodePtr, DualNodePtr),
     /// unimplemented length, only used during development, should be removed later
     Unimplemented,
 }
@@ -114,12 +118,12 @@ pub trait DualModuleImpl {
     /// check the maximum length to grow (shrink) specific dual node, if length is 0, give the reason of why it cannot further grow (shrink).
     /// if `is_grow` is false, return `length` <= 0, in any case |`length`| is maximized so that at least one edge becomes fully grown or fully not-grown.
     /// if `simultaneous_update` is true, also check for the peer node according to [`DualNode::grow_state`].
-    fn compute_maximum_update_length_dual_node(&mut self, _dual_node_ptr: &DualNodePtr, _is_grow: bool, _simultaneous_update: bool) -> MaximumUpdateLength {
+    fn compute_maximum_update_length_dual_node(&mut self, _dual_node_ptr: &DualNodePtr, _is_grow: bool, _simultaneous_update: bool) -> MaxUpdateLength {
         panic!("this dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// check the maximum length to grow (shrink) for all nodes
-    fn compute_maximum_grow_length(&mut self) -> MaximumUpdateLength;
+    fn compute_maximum_update_length(&mut self) -> MaxUpdateLength;
 
     /// An optional function that can manipulate individual dual node, not necessarily supported by all implementations
     fn grow_dual_node(&mut self, _dual_node_ptr: &DualNodePtr, _length: Weight) {
@@ -214,6 +218,47 @@ impl DualModuleRoot {
             _ => { unreachable!() }
         }
         dual_module_impl.remove_blossom(Arc::clone(&dual_node_ptr));
+    }
+
+}
+
+impl MaxUpdateLength {
+
+    /// get the minimum update length of all individual maximum update length;
+    /// if any length is zero, then also choose one reason with highest priority
+    pub fn min(a: Self, b: Self) -> Self {
+        match (&a, &b) {
+            // panic when there is Unimplemented
+            (_, MaxUpdateLength::Unimplemented) => { unimplemented!("min of {:?} and {:?}", a, b) }
+            (MaxUpdateLength::Unimplemented, _) => { unimplemented!("min of {:?} and {:?}", a, b) }
+            // if any of them is default, then take the other
+            (_, MaxUpdateLength::NoMoreNodes) => { a },
+            (MaxUpdateLength::NoMoreNodes, _) => { b },
+            // if both of them is non-zero, then take the smaller one
+            (MaxUpdateLength::NonZeroGrow(length_1), MaxUpdateLength::NonZeroGrow(length_2)) => {
+                if length_1 < length_2 { a } else { b }
+            },
+            // TODO: complex priority
+            (MaxUpdateLength::Conflicting( .. ), _) => { a },
+            (_, MaxUpdateLength::Conflicting( .. )) => { b },
+            _ => {
+                unimplemented!("min of {:?} and {:?}", a, b)
+            }
+        }
+    }
+
+    /// useful function to assert expected case
+    #[allow(dead_code)]
+    pub fn is_conflicting(&self, a: &DualNodePtr, b: &DualNodePtr) -> bool {
+        if let MaxUpdateLength::Conflicting(n1, n2) = self {
+            if Arc::ptr_eq(n1, a) && Arc::ptr_eq(n2, b) {
+                return true
+            }
+            if Arc::ptr_eq(n1, b) && Arc::ptr_eq(n2, a) {
+                return true
+            }
+        }
+        false
     }
 
 }

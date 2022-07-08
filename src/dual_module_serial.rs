@@ -249,9 +249,12 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
-    fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaximumUpdateLength {
-        assert!(simultaneous_update == false, "unimplemented");
-        self.prepare_dual_node_growth(dual_node_ptr, is_grow);
+    fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
+        if !simultaneous_update {
+            // when `simultaneous_update` is set, it's assumed that all nodes are prepared to grow or shrink
+            // this is because if we dynamically prepare them, it would be inefficient
+            self.prepare_dual_node_growth(dual_node_ptr, is_grow);
+        }
         let mut max_length_abs = Weight::MAX;
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
         let dual_node_internal = dual_node_internal_ptr.read_recursive();
@@ -259,40 +262,99 @@ impl DualModuleImpl for DualModuleSerial {
             let is_left = *is_left;
             let edge = edge_ptr.read_recursive();
             if is_grow {
-                // first check for if both side belongs to the same tree node, if so, no constraint on this edge
+                // first check if both side belongs to the same tree node, if so, no constraint on this edge
                 let peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if is_left {
                     edge.right_dual_node.as_ref().map(|ptr| Arc::clone(ptr))
                 } else {
                     edge.left_dual_node.as_ref().map(|ptr| Arc::clone(ptr))
                 };
-                if peer_dual_node_internal_ptr.is_none() {
-                    let local_max_length_abs = edge.weight - edge.left_growth - edge.right_growth;
-                    if local_max_length_abs == 0 {
-                        return MaximumUpdateLength::Unimplemented;
-                    }
-                    max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
-                } else {
-                    unimplemented!()
+                match peer_dual_node_internal_ptr {
+                    Some(peer_dual_node_internal_ptr) => {
+                        if Arc::ptr_eq(&peer_dual_node_internal_ptr, &dual_node_internal_ptr) {
+                            continue
+                        } else {
+                            let peer_dual_node_internal = peer_dual_node_internal_ptr.read_recursive();
+                            let peer_dual_node_ptr = &peer_dual_node_internal.origin;
+                            let peer_dual_node = peer_dual_node_ptr.read_recursive();
+                            let remaining_length = edge.weight - edge.left_growth - edge.right_growth;
+                            let local_max_length_abs = match peer_dual_node.grow_state {
+                                DualNodeGrowState::Grow => {
+                                    assert!(remaining_length % 2 == 0, "there is odd gap between two growing nodes, please make sure all weights are even numbers");
+                                    remaining_length / 2
+                                },
+                                DualNodeGrowState::Shrink => { continue },  // shrinking node will never cause 
+                                DualNodeGrowState::Stay => { remaining_length }
+                            };
+                            if local_max_length_abs == 0 {
+                                return MaxUpdateLength::Conflicting(Arc::clone(&peer_dual_node_ptr), Arc::clone(&dual_node_ptr));
+                            }
+                            max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
+                        }
+                    },
+                    None => {
+                        let local_max_length_abs = edge.weight - edge.left_growth - edge.right_growth;
+                        if local_max_length_abs == 0 {
+                            return MaxUpdateLength::Unimplemented;
+                        }
+                        max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
+                    },
                 }
             } else {
                 if is_left {
                     if edge.left_growth == 0 {  // TODO: check blossom non-negative
-                        return MaximumUpdateLength::Unimplemented;
+                        return MaxUpdateLength::Unimplemented;
                     }
                     max_length_abs = std::cmp::min(max_length_abs, edge.left_growth);
                 } else {
                     if edge.right_growth == 0 {
-                        return MaximumUpdateLength::Unimplemented;
+                        return MaxUpdateLength::Unimplemented;
                     }
                     max_length_abs = std::cmp::min(max_length_abs, edge.right_growth);
                 }
             }
         }
-        MaximumUpdateLength::NonZeroGrow(max_length_abs)
+        MaxUpdateLength::NonZeroGrow(max_length_abs)
     }
 
-    fn compute_maximum_grow_length(&mut self) -> MaximumUpdateLength {
-        unimplemented!()
+    fn compute_maximum_update_length(&mut self) -> MaxUpdateLength {
+        // first prepare all nodes for individual grow or shrink; Stay nodes will be prepared to shrink in order to minimize effect on others
+        for i in 0..self.nodes.len() {
+            let dual_node_ptr = {
+                match self.nodes[i].as_ref() {
+                    Some(internal_dual_node_ptr) => {
+                        let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                        Arc::clone(&dual_node_internal.origin)
+                    },
+                    _ => { continue }
+                }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            match dual_node.grow_state {
+                DualNodeGrowState::Grow => { self.prepare_dual_node_growth(&dual_node_ptr, true); },
+                DualNodeGrowState::Shrink | DualNodeGrowState::Stay => { self.prepare_dual_node_growth(&dual_node_ptr, false); },
+            };
+        }
+        let mut max_update_length = MaxUpdateLength::NoMoreNodes;
+        for i in 0..self.nodes.len() {
+            let dual_node_ptr = {
+                match self.nodes[i].as_ref() {
+                    Some(internal_dual_node_ptr) => {
+                        let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                        Arc::clone(&dual_node_internal.origin)
+                    },
+                    _ => { continue }
+                }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            let is_grow = match dual_node.grow_state {
+                DualNodeGrowState::Grow => true,
+                DualNodeGrowState::Shrink => false,
+                DualNodeGrowState::Stay => { continue }
+            };
+            let local_max_update_length = self.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, true);
+            max_update_length = MaxUpdateLength::min(max_update_length, local_max_update_length);
+        }
+        max_update_length
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
@@ -671,6 +733,50 @@ mod tests {
         set_grow_state(&dual_node_35_ptr, DualNodeGrowState::Shrink);
         dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("individual shrink half weight"), vec![&code, &dual_module]).unwrap();
+    }
+
+    #[test]
+    fn dual_module_serial_stop_reason_1() {  // cargo test dual_module_serial_stop_reason_1 -- --nocapture
+        let visualize_filename = format!("dual_module_serial_stop_reason_1.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // try to work on a simple syndrome
+        code.vertices[19].is_syndrome = true;
+        code.vertices[25].is_syndrome = true;
+        let syndrome = code.get_syndrome();
+        visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
+        // create dual nodes and grow them by half length
+        let root = DualModuleRoot::new(&syndrome, &mut dual_module);
+        let dual_node_19_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
+        let dual_node_25_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
+        // grow the maximum
+        let max_update_length = dual_module.compute_maximum_update_length();
+        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
+            assert_eq!(*length, 2 * half_weight);
+            dual_module.grow(*length);
+        } else {
+            panic!("unexpected max update length: {:?}", max_update_length)
+        }
+        visualizer.snapshot_combined(format!("grow"), vec![&code, &dual_module]).unwrap();
+        // grow the maximum
+        let max_update_length = dual_module.compute_maximum_update_length();
+        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
+            assert_eq!(*length, half_weight);
+            dual_module.grow(*length);
+        } else {
+            panic!("unexpected max update length: {:?}", max_update_length)
+        }
+        visualizer.snapshot_combined(format!("grow"), vec![&code, &dual_module]).unwrap();
+        // cannot grow anymore, find out the reason
+        let max_update_length = dual_module.compute_maximum_update_length();
+        println!("max_update_length: {:?}", max_update_length);
+        assert!(max_update_length.is_conflicting(&dual_node_19_ptr, &dual_node_25_ptr), "unexpected max update length: {:?}", max_update_length);
     }
 
 }
