@@ -12,26 +12,29 @@ use super::visualize::*;
 use super::util::*;
 use std::collections::HashMap;
 use crate::serde_json;
+use crate::rand_xoshiro::rand_core::SeedableRng;
 
 
 /// Vertex corresponds to a stabilizer measurement bit
 pub struct CodeVertex {
     /// position helps to visualize
-    position: VisualizePosition,
+    pub position: VisualizePosition,
     /// neighbor edges helps to set find individual edge
-    neighbor_edges: Vec<usize>,
+    pub neighbor_edges: Vec<usize>,
     /// virtual vertex won't report measurement results
-    is_virtual: bool,
+    pub is_virtual: bool,
+    /// whether it shows up syndrome, note that virtual nodes should NOT have syndrome
+    pub is_syndrome: bool,
 }
 
 /// Edge flips the measurement result of two vertices
 pub struct CodeEdge {
     /// the two vertices incident to this edge
-    vertices: (usize, usize),
+    pub vertices: (usize, usize),
     /// probability of flipping the results of these two vertices; do not set p to 0 to remove edge: if desired, create a new code type
-    p: f64,
+    pub p: f64,
     /// the integer weight of this edge
-    half_weight: Weight,
+    pub half_weight: Weight,
 }
 
 impl CodeEdge {
@@ -128,6 +131,7 @@ pub trait ExampleCode {
                 position: VisualizePosition::new(0., 0., 0.),
                 neighbor_edges: Vec::new(),
                 is_virtual: false,
+                is_syndrome: false,
             });
         }
         for (edge_idx, edge) in edges.iter().enumerate() {
@@ -165,6 +169,41 @@ pub trait ExampleCode {
         (vertex_num, weighted_edges, virtual_vertices)
     }
 
+    /// get current syndrome array
+    fn get_syndrome(&self) -> Vec<usize> {
+        let (vertices, _edges) = self.immutable_vertices_edges();
+        let mut syndrome = Vec::new();
+        for (vertex_idx, vertex) in vertices.iter().enumerate() {
+            if vertex.is_syndrome {
+                syndrome.push(vertex_idx);
+            }
+        }
+        syndrome
+    }
+    
+    /// generate random errors based on the edge probabilities and a seed for pseudo number generator
+    fn generate_random_errors(&mut self, seed: u64) -> Vec<usize> {
+        let mut rng = DeterministicRng::seed_from_u64(seed);
+        let (vertices, edges) = self.vertices_edges();
+        for vertex in vertices.iter_mut() {
+            vertex.is_syndrome = false;
+        }
+        for edge in edges.iter() {
+            if rng.next_f64() < edge.p {
+                let (v1, v2) = edge.vertices;
+                let vertex_1 = &mut vertices[v1];
+                if !vertex_1.is_virtual {
+                    vertex_1.is_syndrome = !vertex_1.is_syndrome;
+                }
+                let vertex_2 = &mut vertices[v2];
+                if !vertex_2.is_virtual {
+                    vertex_2.is_syndrome = !vertex_2.is_syndrome;
+                }
+            }
+        }
+        self.get_syndrome()
+    }
+
 }
 
 impl<T> FusionVisualizer for T where T: ExampleCode {
@@ -174,7 +213,7 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
         for vertex in self_vertices.iter() {
             vertices.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
-                if abbrev { "s" } else { "is_syndrome" }: 0,  // TODO: calculate syndrome
+                if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
                 // if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
             }));
         }
@@ -197,9 +236,9 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
 /// perfect quantum repetition code
 pub struct CodeCapacityRepetitionCode {
     /// vertices in the code
-    vertices: Vec<CodeVertex>,
+    pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
-    edges: Vec<CodeEdge>,
+    pub edges: Vec<CodeEdge>,
 }
 
 impl ExampleCode for CodeCapacityRepetitionCode {
@@ -251,9 +290,9 @@ impl CodeCapacityRepetitionCode {
 /// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
 pub struct CodeCapacityPlanarCode {
     /// vertices in the code
-    vertices: Vec<CodeVertex>,
+    pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
-    edges: Vec<CodeEdge>,
+    pub edges: Vec<CodeEdge>,
 }
 
 impl ExampleCode for CodeCapacityPlanarCode {
@@ -319,9 +358,9 @@ impl CodeCapacityPlanarCode {
 /// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
 pub struct PhenomenologicalPlanarCode {
     /// vertices in the code
-    vertices: Vec<CodeVertex>,
+    pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
-    edges: Vec<CodeEdge>,
+    pub edges: Vec<CodeEdge>,
 }
 
 impl ExampleCode for PhenomenologicalPlanarCode {
@@ -407,9 +446,9 @@ impl PhenomenologicalPlanarCode {
 /// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
 pub struct CircuitLevelPlanarCode {
     /// vertices in the code
-    vertices: Vec<CodeVertex>,
+    pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
-    edges: Vec<CodeEdge>,
+    pub edges: Vec<CodeEdge>,
 }
 
 impl ExampleCode for CircuitLevelPlanarCode {
@@ -518,7 +557,6 @@ impl CircuitLevelPlanarCode {
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -528,11 +566,15 @@ mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         visualizer.snapshot(format!("code"), code).unwrap();
+        for round in 0..3 {
+            code.generate_random_errors(round);
+            visualizer.snapshot(format!("syndrome {}", round + 1), code).unwrap();
+        }
     }
 
     #[test]
     fn example_code_capacity_repetition_code() {  // cargo test example_code_capacity_repetition_code -- --nocapture
-        let mut code = CodeCapacityRepetitionCode::new(7, 0.1, 500);
+        let mut code = CodeCapacityRepetitionCode::new(7, 0.2, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, format!("example_code_capacity_repetition_code.json"));
     }
@@ -546,14 +588,14 @@ mod tests {
 
     #[test]
     fn example_phenomenological_planar_code() {  // cargo test example_phenomenological_planar_code -- --nocapture
-        let mut code = PhenomenologicalPlanarCode::new(7, 7, 0.1, 500);
+        let mut code = PhenomenologicalPlanarCode::new(7, 7, 0.01, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, format!("example_phenomenological_planar_code.json"));
     }
 
     #[test]
     fn example_circuit_level_planar_code() {  // cargo test example_circuit_level_planar_code -- --nocapture
-        let mut code = CircuitLevelPlanarCode::new(7, 7, 0.1, 500);
+        let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, format!("example_circuit_level_planar_code.json"));
     }
