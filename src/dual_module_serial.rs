@@ -27,6 +27,8 @@ pub struct DualModuleSerial {
     pub active_timestamp: usize,
     /// bias of vertex index, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
     pub vertex_index_bias: usize,
+
+    // TODO: maintain an active list to optimize for average cases: most errors have already been matched, and we only need to work on a few remained
 }
 
 pub type DualNodeInternalPtr = Arc<RwLock<DualNodeInternal>>;
@@ -37,6 +39,8 @@ pub type DualNodeInternalPtr = Arc<RwLock<DualNodeInternal>>;
 pub struct DualNodeInternal {
     /// the pointer to the origin [`DualNode`]
     pub origin: DualNodePtr,
+    /// local index, to find myself in [`DualModuleSerial::nodes`]
+    index: NodeIndex,
     /// dual variable of this node
     pub dual_variable: Weight,
     /// edges on the boundary of this node, (`is_left`, `edge`)
@@ -152,21 +156,35 @@ impl DualModuleImpl for DualModuleSerial {
         self.nodes.clear();
     }
 
-    /// create a new dual node
-    fn create_dual_node(&mut self, node_array: &DualModuleRoot, node: DualNodePtr) {
-        let node_ptr = Arc::clone(&node);
-        let mut node = node.write();
+    /// add a new dual node from dual module root
+    fn add_dual_node(&mut self, dual_node_ptr: DualNodePtr) {
+        let mut node = dual_node_ptr.write();
         assert!(node.internal.is_none(), "dual node has already been created, do not call twice");
         let node_internal_ptr = Arc::new(RwLock::new(DualNodeInternal {
-            origin: node_ptr,
+            origin: Arc::clone(&dual_node_ptr),
             dual_variable: 0,
             boundary: Vec::new(),
+            index: self.nodes.len(),
         }));
         {
-            let mut boundary = &mut node_internal_ptr.write().boundary;
+            let boundary = &mut node_internal_ptr.write().boundary;
             match &node.class {
                 DualNodeClass::Blossom { nodes_circle } => {
-    
+                    // copy all the boundary edges and modify edge belongings
+                    for dual_node_ptr in nodes_circle.iter() {
+                        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+                        let dual_node_internal = dual_node_internal_ptr.read_recursive();
+                        for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
+                            boundary.push((*is_left, Arc::clone(edge_ptr)));
+                            let mut edge = edge_ptr.write();
+                            assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
+                            if *is_left {
+                                edge.left_dual_node = Some(Arc::clone(&node_internal_ptr));
+                            } else {
+                                edge.right_dual_node = Some(Arc::clone(&node_internal_ptr));
+                            }
+                        }
+                    }
                 },
                 DualNodeClass::SyndromeVertex { syndrome_index } => {
                     assert!(*syndrome_index >= self.vertex_index_bias, "syndrome not belonging to this dual module");
@@ -192,8 +210,43 @@ impl DualModuleImpl for DualModuleSerial {
         self.nodes.push(Some(node_internal_ptr));
     }
 
-    fn expand_blossom(&mut self, node: DualNodePtr) {
-        unimplemented!()
+    fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
+        self.prepare_dual_node_growth(&dual_node_ptr, false);  // prepare the blossom into shrinking
+        let node = dual_node_ptr.read_recursive();
+        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+        let dual_node_internal = dual_node_internal_ptr.read_recursive();
+        assert_eq!(dual_node_internal.dual_variable, 0, "only blossom with dual variable = 0 can be safely removed");
+        let node_idx = dual_node_internal.index;
+        assert!(self.nodes[node_idx].is_some(), "blossom may have already been removed, do not call twice");
+        assert!(Arc::ptr_eq(self.nodes[node_idx].as_ref().unwrap(), &dual_node_internal_ptr), "the blossom doesn't belong to this DualModuleRoot");
+        self.nodes[node_idx] = None;  // simply remove this blossom node
+        // recover edge belongings
+        for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
+            let mut edge = edge_ptr.write();
+            assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
+            if *is_left {
+                edge.left_dual_node = None;
+            } else {
+                edge.right_dual_node = None;
+            }
+        }
+        if let DualNodeClass::Blossom{ nodes_circle } = &node.class {
+            for circle_dual_node_ptr in nodes_circle.iter() {
+                let circle_dual_node_internal_ptr = self.get_dual_node_internal_ptr(&circle_dual_node_ptr);
+                let circle_dual_node_internal = circle_dual_node_internal_ptr.read_recursive();
+                for (is_left, edge_ptr) in circle_dual_node_internal.boundary.iter() {
+                    let mut edge = edge_ptr.write();
+                    assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
+                    if *is_left {
+                        edge.left_dual_node = Some(Arc::clone(&circle_dual_node_internal_ptr));
+                    } else {
+                        edge.right_dual_node = Some(Arc::clone(&circle_dual_node_internal_ptr));
+                    }
+                }
+            }
+        } else {
+            unreachable!()
+        }
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaximumUpdateLength {
@@ -249,7 +302,11 @@ impl DualModuleImpl for DualModuleSerial {
         }
         self.prepare_dual_node_growth(dual_node_ptr, length > 0);
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
-        dual_node_internal_ptr.write().dual_variable += length;
+        {  // update node dual variable and do sanity check
+            let mut dual_node_internal = dual_node_internal_ptr.write();
+            dual_node_internal.dual_variable += length;
+            assert!(dual_node_internal.dual_variable >= 0, "shrinking to negative dual variable is forbidden");
+        }
         let dual_node_internal = dual_node_internal_ptr.read_recursive();
         for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
             let is_left = *is_left;
@@ -283,7 +340,32 @@ impl DualModuleImpl for DualModuleSerial {
 
     fn grow(&mut self, length: Weight) {
         assert!(length > 0, "only positive growth is supported");
-        unimplemented!()
+        // first handle shrinks and then grow, to make sure they don't conflict
+        for i in 0..self.nodes.len() {
+            let dual_node_ptr = {
+                if let Some(node) = self.nodes[i].as_ref() {
+                    let dual_node_internal = node.read_recursive();
+                    Arc::clone(&dual_node_internal.origin)
+                } else { continue }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            if matches!(dual_node.grow_state, DualNodeGrowState::Shrink) {
+                self.grow_dual_node(&dual_node_ptr, -length);
+            }
+        }
+        // then grow those needed
+        for i in 0..self.nodes.len() {
+            let dual_node_ptr = {
+                if let Some(node) = self.nodes[i].as_ref() {
+                    let dual_node_internal = node.read_recursive();
+                    Arc::clone(&dual_node_internal.origin)
+                } else { continue }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            if matches!(dual_node.grow_state, DualNodeGrowState::Grow) {
+                self.grow_dual_node(&dual_node_ptr, length);
+            }
+        }
     }
 
 }
@@ -513,7 +595,7 @@ mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        // create dual module out of code
+        // create dual module
         let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
         let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
         // try to work on a simple syndrome
@@ -523,26 +605,72 @@ mod tests {
         visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         let root = DualModuleRoot::new(&syndrome, &mut dual_module);
-        let dual_node_19 = Arc::clone(root.nodes[0].as_ref().unwrap());
-        let dual_node_25 = Arc::clone(root.nodes[1].as_ref().unwrap());
-        dual_module.grow_dual_node(&dual_node_19, half_weight);
-        dual_module.grow_dual_node(&dual_node_25, half_weight);
+        let dual_node_19_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
+        let dual_node_25_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
+        dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
+        dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
         visualizer.snapshot_combined(format!("grow to 0.5"), vec![&code, &dual_module]).unwrap();
-        dual_module.grow_dual_node(&dual_node_19, half_weight);
-        dual_module.grow_dual_node(&dual_node_25, half_weight);
+        dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
+        dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
         visualizer.snapshot_combined(format!("grow to 1"), vec![&code, &dual_module]).unwrap();
-        dual_module.grow_dual_node(&dual_node_19, half_weight);
-        dual_module.grow_dual_node(&dual_node_25, half_weight);
+        dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
+        dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
         visualizer.snapshot_combined(format!("grow to 1.5"), vec![&code, &dual_module]).unwrap();
-        dual_module.grow_dual_node(&dual_node_19, -half_weight);
-        dual_module.grow_dual_node(&dual_node_25, -half_weight);
+        dual_module.grow_dual_node(&dual_node_19_ptr, -half_weight);
+        dual_module.grow_dual_node(&dual_node_25_ptr, -half_weight);
         visualizer.snapshot_combined(format!("shrink to 1"), vec![&code, &dual_module]).unwrap();
-        dual_module.grow_dual_node(&dual_node_19, -half_weight);
-        dual_module.grow_dual_node(&dual_node_25, -half_weight);
+        dual_module.grow_dual_node(&dual_node_19_ptr, -half_weight);
+        dual_module.grow_dual_node(&dual_node_25_ptr, -half_weight);
         visualizer.snapshot_combined(format!("shrink to 0.5"), vec![&code, &dual_module]).unwrap();
-        dual_module.grow_dual_node(&dual_node_19, -half_weight);
-        dual_module.grow_dual_node(&dual_node_25, -half_weight);
+        dual_module.grow_dual_node(&dual_node_19_ptr, -half_weight);
+        dual_module.grow_dual_node(&dual_node_25_ptr, -half_weight);
         visualizer.snapshot_combined(format!("shrink to 0"), vec![&code, &dual_module]).unwrap();
+    }
+
+    #[test]
+    fn dual_module_serial_blossom_basics() {  // cargo test dual_module_serial_blossom_basics -- --nocapture
+        let visualize_filename = format!("dual_module_serial_blossom_basics.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // try to work on a simple syndrome
+        code.vertices[19].is_syndrome = true;
+        code.vertices[26].is_syndrome = true;
+        code.vertices[35].is_syndrome = true;
+        let syndrome = code.get_syndrome();
+        visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
+        // create dual nodes and grow them by half length
+        let mut root = DualModuleRoot::new(&syndrome, &mut dual_module);
+        let dual_node_19_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
+        let dual_node_26_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
+        let dual_node_35_ptr = Arc::clone(root.nodes[2].as_ref().unwrap());
+        dual_module.grow(2 * half_weight);
+        visualizer.snapshot_combined(format!("before create blossom"), vec![&code, &dual_module]).unwrap();
+        let nodes_circle = vec![Arc::clone(&dual_node_19_ptr), Arc::clone(&dual_node_26_ptr), Arc::clone(&dual_node_35_ptr)];
+        set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink);
+        let dual_node_blossom = root.create_blossom(nodes_circle, &mut dual_module);
+        dual_module.grow(half_weight);
+        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&code, &dual_module]).unwrap();
+        dual_module.grow(half_weight);
+        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&code, &dual_module]).unwrap();
+        dual_module.grow(half_weight);
+        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&code, &dual_module]).unwrap();
+        set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink);
+        dual_module.grow(half_weight);
+        visualizer.snapshot_combined(format!("blossom shrink half weight"), vec![&code, &dual_module]).unwrap();
+        dual_module.grow(2 * half_weight);
+        visualizer.snapshot_combined(format!("blossom shrink weight"), vec![&code, &dual_module]).unwrap();
+        root.expand_blossom(dual_node_blossom, &mut dual_module);
+        set_grow_state(&dual_node_19_ptr, DualNodeGrowState::Shrink);
+        set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink);
+        set_grow_state(&dual_node_35_ptr, DualNodeGrowState::Shrink);
+        dual_module.grow(half_weight);
+        visualizer.snapshot_combined(format!("individual shrink half weight"), vec![&code, &dual_module]).unwrap();
     }
 
 }
