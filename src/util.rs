@@ -17,14 +17,19 @@ cfg_if::cfg_if! {
     if #[cfg(feature="u32_index")] {
         // use u32 to store index, for less memory usage
         pub type VertexIndex = u32;  // the vertex index in the decoding graph
+        pub type EdgeIndex = u32;
         pub type NodeIndex = u32;
         pub type SyndromeIndex = u32;
     } else {
         pub type VertexIndex = usize;
+        pub type EdgeIndex = usize;
         pub type NodeIndex = usize;
         pub type SyndromeIndex = usize;
     }
 }
+
+/// timestamp type determines how many fast clear before a hard clear is required, see [`FastClear`]
+pub type FastClearTimestamp = usize;
 
 
 #[allow(dead_code)]
@@ -48,14 +53,14 @@ pub trait FastClear {
     fn hard_clear(&mut self);
 
     /// get timestamp
-    fn get_timestamp(&self) -> usize;
+    fn get_timestamp(&self) -> FastClearTimestamp;
 
     /// set timestamp
-    fn set_timestamp(&mut self, timestamp: usize);
+    fn set_timestamp(&mut self, timestamp: FastClearTimestamp);
 
     /// dynamically clear it if not already cleared; it's safe to call many times
     #[inline(always)]
-    fn dynamic_clear(&mut self, active_timestamp: usize) {
+    fn dynamic_clear(&mut self, active_timestamp: FastClearTimestamp) {
         if self.get_timestamp() != active_timestamp {
             self.hard_clear();
             self.set_timestamp(active_timestamp);
@@ -64,7 +69,7 @@ pub trait FastClear {
 
     /// when debugging your program, you can put this function every time you obtained a lock of a new object
     #[inline(always)]
-    fn debug_assert_dynamic_cleared(&self, active_timestamp: usize) {
+    fn debug_assert_dynamic_cleared(&self, active_timestamp: FastClearTimestamp) {
         debug_assert!(self.get_timestamp() == active_timestamp, "bug detected: not dynamically cleared, expected timestamp: {}, current timestamp: {}"
             , active_timestamp, self.get_timestamp());
     }
@@ -82,14 +87,14 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
     fn ptr_mut(&mut self) -> &mut Arc<RwLock<ObjType>>;
 
     #[inline(always)]
-    fn read_recursive(&self, active_timestamp: usize) -> RwLockReadGuard<RawRwLock, ObjType> {
+    fn read_recursive(&self, active_timestamp: FastClearTimestamp) -> RwLockReadGuard<RawRwLock, ObjType> {
         let ret = self.ptr().read_recursive();
         ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
         ret
     }
 
     #[inline(always)]
-    fn write(&self, active_timestamp: usize) -> RwLockWriteGuard<RawRwLock, ObjType> {
+    fn write(&self, active_timestamp: FastClearTimestamp) -> RwLockWriteGuard<RawRwLock, ObjType> {
         let ret = self.ptr().write();
         ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
         ret
@@ -98,6 +103,38 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
     /// without sanity check: useful only in implementing hard_clear
     #[inline(always)]
     fn write_force(&self) -> RwLockWriteGuard<RawRwLock, ObjType> {
+        let ret = self.ptr().write();
+        ret
+    }
+
+    fn clone(&self) -> Self where Self: Sized {
+        Self::new_ptr(Arc::clone(self.ptr()))
+    }
+
+    fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(self.ptr(), other.ptr())
+    }
+
+}
+
+pub trait RwLockPtr<ObjType> {
+
+    fn new_ptr(ptr: Arc<RwLock<ObjType>>) -> Self;
+
+    fn new(obj: ObjType) -> Self;
+
+    fn ptr(&self) -> &Arc<RwLock<ObjType>>;
+
+    fn ptr_mut(&mut self) -> &mut Arc<RwLock<ObjType>>;
+
+    #[inline(always)]
+    fn read_recursive(&self) -> RwLockReadGuard<RawRwLock, ObjType> {
+        let ret = self.ptr().read_recursive();
+        ret
+    }
+
+    #[inline(always)]
+    fn write(&self) -> RwLockWriteGuard<RawRwLock, ObjType> {
         let ret = self.ptr().write();
         ret
     }

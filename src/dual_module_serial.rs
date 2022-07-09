@@ -24,14 +24,27 @@ pub struct DualModuleSerial {
     /// keep edges, which can also be accessed in [`Self::vertices`]
     pub edges: Vec<EdgePtr>,
     /// current timestamp
-    pub active_timestamp: usize,
+    pub active_timestamp: FastClearTimestamp,
     /// bias of vertex index, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
     pub vertex_index_bias: usize,
 
-    // TODO: maintain an active list to optimize for average cases: most errors have already been matched, and we only need to work on a few remained
+    // TODO: maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained
 }
 
-pub type DualNodeInternalPtr = Arc<RwLock<DualNodeInternal>>;
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct DualNodeInternalPtr { ptr: Arc<RwLock<DualNodeInternal>>, }
+
+impl RwLockPtr<DualNodeInternal> for DualNodeInternalPtr {
+    fn new_ptr(ptr: Arc<RwLock<DualNodeInternal>>) -> Self { Self { ptr: ptr }  }
+    fn new(obj: DualNodeInternal) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<DualNodeInternal>> { &self.ptr }
+    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<DualNodeInternal>> { &mut self.ptr }
+}
+
+impl PartialEq for DualNodeInternalPtr {
+    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
 
 /// internal information of the dual node, added to the [`DualNode`]
 #[derive(Derivative)]
@@ -58,6 +71,10 @@ impl FastClearRwLockPtr<Vertex> for VertexPtr {
     #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<Vertex>> { &mut self.ptr }
 }
 
+impl PartialEq for VertexPtr {
+    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct EdgePtr { ptr: Arc<RwLock<Edge>> }
@@ -69,11 +86,15 @@ impl FastClearRwLockPtr<Edge> for EdgePtr {
     #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<Edge>> { &mut self.ptr }
 }
 
+impl PartialEq for EdgePtr {
+    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct Vertex {
-    /// the index of this vertex in the decoding graph, not necessary the index in [`DualModule::vertices`] if it's partitioned
-    pub index: VertexIndex,
+    /// the index of this vertex in the decoding graph, not necessary the index in [`DualModuleSerial::vertices`] if it's partitioned
+    pub vertex_index: VertexIndex,
     /// if a vertex is virtual, then it can be matched any times
     pub is_virtual: bool,
     /// if a vertex is syndrome, then [`Vertex::propagated_dual_node`] always corresponds to that root
@@ -84,12 +105,14 @@ pub struct Vertex {
     /// propagated dual node
     pub propagated_dual_node: Option<DualNodeInternalPtr>,
     /// for fast clear
-    pub timestamp: usize,
+    pub timestamp: FastClearTimestamp,
 }
 
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct Edge {
+    /// local index, to find myself in [`DualModuleSerial::edges`]
+    index: EdgeIndex,
     /// total weight of this edge
     pub weight: Weight,
     /// left vertex (always with smaller index for consistency)
@@ -103,13 +126,23 @@ pub struct Edge {
     /// growth from the right point
     pub right_growth: Weight,
     /// left active tree node (if applicable)
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug(format_with="dual_node_internal_ptr_index_fmt"))]
     pub left_dual_node: Option<DualNodeInternalPtr>,
     /// right active tree node (if applicable)
-    #[derivative(Debug="ignore")]
+    #[derivative(Debug(format_with="dual_node_internal_ptr_index_fmt"))]
     pub right_dual_node: Option<DualNodeInternalPtr>,
     /// for fast clear
-    pub timestamp: usize,
+    pub timestamp: FastClearTimestamp,
+}
+
+/// only prints the index of node if exists
+pub fn dual_node_internal_ptr_index_fmt (dual_node_internal_ptr: &Option<DualNodeInternalPtr>, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+    match dual_node_internal_ptr {
+        Some(dual_node_internal_ptr) => {
+            let dual_node_internal = dual_node_internal_ptr.read_recursive();
+            write!(f, "Some({})", dual_node_internal.index)
+        }, None => { write!(f, "None") }
+    }
 }
 
 impl DualModuleImpl for DualModuleSerial {
@@ -119,7 +152,7 @@ impl DualModuleImpl for DualModuleSerial {
         let active_timestamp = 0;
         // create vertices
         let vertices: Vec<VertexPtr> = (0..vertex_num).map(|vertex_index| VertexPtr::new(Vertex {
-            index: vertex_index,
+            vertex_index: vertex_index,
             is_virtual: false,
             is_syndrome: false,
             edges: Vec::new(),
@@ -140,6 +173,7 @@ impl DualModuleImpl for DualModuleSerial {
             let left = usize::min(i, j);
             let right = usize::max(i, j);
             let edge_ptr = EdgePtr::new(Edge {
+                index: edges.len(),
                 weight: weight,
                 left: vertices[left].clone(),
                 right: vertices[right].clone(),
@@ -155,7 +189,7 @@ impl DualModuleImpl for DualModuleSerial {
                     let mut no_duplicate = true;
                     for edge in vertex.edges.iter() {
                         let edge = edge.read_recursive(active_timestamp);
-                        if edge.left.ptr_eq(&vertices[b]) || edge.right.ptr_eq(&vertices[b]) {
+                        if edge.left == vertices[b] || edge.right == vertices[b] {
                             no_duplicate = false;
                             eprintln!("duplicated edge between {} and {} with weight w1 = {} and w2 = {}, consider merge them into a single edge", i, j, weight, edge.weight);
                             break
@@ -187,12 +221,12 @@ impl DualModuleImpl for DualModuleSerial {
         let active_timestamp = self.active_timestamp;
         let mut node = dual_node_ptr.write();
         assert!(node.internal.is_none(), "dual node has already been created, do not call twice");
-        let node_internal_ptr = Arc::new(RwLock::new(DualNodeInternal {
-            origin: Arc::clone(&dual_node_ptr),
+        let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
+            origin: dual_node_ptr.clone(),
             dual_variable: 0,
             boundary: Vec::new(),
             index: self.nodes.len(),
-        }));
+        });
         {
             let boundary = &mut node_internal_ptr.write().boundary;
             match &node.class {
@@ -206,9 +240,9 @@ impl DualModuleImpl for DualModuleSerial {
                             let mut edge = edge_ptr.write(active_timestamp);
                             assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
                             if *is_left {
-                                edge.left_dual_node = Some(Arc::clone(&node_internal_ptr));
+                                edge.left_dual_node = Some(node_internal_ptr.clone());
                             } else {
-                                edge.right_dual_node = Some(Arc::clone(&node_internal_ptr));
+                                edge.right_dual_node = Some(node_internal_ptr.clone());
                             }
                         }
                     }
@@ -219,15 +253,16 @@ impl DualModuleImpl for DualModuleSerial {
                     assert!(vertex_idx < self.vertices.len(), "syndrome not belonging to this dual module");
                     let vertex_ptr = &self.vertices[vertex_idx];
                     let mut vertex = vertex_ptr.write(active_timestamp);
-                    vertex.propagated_dual_node = Some(Arc::clone(&node_internal_ptr));
+                    vertex.propagated_dual_node = Some(node_internal_ptr.clone());
+                    vertex.is_syndrome = true;
                     for edge_ptr in vertex.edges.iter() {
                         let mut edge = edge_ptr.write(active_timestamp);
-                        let is_left = vertex_ptr.ptr_eq(&edge.left);
+                        let is_left = vertex_ptr == &edge.left;
                         assert!(if is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
                         if is_left {
-                            edge.left_dual_node = Some(Arc::clone(&node_internal_ptr));
+                            edge.left_dual_node = Some(node_internal_ptr.clone());
                         } else {
-                            edge.right_dual_node = Some(Arc::clone(&node_internal_ptr));
+                            edge.right_dual_node = Some(node_internal_ptr.clone());
                         }
                         boundary.push((is_left, edge_ptr.clone()));
                     }
@@ -247,7 +282,7 @@ impl DualModuleImpl for DualModuleSerial {
         assert_eq!(dual_node_internal.dual_variable, 0, "only blossom with dual variable = 0 can be safely removed");
         let node_idx = dual_node_internal.index;
         assert!(self.nodes[node_idx].is_some(), "blossom may have already been removed, do not call twice");
-        assert!(Arc::ptr_eq(self.nodes[node_idx].as_ref().unwrap(), &dual_node_internal_ptr), "the blossom doesn't belong to this DualModuleRoot");
+        assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_internal_ptr, "the blossom doesn't belong to this DualModuleRoot");
         self.nodes[node_idx] = None;  // simply remove this blossom node
         // recover edge belongings
         for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
@@ -267,9 +302,9 @@ impl DualModuleImpl for DualModuleSerial {
                     let mut edge = edge_ptr.write(active_timestamp);
                     assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
                     if *is_left {
-                        edge.left_dual_node = Some(Arc::clone(&circle_dual_node_internal_ptr));
+                        edge.left_dual_node = Some(circle_dual_node_internal_ptr.clone());
                     } else {
-                        edge.right_dual_node = Some(Arc::clone(&circle_dual_node_internal_ptr));
+                        edge.right_dual_node = Some(circle_dual_node_internal_ptr.clone());
                     }
                 }
             }
@@ -288,20 +323,28 @@ impl DualModuleImpl for DualModuleSerial {
         let mut max_length_abs = Weight::MAX;
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
         let dual_node_internal = dual_node_internal_ptr.read_recursive();
+        if !is_grow {
+            if dual_node_internal.dual_variable == 0 {
+                let dual_node = dual_node_ptr.read_recursive();
+                match dual_node.class {
+                    DualNodeClass::Blossom { .. } => { return MaxUpdateLength::BlossomNeedExpand(dual_node_ptr.clone()) }
+                    DualNodeClass::SyndromeVertex { .. } => { return MaxUpdateLength::VertexShrinkStop(dual_node_ptr.clone()) }
+                }
+            }
+        }
         for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
             let is_left = *is_left;
             let edge = edge_ptr.read_recursive(active_timestamp);
-            edge.debug_assert_dynamic_cleared(self.active_timestamp);
             if is_grow {
                 // first check if both side belongs to the same tree node, if so, no constraint on this edge
                 let peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if is_left {
-                    edge.right_dual_node.as_ref().map(|ptr| Arc::clone(ptr))
+                    edge.right_dual_node.as_ref().map(|ptr| ptr.clone())
                 } else {
-                    edge.left_dual_node.as_ref().map(|ptr| Arc::clone(ptr))
+                    edge.left_dual_node.as_ref().map(|ptr| ptr.clone())
                 };
                 match peer_dual_node_internal_ptr {
                     Some(peer_dual_node_internal_ptr) => {
-                        if Arc::ptr_eq(&peer_dual_node_internal_ptr, &dual_node_internal_ptr) {
+                        if peer_dual_node_internal_ptr == dual_node_internal_ptr {
                             continue
                         } else {
                             let peer_dual_node_internal = peer_dual_node_internal_ptr.read_recursive();
@@ -313,11 +356,45 @@ impl DualModuleImpl for DualModuleSerial {
                                     assert!(remaining_length % 2 == 0, "there is odd gap between two growing nodes, please make sure all weights are even numbers");
                                     remaining_length / 2
                                 },
-                                DualNodeGrowState::Shrink => { continue },  // shrinking node will never cause 
+                                DualNodeGrowState::Shrink => {
+                                    // special case: if peer is a syndrome vertex and it's dual variable is already 0, 
+                                    // then we need to determine if some other growing nodes are conflicting with me
+                                    if matches!(peer_dual_node.class, DualNodeClass::SyndromeVertex{ .. }) && peer_dual_node_internal.dual_variable == 0 {
+                                        for (peer_is_left, peer_edge_ptr) in peer_dual_node_internal.boundary.iter() {
+                                            let peer_edge = peer_edge_ptr.read_recursive(active_timestamp);
+                                            let peer_remaining_length = peer_edge.weight - peer_edge.left_growth - peer_edge.right_growth;
+                                            if peer_remaining_length == 0 {
+                                                let peer_is_left = *peer_is_left;
+                                                let far_peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if peer_is_left {
+                                                    peer_edge.right_dual_node.as_ref().map(|ptr| ptr.clone())
+                                                } else {
+                                                    peer_edge.left_dual_node.as_ref().map(|ptr| ptr.clone())
+                                                };
+                                                match far_peer_dual_node_internal_ptr {
+                                                    Some(far_peer_dual_node_internal_ptr) => {
+                                                        let far_peer_dual_node_internal = far_peer_dual_node_internal_ptr.read_recursive();
+                                                        let far_peer_dual_node_ptr = &far_peer_dual_node_internal.origin;
+                                                        if far_peer_dual_node_ptr != dual_node_ptr {
+                                                            let far_peer_dual_node = far_peer_dual_node_ptr.read_recursive();
+                                                            match far_peer_dual_node.grow_state {
+                                                                DualNodeGrowState::Grow => {
+                                                                    return MaxUpdateLength::Conflicting(far_peer_dual_node_ptr.clone(), dual_node_ptr.clone());
+                                                                },
+                                                                _ => { }
+                                                            }
+                                                        }
+                                                    },
+                                                    None => { }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    continue
+                                },
                                 DualNodeGrowState::Stay => { remaining_length }
                             };
                             if local_max_length_abs == 0 {
-                                return MaxUpdateLength::Conflicting(Arc::clone(&peer_dual_node_ptr), Arc::clone(&dual_node_ptr));
+                                return MaxUpdateLength::Conflicting(peer_dual_node_ptr.clone(), dual_node_ptr.clone());
                             }
                             max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
                         }
@@ -354,7 +431,7 @@ impl DualModuleImpl for DualModuleSerial {
                 match self.nodes[i].as_ref() {
                     Some(internal_dual_node_ptr) => {
                         let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                        Arc::clone(&dual_node_internal.origin)
+                        dual_node_internal.origin.clone()
                     },
                     _ => { continue }
                 }
@@ -371,7 +448,7 @@ impl DualModuleImpl for DualModuleSerial {
                 match self.nodes[i].as_ref() {
                     Some(internal_dual_node_ptr) => {
                         let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                        Arc::clone(&dual_node_internal.origin)
+                        dual_node_internal.origin.clone()
                     },
                     _ => { continue }
                 }
@@ -416,7 +493,6 @@ impl DualModuleImpl for DualModuleSerial {
                 (edge.left_growth + edge.right_growth, edge.weight)
             };
             let edge = edge_ptr.read_recursive(active_timestamp);
-            edge.debug_assert_dynamic_cleared(self.active_timestamp);
             if growth > weight {
                 // first check for if both side belongs to the same dual node, if so, it's ok
                 let dual_node_internal_ptr_2: &Option<DualNodeInternalPtr> = if is_left {
@@ -424,13 +500,13 @@ impl DualModuleImpl for DualModuleSerial {
                 } else {
                     &edge.left_dual_node
                 };
-                if dual_node_internal_ptr_2.is_none() || !Arc::ptr_eq(dual_node_internal_ptr_2.as_ref().unwrap(), &dual_node_internal_ptr) {
-                    panic!("over-grown edge ({},{}): {}/{}", edge.left.read_recursive(active_timestamp).index
-                        , edge.right.read_recursive(active_timestamp).index, growth, weight);
+                if dual_node_internal_ptr_2.is_none() || dual_node_internal_ptr_2.as_ref().unwrap() != &dual_node_internal_ptr {
+                    panic!("over-grown edge ({},{}): {}/{}", edge.left.read_recursive(active_timestamp).vertex_index
+                        , edge.right.read_recursive(active_timestamp).vertex_index, growth, weight);
                 }
             } else if growth < 0 {
-                panic!("under-grown edge ({},{}): {}/{}", edge.left.read_recursive(active_timestamp).index
-                    , edge.right.read_recursive(active_timestamp).index, growth, weight);
+                panic!("under-grown edge ({},{}): {}/{}", edge.left.read_recursive(active_timestamp).vertex_index
+                    , edge.right.read_recursive(active_timestamp).vertex_index, growth, weight);
             }
         }
     }
@@ -442,7 +518,7 @@ impl DualModuleImpl for DualModuleSerial {
             let dual_node_ptr = {
                 if let Some(node) = self.nodes[i].as_ref() {
                     let dual_node_internal = node.read_recursive();
-                    Arc::clone(&dual_node_internal.origin)
+                    dual_node_internal.origin.clone()
                 } else { continue }
             };
             let dual_node = dual_node_ptr.read_recursive();
@@ -455,7 +531,7 @@ impl DualModuleImpl for DualModuleSerial {
             let dual_node_ptr = {
                 if let Some(node) = self.nodes[i].as_ref() {
                     let dual_node_internal = node.read_recursive();
-                    Arc::clone(&dual_node_internal.origin)
+                    dual_node_internal.origin.clone()
                 } else { continue }
             };
             let dual_node = dual_node_ptr.read_recursive();
@@ -478,8 +554,8 @@ impl FastClear for Edge {
         self.right_growth = 0;
     }
 
-    fn get_timestamp(&self) -> usize { self.timestamp }
-    fn set_timestamp(&mut self, timestamp: usize) { self.timestamp = timestamp; }
+    fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
 
 }
 
@@ -490,8 +566,8 @@ impl FastClear for Vertex {
         self.propagated_dual_node = None;
     }
 
-    fn get_timestamp(&self) -> usize { self.timestamp }
-    fn set_timestamp(&mut self, timestamp: usize) { self.timestamp = timestamp; }
+    fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
 
 }
 
@@ -514,7 +590,7 @@ impl DualModuleSerial {
 
     /// soft clear all growth
     pub fn clear_graph(&mut self) {
-        if self.active_timestamp == usize::MAX {  // rarely happens
+        if self.active_timestamp == FastClearTimestamp::MAX {  // rarely happens
             self.hard_clear_graph();
         }
         self.active_timestamp += 1;  // implicitly clear all edges growth
@@ -532,7 +608,6 @@ impl FusionVisualizer for DualModuleSerial {
         let mut vertices = Vec::<serde_json::Value>::new();
         for vertex in self.vertices.iter() {
             let vertex = vertex.read_recursive(active_timestamp);
-            vertex.debug_assert_dynamic_cleared(self.active_timestamp);
             vertices.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
             }));
@@ -540,11 +615,10 @@ impl FusionVisualizer for DualModuleSerial {
         let mut edges = Vec::<serde_json::Value>::new();
         for edge in self.edges.iter() {
             let edge = edge.read_recursive(active_timestamp);
-            edge.debug_assert_dynamic_cleared(self.active_timestamp);
             edges.push(json!({
                 if abbrev { "w" } else { "weight" }: edge.weight,
-                if abbrev { "l" } else { "left" }: edge.left.read_recursive(active_timestamp).index,
-                if abbrev { "r" } else { "right" }: edge.right.read_recursive(active_timestamp).index,
+                if abbrev { "l" } else { "left" }: edge.left.read_recursive(active_timestamp).vertex_index,
+                if abbrev { "r" } else { "right" }: edge.right.read_recursive(active_timestamp).vertex_index,
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
             }));
@@ -567,8 +641,8 @@ impl DualModuleSerial {
         let dual_node = dual_node_ptr.read_recursive();
         let dual_node_idx = dual_node.internal.as_ref().expect("must first register the dual node using `create_dual_node`");
         let dual_node_internal_ptr = self.nodes[*dual_node_idx].as_ref().expect("internal dual node must exists");
-        debug_assert!(Arc::ptr_eq(&dual_node_ptr, &dual_node_internal_ptr.read_recursive().origin), "dual node and dual internal node must corresponds to each other");
-        Arc::clone(&dual_node_internal_ptr)
+        debug_assert!(dual_node_ptr == &dual_node_internal_ptr.read_recursive().origin, "dual node and dual internal node must corresponds to each other");
+        dual_node_internal_ptr.clone()
     }
 
     /// adjust the boundary of each dual node to fit into the need of growing (`length` > 0) or shrinking (`length` < 0)
@@ -582,7 +656,6 @@ impl DualModuleSerial {
             for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
                 let is_left = *is_left;
                 let edge = edge_ptr.read_recursive(active_timestamp);
-                edge.debug_assert_dynamic_cleared(self.active_timestamp);
                 let peer_dual_node: &Option<DualNodeInternalPtr> = if is_left {
                     &edge.right_dual_node
                 } else {
@@ -597,7 +670,6 @@ impl DualModuleSerial {
                     };
                     // to avoid already occupied node being propagated
                     let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
-                    peer_vertex.debug_assert_dynamic_cleared(self.active_timestamp);
                     assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
                     propagating_vertices.push(peer_vertex_ptr.clone());
                 } else {  // keep other edges
@@ -608,12 +680,11 @@ impl DualModuleSerial {
             for vertex_ptr in propagating_vertices.iter() {
                 let mut node = vertex_ptr.write(active_timestamp);
                 if node.propagated_dual_node.is_none() {
-                    node.propagated_dual_node = Some(Arc::clone(&dual_node_internal_ptr));
+                    node.propagated_dual_node = Some(dual_node_internal_ptr.clone());
                     for edge_ptr in node.edges.iter() {
                         let (is_left, newly_propagated_edge) = {
                             let edge = edge_ptr.read_recursive(active_timestamp);
-                            edge.debug_assert_dynamic_cleared(self.active_timestamp);
-                            let is_left = vertex_ptr.ptr_eq(&edge.left);
+                            let is_left = vertex_ptr == &edge.left;
                             let not_fully_grown = edge.left_growth + edge.right_growth < edge.weight;
                             let newly_propagated_edge = not_fully_grown && if is_left {
                                 edge.left_dual_node.is_none()
@@ -626,9 +697,9 @@ impl DualModuleSerial {
                             updated_boundary.push((is_left, edge_ptr.clone()));
                             let mut edge = edge_ptr.write(active_timestamp);
                             if is_left {
-                                edge.left_dual_node = Some(Arc::clone(&dual_node_internal_ptr));
+                                edge.left_dual_node = Some(dual_node_internal_ptr.clone());
                             } else {
-                                edge.right_dual_node = Some(Arc::clone(&dual_node_internal_ptr));
+                                edge.right_dual_node = Some(dual_node_internal_ptr.clone());
                             };
                         }
                     }
@@ -639,7 +710,6 @@ impl DualModuleSerial {
             for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
                 let is_left = *is_left;
                 let edge = edge_ptr.read_recursive(active_timestamp);
-                edge.debug_assert_dynamic_cleared(self.active_timestamp);
                 let this_growth = if is_left {
                     edge.left_growth
                 } else {
@@ -654,9 +724,12 @@ impl DualModuleSerial {
                     };
                     // to avoid already occupied node being propagated
                     let this_vertex = this_vertex_ptr.read_recursive(active_timestamp);
-                    this_vertex.debug_assert_dynamic_cleared(self.active_timestamp);
-                    assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
-                    propagating_vertices.push(this_vertex_ptr.clone());
+                    if this_vertex.is_syndrome {  // never shrink from the syndrome itself
+                        updated_boundary.push((is_left, edge_ptr.clone()));
+                    } else {
+                        assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
+                        propagating_vertices.push(this_vertex_ptr.clone());
+                    }
                 } else {  // keep other edges
                     updated_boundary.push((is_left, edge_ptr.clone()));
                 }
@@ -669,8 +742,7 @@ impl DualModuleSerial {
                     for edge_ptr in node.edges.iter() {
                         let (is_left, newly_propagated_edge) = {
                             let edge = edge_ptr.read_recursive(active_timestamp);
-                            edge.debug_assert_dynamic_cleared(self.active_timestamp);
-                            let is_left = vertex_ptr.ptr_eq(&edge.left);
+                            let is_left = vertex_ptr == &edge.left;
                             // fully grown edge is where to shrink
                             let newly_propagated_edge = edge.left_growth + edge.right_growth == edge.weight;
                             (is_left, newly_propagated_edge)
@@ -678,13 +750,12 @@ impl DualModuleSerial {
                         if newly_propagated_edge {
                             updated_boundary.push((!is_left, edge_ptr.clone()));
                             let edge = edge_ptr.read_recursive(active_timestamp);
-                            edge.debug_assert_dynamic_cleared(self.active_timestamp);
                             if is_left {
                                 assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
-                                assert!(Arc::ptr_eq(edge.right_dual_node.as_ref().unwrap(), &dual_node_internal_ptr), "shrinking edge should be same tree node");
+                                assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr, "shrinking edge should be same tree node");
                             } else {
                                 assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
-                                assert!(Arc::ptr_eq(edge.left_dual_node.as_ref().unwrap(), &dual_node_internal_ptr), "shrinking edge should be same tree node");
+                                assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr, "shrinking edge should be same tree node");
                             };
                         } else {
                             let mut edge = edge_ptr.write(active_timestamp);
@@ -730,8 +801,8 @@ mod tests {
         visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         let root = DualModuleRoot::new(&syndrome, &mut dual_module);
-        let dual_node_19_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
-        let dual_node_25_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
+        let dual_node_19_ptr = root.nodes[0].as_ref().unwrap().clone();
+        let dual_node_25_ptr = root.nodes[1].as_ref().unwrap().clone();
         dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
         visualizer.snapshot_combined(format!("grow to 0.5"), vec![&code, &dual_module]).unwrap();
@@ -771,12 +842,12 @@ mod tests {
         visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         let mut root = DualModuleRoot::new(&syndrome, &mut dual_module);
-        let dual_node_19_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
-        let dual_node_26_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
-        let dual_node_35_ptr = Arc::clone(root.nodes[2].as_ref().unwrap());
+        let dual_node_19_ptr = root.nodes[0].as_ref().unwrap().clone();
+        let dual_node_26_ptr = root.nodes[1].as_ref().unwrap().clone();
+        let dual_node_35_ptr = root.nodes[2].as_ref().unwrap().clone();
         dual_module.grow(2 * half_weight);
         visualizer.snapshot_combined(format!("before create blossom"), vec![&code, &dual_module]).unwrap();
-        let nodes_circle = vec![Arc::clone(&dual_node_19_ptr), Arc::clone(&dual_node_26_ptr), Arc::clone(&dual_node_35_ptr)];
+        let nodes_circle = vec![dual_node_19_ptr.clone(), dual_node_26_ptr.clone(), dual_node_35_ptr.clone()];
         set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink);
         let dual_node_blossom = root.create_blossom(nodes_circle, &mut dual_module);
         dual_module.grow(half_weight);
@@ -816,8 +887,8 @@ mod tests {
         visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         let root = DualModuleRoot::new(&syndrome, &mut dual_module);
-        let dual_node_19_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
-        let dual_node_25_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
+        let dual_node_19_ptr = root.nodes[0].as_ref().unwrap().clone();
+        let dual_node_25_ptr = root.nodes[1].as_ref().unwrap().clone();
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
         if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
@@ -859,10 +930,10 @@ mod tests {
         let syndrome = code.get_syndrome();
         visualizer.snapshot_combined(format!("syndrome"), vec![&code, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
-        let root = DualModuleRoot::new(&syndrome, &mut dual_module);
-        let dual_node_18_ptr = Arc::clone(root.nodes[0].as_ref().unwrap());
-        let dual_node_26_ptr = Arc::clone(root.nodes[1].as_ref().unwrap());
-        let dual_node_34_ptr = Arc::clone(root.nodes[2].as_ref().unwrap());
+        let mut root = DualModuleRoot::new(&syndrome, &mut dual_module);
+        let dual_node_18_ptr = root.nodes[0].as_ref().unwrap().clone();
+        let dual_node_26_ptr = root.nodes[1].as_ref().unwrap().clone();
+        let dual_node_34_ptr = root.nodes[2].as_ref().unwrap().clone();
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
         if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
@@ -898,8 +969,40 @@ mod tests {
         // cannot grow anymore, find out the reason
         let max_update_length = dual_module.compute_maximum_update_length();
         println!("max_update_length: {:?}", max_update_length);
-        assert!(max_update_length.is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr) || max_update_length.is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
-            , "unexpected max update length: {:?}", max_update_length);
+        // {  // debug
+        //     for dual_node_ptr in [&dual_node_18_ptr, &dual_node_26_ptr, &dual_node_34_ptr] {
+        //         println!("boundary:");
+        //         let dual_node_internal_ptr = dual_module.get_dual_node_internal_ptr(dual_node_ptr);
+        //         let dual_node_internal = dual_node_internal_ptr.read_recursive();
+        //         for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
+        //             println!("{} {:?}", is_left, edge_ptr);
+        //         }
+        //     }
+        // }
+        assert!(max_update_length.is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected max update length: {:?}", max_update_length);
+        // for a blossom because 18 and 34 come from the same alternating tree
+        let dual_node_blossom = root.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], &mut dual_module);
+        // grow the maximum
+        let max_update_length = dual_module.compute_maximum_update_length();
+        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
+            assert_eq!(*length, 2 * half_weight);
+            dual_module.grow(*length);
+        } else {
+            panic!("unexpected max update length: {:?}", max_update_length)
+        }
+        visualizer.snapshot_combined(format!("grow blossom"), vec![&code, &dual_module]).unwrap();
+        // grow the maximum
+        let max_update_length = dual_module.compute_maximum_update_length();
+        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
+            assert_eq!(*length, 2 * half_weight);
+            dual_module.grow(*length);
+        } else {
+            panic!("unexpected max update length: {:?}", max_update_length)
+        }
+        visualizer.snapshot_combined(format!("grow blossom"), vec![&code, &dual_module]).unwrap();
+        // cannot grow anymore, find out the reason
+        let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::TouchingVirtual(dual_node_blossom), "unexpected max update length: {:?}", max_update_length);
     }
 
 }

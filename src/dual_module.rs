@@ -31,7 +31,7 @@ pub enum DualNodeGrowState {
 }
 
 /// gives the maximum absolute length to grow, if not possible, give the reason
-#[derive(Derivative)]
+#[derive(Derivative, PartialEq)]
 #[derivative(Debug)]
 pub enum MaxUpdateLength {
     /// non-zero maximum update length
@@ -40,6 +40,12 @@ pub enum MaxUpdateLength {
     NoMoreNodes,
     /// conflicting growth
     Conflicting(DualNodePtr, DualNodePtr),
+    /// conflicting growth because of touching virtual node
+    TouchingVirtual(DualNodePtr),
+    /// blossom hitting 0 dual variable while shrinking
+    BlossomNeedExpand(DualNodePtr),
+    /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module
+    VertexShrinkStop(DualNodePtr),
     /// unimplemented length, only used during development, should be removed later
     Unimplemented,
 }
@@ -61,7 +67,20 @@ pub struct DualNode {
 }
 
 /// the shared pointer of [`DualNode`]
-pub type DualNodePtr = Arc<RwLock<DualNode>>;
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct DualNodePtr { ptr: Arc<RwLock<DualNode>>, }
+
+impl RwLockPtr<DualNode> for DualNodePtr {
+    fn new_ptr(ptr: Arc<RwLock<DualNode>>) -> Self { Self { ptr: ptr }  }
+    fn new(obj: DualNode) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<DualNode>> { &self.ptr }
+    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<DualNode>> { &mut self.ptr }
+}
+
+impl PartialEq for DualNodePtr {
+    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
 
 /// helper function to set grow state
 pub fn set_grow_state(dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
@@ -151,7 +170,7 @@ impl DualModuleRoot {
     /// create a dual node corresponding to a syndrome vertex
     pub fn create_syndrome_node(&mut self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         let node_idx = self.nodes.len();
-        let node_ptr = Arc::new(RwLock::new(DualNode {
+        let node_ptr = DualNodePtr::new(DualNode {
             index: node_idx,
             internal: None,
             class: DualNodeClass::SyndromeVertex {
@@ -159,9 +178,9 @@ impl DualModuleRoot {
             },
             grow_state: DualNodeGrowState::Grow,
             parent_blossom: None,
-        }));
-        self.nodes.push(Some(Arc::clone(&node_ptr)));
-        dual_module_impl.add_syndrome_node(Arc::clone(&node_ptr));
+        });
+        self.nodes.push(Some(node_ptr.clone()));
+        dual_module_impl.add_syndrome_node(node_ptr.clone());
         node_ptr
     }
 
@@ -169,7 +188,7 @@ impl DualModuleRoot {
     /// the nodes circle MUST starts with a growing node and ends with a shrinking node
     pub fn create_blossom(&mut self, nodes_circle: Vec<DualNodePtr>, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         let node_idx = self.nodes.len();
-        let node_ptr = Arc::new(RwLock::new(DualNode {
+        let node_ptr = DualNodePtr::new(DualNode {
             index: node_idx,
             internal: None,
             class: DualNodeClass::Blossom {
@@ -177,23 +196,23 @@ impl DualModuleRoot {
             },
             grow_state: DualNodeGrowState::Grow,
             parent_blossom: None,
-        }));
+        });
         for (i, node) in nodes_circle.iter().enumerate() {
             let mut node = node.write();
             assert!(node.parent_blossom.is_none(), "cannot create blossom on a node that already belongs to a blossom");
             assert!(&node.grow_state == (if i % 2 == 0 { &DualNodeGrowState::Grow } else { &DualNodeGrowState::Shrink })
                 , "the nodes circle MUST starts with a growing node and ends with a shrinking node");
             node.grow_state = DualNodeGrowState::Stay;
-            node.parent_blossom = Some(Arc::clone(&node_ptr));
+            node.parent_blossom = Some(node_ptr.clone());
         }
         {  // fill in the nodes because they're in a valid state (all linked to this blossom)
             let mut node = node_ptr.write();
             node.class = DualNodeClass::Blossom {
                 nodes_circle: nodes_circle,
             };
-            self.nodes.push(Some(Arc::clone(&node_ptr)));
+            self.nodes.push(Some(node_ptr.clone()));
         }
-        dual_module_impl.add_blossom(Arc::clone(&node_ptr));
+        dual_module_impl.add_blossom(node_ptr.clone());
         node_ptr
     }
 
@@ -204,20 +223,20 @@ impl DualModuleRoot {
         let node = dual_node_ptr.read_recursive();
         let node_idx = node.index;
         assert!(self.nodes[node_idx].is_some(), "the blossom should not be expanded before");
-        assert!(Arc::ptr_eq(self.nodes[node_idx].as_ref().unwrap(), &dual_node_ptr), "the blossom doesn't belong to this DualModuleRoot");
+        assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_ptr, "the blossom doesn't belong to this DualModuleRoot");
         self.nodes[node_idx] = None;  // remove this blossom from root
         match &node.class {
             DualNodeClass::Blossom { nodes_circle } => {
                 for node in nodes_circle.iter() {
                     let mut node = node.write();
-                    assert!(node.parent_blossom.is_some() && Arc::ptr_eq(node.parent_blossom.as_ref().unwrap(), &dual_node_ptr), "internal error: parent blossom must be this blossom");
+                    assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &dual_node_ptr, "internal error: parent blossom must be this blossom");
                     assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
                     node.parent_blossom = None;
                 }
             },
             _ => { unreachable!() }
         }
-        dual_module_impl.remove_blossom(Arc::clone(&dual_node_ptr));
+        dual_module_impl.remove_blossom(dual_node_ptr.clone());
     }
 
 }
@@ -241,6 +260,9 @@ impl MaxUpdateLength {
             // TODO: complex priority
             (MaxUpdateLength::Conflicting( .. ), _) => { a },
             (_, MaxUpdateLength::Conflicting( .. )) => { b },
+            // VertexShrinkStop has the lowest priority
+            (MaxUpdateLength::NonZeroGrow(_), MaxUpdateLength::VertexShrinkStop(_)) => { a },
+            (MaxUpdateLength::VertexShrinkStop(_), MaxUpdateLength::NonZeroGrow(_)) => { b },
             _ => {
                 unimplemented!("min of {:?} and {:?}", a, b)
             }
@@ -251,10 +273,10 @@ impl MaxUpdateLength {
     #[allow(dead_code)]
     pub fn is_conflicting(&self, a: &DualNodePtr, b: &DualNodePtr) -> bool {
         if let MaxUpdateLength::Conflicting(n1, n2) = self {
-            if Arc::ptr_eq(n1, a) && Arc::ptr_eq(n2, b) {
+            if n1 == a && n2 == b {
                 return true
             }
-            if Arc::ptr_eq(n1, b) && Arc::ptr_eq(n2, a) {
+            if n1 == b && n2 == a {
                 return true
             }
         }
