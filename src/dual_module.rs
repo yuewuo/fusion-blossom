@@ -41,7 +41,7 @@ pub enum MaxUpdateLength {
     /// conflicting growth
     Conflicting(DualNodePtr, DualNodePtr),
     /// conflicting growth because of touching virtual node
-    TouchingVirtual(DualNodePtr),
+    TouchingVirtual(DualNodePtr, VertexIndex),
     /// blossom hitting 0 dual variable while shrinking
     BlossomNeedExpand(DualNodePtr),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module
@@ -67,8 +67,6 @@ pub struct DualNode {
 }
 
 /// the shared pointer of [`DualNode`]
-#[derive(Derivative)]
-#[derivative(Debug)]
 pub struct DualNodePtr { ptr: Arc<RwLock<DualNode>>, }
 
 impl RwLockPtr<DualNode> for DualNodePtr {
@@ -82,11 +80,20 @@ impl PartialEq for DualNodePtr {
     fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
 }
 
-/// helper function to set grow state
-pub fn set_grow_state(dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
-    let mut dual_node = dual_node_ptr.write();
-    assert!(dual_node.parent_blossom.is_none(), "setting node grow state inside a blossom forbidden");
-    dual_node.grow_state = grow_state;
+impl std::fmt::Debug for DualNodePtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let dual_node = self.read_recursive();
+        write!(f, "{}", dual_node.index)
+    }
+}
+
+impl DualNodePtr {
+    /// helper function to set grow state with sanity check
+    pub fn set_grow_state(&self, grow_state: DualNodeGrowState) {
+        let mut dual_node = self.write();
+        assert!(dual_node.parent_blossom.is_none(), "setting node grow state inside a blossom forbidden");
+        dual_node.grow_state = grow_state;
+    }
 }
 
 /// a sharable array of dual nodes, supporting dynamic partitioning;

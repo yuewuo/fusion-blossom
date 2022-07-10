@@ -93,6 +93,13 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
         ret
     }
 
+    /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+    #[inline(always)]
+    fn read_recursive_force(&self) -> RwLockReadGuard<RawRwLock, ObjType> {
+        let ret = self.ptr().read_recursive();
+        ret
+    }
+
     #[inline(always)]
     fn write(&self, active_timestamp: FastClearTimestamp) -> RwLockWriteGuard<RawRwLock, ObjType> {
         let ret = self.ptr().write();

@@ -31,8 +31,6 @@ pub struct DualModuleSerial {
     // TODO: maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained
 }
 
-#[derive(Derivative)]
-#[derivative(Debug)]
 pub struct DualNodeInternalPtr { ptr: Arc<RwLock<DualNodeInternal>>, }
 
 impl RwLockPtr<DualNodeInternal> for DualNodeInternalPtr {
@@ -44,6 +42,13 @@ impl RwLockPtr<DualNodeInternal> for DualNodeInternalPtr {
 
 impl PartialEq for DualNodeInternalPtr {
     fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
+impl std::fmt::Debug for DualNodeInternalPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let dual_node_internal = self.read_recursive();
+        write!(f, "{}", dual_node_internal.index)
+    }
 }
 
 /// internal information of the dual node, added to the [`DualNode`]
@@ -60,8 +65,6 @@ pub struct DualNodeInternal {
     pub boundary: Vec<(bool, EdgePtr)>,
 }
 
-#[derive(Derivative)]
-#[derivative(Debug)]
 pub struct VertexPtr { ptr: Arc<RwLock<Vertex>> }
 
 impl FastClearRwLockPtr<Vertex> for VertexPtr {
@@ -75,8 +78,13 @@ impl PartialEq for VertexPtr {
     fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
 }
 
-#[derive(Derivative)]
-#[derivative(Debug)]
+impl std::fmt::Debug for VertexPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let vertex = self.read_recursive_force();
+        write!(f, "{}", vertex.vertex_index)
+    }
+}
+
 pub struct EdgePtr { ptr: Arc<RwLock<Edge>> }
 
 impl FastClearRwLockPtr<Edge> for EdgePtr {
@@ -88,6 +96,13 @@ impl FastClearRwLockPtr<Edge> for EdgePtr {
 
 impl PartialEq for EdgePtr {
     fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
+impl std::fmt::Debug for EdgePtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let edge = self.read_recursive_force();
+        write!(f, "{}", edge.index)
+    }
 }
 
 #[derive(Derivative)]
@@ -126,23 +141,11 @@ pub struct Edge {
     /// growth from the right point
     pub right_growth: Weight,
     /// left active tree node (if applicable)
-    #[derivative(Debug(format_with="dual_node_internal_ptr_index_fmt"))]
     pub left_dual_node: Option<DualNodeInternalPtr>,
     /// right active tree node (if applicable)
-    #[derivative(Debug(format_with="dual_node_internal_ptr_index_fmt"))]
     pub right_dual_node: Option<DualNodeInternalPtr>,
     /// for fast clear
     pub timestamp: FastClearTimestamp,
-}
-
-/// only prints the index of node if exists
-pub fn dual_node_internal_ptr_index_fmt (dual_node_internal_ptr: &Option<DualNodeInternalPtr>, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-    match dual_node_internal_ptr {
-        Some(dual_node_internal_ptr) => {
-            let dual_node_internal = dual_node_internal_ptr.read_recursive();
-            write!(f, "Some({})", dual_node_internal.index)
-        }, None => { write!(f, "None") }
-    }
 }
 
 impl DualModuleImpl for DualModuleSerial {
@@ -233,6 +236,7 @@ impl DualModuleImpl for DualModuleSerial {
                 DualNodeClass::Blossom { nodes_circle } => {
                     // copy all the boundary edges and modify edge belongings
                     for dual_node_ptr in nodes_circle.iter() {
+                        self.prepare_dual_node_growth(dual_node_ptr, false);  // prepare all nodes in shrinking mode for consistency
                         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
                         let dual_node_internal = dual_node_internal_ptr.read_recursive();
                         for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
@@ -402,20 +406,31 @@ impl DualModuleImpl for DualModuleSerial {
                     None => {
                         let local_max_length_abs = edge.weight - edge.left_growth - edge.right_growth;
                         if local_max_length_abs == 0 {
-                            return MaxUpdateLength::Unimplemented;
+                            // check if peer is virtual node
+                            let peer_vertex_ptr: VertexPtr = if is_left {
+                                edge.right.clone()
+                            } else {
+                                edge.left.clone()
+                            };
+                            let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
+                            if peer_vertex.is_virtual {
+                                return MaxUpdateLength::TouchingVirtual(dual_node_ptr.clone(), peer_vertex.vertex_index);
+                            } else {
+                                unreachable!("this edge should've been removed from boundary because it's already fully grown, and it's peer vertex is not virtual")
+                            }
                         }
                         max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
                     },
                 }
             } else {
                 if is_left {
-                    if edge.left_growth == 0 {  // TODO: check blossom non-negative
-                        return MaxUpdateLength::Unimplemented;
+                    if edge.left_growth == 0 {
+                        unreachable!()
                     }
                     max_length_abs = std::cmp::min(max_length_abs, edge.left_growth);
                 } else {
                     if edge.right_growth == 0 {
-                        return MaxUpdateLength::Unimplemented;
+                        unreachable!()
                     }
                     max_length_abs = std::cmp::min(max_length_abs, edge.right_growth);
                 }
@@ -439,7 +454,8 @@ impl DualModuleImpl for DualModuleSerial {
             let dual_node = dual_node_ptr.read_recursive();
             match dual_node.grow_state {
                 DualNodeGrowState::Grow => { self.prepare_dual_node_growth(&dual_node_ptr, true); },
-                DualNodeGrowState::Shrink | DualNodeGrowState::Stay => { self.prepare_dual_node_growth(&dual_node_ptr, false); },
+                DualNodeGrowState::Shrink => { self.prepare_dual_node_growth(&dual_node_ptr, false); },
+                DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
             };
         }
         let mut max_update_length = MaxUpdateLength::NoMoreNodes;
@@ -670,8 +686,20 @@ impl DualModuleSerial {
                     };
                     // to avoid already occupied node being propagated
                     let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
-                    assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
-                    propagating_vertices.push(peer_vertex_ptr.clone());
+                    if peer_vertex.is_virtual {  // virtual node is never propagated, so keep this edge in the boundary
+                        updated_boundary.push((is_left, edge_ptr.clone()));
+                    } else {
+                        assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
+                        propagating_vertices.push(peer_vertex_ptr.clone());
+                        // this edge is dropped, so we need to set both end of this edge to this dual node
+                        drop(edge);  // unlock read
+                        let mut edge = edge_ptr.write(active_timestamp);
+                        if is_left {
+                            edge.right_dual_node = Some(dual_node_internal_ptr.clone());
+                        } else {
+                            edge.left_dual_node = Some(dual_node_internal_ptr.clone());
+                        }
+                    }
                 } else {  // keep other edges
                     updated_boundary.push((is_left, edge_ptr.clone()));
                 }
@@ -736,34 +764,44 @@ impl DualModuleSerial {
             }
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
             for vertex_ptr in propagating_vertices.iter() {
-                let mut node = vertex_ptr.write(active_timestamp);
-                if node.propagated_dual_node.is_some() {
-                    node.propagated_dual_node = None;
-                    for edge_ptr in node.edges.iter() {
-                        let (is_left, newly_propagated_edge) = {
+                let mut vertex = vertex_ptr.write(active_timestamp);
+                if vertex.propagated_dual_node.is_some() {
+                    vertex.propagated_dual_node = None;
+                    for edge_ptr in vertex.edges.iter() {
+                        let (is_left, newly_propagated_edge, removed_edge) = {
                             let edge = edge_ptr.read_recursive(active_timestamp);
                             let is_left = vertex_ptr == &edge.left;
                             // fully grown edge is where to shrink
-                            let newly_propagated_edge = edge.left_growth + edge.right_growth == edge.weight;
-                            (is_left, newly_propagated_edge)
+                            let newly_propagated_edge = edge.left_dual_node == Some(dual_node_internal_ptr.clone())
+                                && edge.right_dual_node == Some(dual_node_internal_ptr.clone())
+                                && edge.left_growth + edge.right_growth == edge.weight;
+                            let removed_edge = if is_left {
+                                edge.left_dual_node == Some(dual_node_internal_ptr.clone()) && edge.left_growth == 0
+                            } else {
+                                edge.right_dual_node == Some(dual_node_internal_ptr.clone()) && edge.right_growth == 0
+                            };
+                            (is_left, newly_propagated_edge, removed_edge)
                         };
                         if newly_propagated_edge {
                             updated_boundary.push((!is_left, edge_ptr.clone()));
-                            let edge = edge_ptr.read_recursive(active_timestamp);
+                            let mut edge = edge_ptr.write(active_timestamp);
                             if is_left {
                                 assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
                                 assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr, "shrinking edge should be same tree node");
+                                edge.left_dual_node = None;
                             } else {
                                 assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
                                 assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr, "shrinking edge should be same tree node");
+                                edge.right_dual_node = None;
                             };
-                        } else {
+                        }
+                        if removed_edge {
                             let mut edge = edge_ptr.write(active_timestamp);
                             if is_left {
                                 edge.left_dual_node = None;
                             } else {
                                 edge.right_dual_node = None;
-                            };
+                            }
                         }
                     }
                 }
@@ -782,6 +820,17 @@ impl DualModuleSerial {
 mod tests {
     use super::*;
     use super::super::example::*;
+
+    #[allow(dead_code)]
+    fn debug_print_dual_node(dual_module: &DualModuleSerial, dual_node_ptr: &DualNodePtr) {
+        println!("boundary:");
+        let dual_node_internal_ptr = dual_module.get_dual_node_internal_ptr(dual_node_ptr);
+        let dual_node_internal = dual_node_internal_ptr.read_recursive();
+        for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
+            let edge = edge_ptr.read_recursive_force();
+            println!("    {} {:?}", if *is_left { " left" } else { "right" }, edge);
+        }
+    }
 
     #[test]
     fn dual_module_serial_basics() {  // cargo test dual_module_serial_basics -- --nocapture
@@ -848,7 +897,7 @@ mod tests {
         dual_module.grow(2 * half_weight);
         visualizer.snapshot_combined(format!("before create blossom"), vec![&code, &dual_module]).unwrap();
         let nodes_circle = vec![dual_node_19_ptr.clone(), dual_node_26_ptr.clone(), dual_node_35_ptr.clone()];
-        set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
         let dual_node_blossom = root.create_blossom(nodes_circle, &mut dual_module);
         dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&code, &dual_module]).unwrap();
@@ -856,15 +905,15 @@ mod tests {
         visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&code, &dual_module]).unwrap();
         dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&code, &dual_module]).unwrap();
-        set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink);
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
         dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("blossom shrink half weight"), vec![&code, &dual_module]).unwrap();
         dual_module.grow(2 * half_weight);
         visualizer.snapshot_combined(format!("blossom shrink weight"), vec![&code, &dual_module]).unwrap();
         root.expand_blossom(dual_node_blossom, &mut dual_module);
-        set_grow_state(&dual_node_19_ptr, DualNodeGrowState::Shrink);
-        set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink);
-        set_grow_state(&dual_node_35_ptr, DualNodeGrowState::Shrink);
+        dual_node_19_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        dual_node_35_ptr.set_grow_state(DualNodeGrowState::Shrink);
         dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("individual shrink half weight"), vec![&code, &dual_module]).unwrap();
     }
@@ -891,21 +940,13 @@ mod tests {
         let dual_node_25_ptr = root.nodes[1].as_ref().unwrap().clone();
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
-        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
-            assert_eq!(*length, 2 * half_weight);
-            dual_module.grow(*length);
-        } else {
-            panic!("unexpected max update length: {:?}", max_update_length)
-        }
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(2 * half_weight);
         visualizer.snapshot_combined(format!("grow"), vec![&code, &dual_module]).unwrap();
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
-        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
-            assert_eq!(*length, half_weight);
-            dual_module.grow(*length);
-        } else {
-            panic!("unexpected max update length: {:?}", max_update_length)
-        }
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("grow"), vec![&code, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let max_update_length = dual_module.compute_maximum_update_length();
@@ -936,49 +977,30 @@ mod tests {
         let dual_node_34_ptr = root.nodes[2].as_ref().unwrap().clone();
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
-        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
-            assert_eq!(*length, half_weight);
-            dual_module.grow(*length);
-        } else {
-            panic!("unexpected max update length: {:?}", max_update_length)
-        }
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("grow"), vec![&code, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let max_update_length = dual_module.compute_maximum_update_length();
         assert!(max_update_length.is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr) || max_update_length.is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected max update length: {:?}", max_update_length);
         // first match 18 and 26
-        set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay);
-        set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay);
+        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Stay);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Stay);
         // cannot grow anymore, find out the reason
         let max_update_length = dual_module.compute_maximum_update_length();
         assert!(max_update_length.is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected max update length: {:?}", max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
-        set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow);
-        set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink);
+        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Grow);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
-        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
-            assert_eq!(*length, half_weight);
-            dual_module.grow(*length);
-        } else {
-            panic!("unexpected max update length: {:?}", max_update_length)
-        }
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(half_weight);
         visualizer.snapshot_combined(format!("grow"), vec![&code, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let max_update_length = dual_module.compute_maximum_update_length();
-        println!("max_update_length: {:?}", max_update_length);
-        // {  // debug
-        //     for dual_node_ptr in [&dual_node_18_ptr, &dual_node_26_ptr, &dual_node_34_ptr] {
-        //         println!("boundary:");
-        //         let dual_node_internal_ptr = dual_module.get_dual_node_internal_ptr(dual_node_ptr);
-        //         let dual_node_internal = dual_node_internal_ptr.read_recursive();
-        //         for (is_left, edge_ptr) in dual_node_internal.boundary.iter() {
-        //             println!("{} {:?}", is_left, edge_ptr);
-        //         }
-        //     }
-        // }
         assert!(max_update_length.is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected max update length: {:?}", max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
         let dual_node_blossom = root.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], &mut dual_module);
@@ -993,16 +1015,46 @@ mod tests {
         visualizer.snapshot_combined(format!("grow blossom"), vec![&code, &dual_module]).unwrap();
         // grow the maximum
         let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(2 * half_weight);
+        visualizer.snapshot_combined(format!("grow blossom"), vec![&code, &dual_module]).unwrap();
+        // cannot grow anymore, find out the reason
+        let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 23)
+            || max_update_length == MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 39), "unexpected max update length: {:?}", max_update_length);
+        // blossom touches virtual boundary, so it's matched
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Stay);
+        let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::NoMoreNodes, "unexpected max update length: {:?}", max_update_length);
+        // also test the reverse procedure: shrinking and expanding blossom
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(2 * half_weight);
+        visualizer.snapshot_combined(format!("shrink blossom"), vec![&code, &dual_module]).unwrap();
+        // before expand
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        dual_module.grow(2 * half_weight);
+        visualizer.snapshot_combined(format!("shrink blossom"), vec![&code, &dual_module]).unwrap();
+        // cannot shrink anymore, find out the reason
+        let max_update_length = dual_module.compute_maximum_update_length();
+        assert!(max_update_length == MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone()), "unexpected max update length: {:?}", max_update_length);
+        // expand blossom
+        root.expand_blossom(dual_node_blossom, &mut dual_module);
+        // regain access to underlying nodes
+        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
+        dual_node_34_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        let max_update_length = dual_module.compute_maximum_update_length();
         if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
             assert_eq!(*length, 2 * half_weight);
             dual_module.grow(*length);
         } else {
             panic!("unexpected max update length: {:?}", max_update_length)
         }
-        visualizer.snapshot_combined(format!("grow blossom"), vec![&code, &dual_module]).unwrap();
-        // cannot grow anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::TouchingVirtual(dual_node_blossom), "unexpected max update length: {:?}", max_update_length);
+        visualizer.snapshot_combined(format!("shrink"), vec![&code, &dual_module]).unwrap();
     }
 
 }
