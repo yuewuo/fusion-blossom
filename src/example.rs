@@ -169,6 +169,18 @@ pub trait ExampleCode {
         (vertex_num, weighted_edges, virtual_vertices)
     }
 
+    /// set syndrome
+    fn set_syndrome(&mut self, syndrome_vertices: &Vec<usize>) {
+        let (vertices, _edges) = self.vertices_edges();
+        for vertex in vertices.iter_mut() {
+            vertex.is_syndrome = false;
+        }
+        for vertex_idx in syndrome_vertices.iter() {
+            let vertex = &mut vertices[*vertex_idx];
+            vertex.is_syndrome = true;
+        }
+    }
+
     /// get current syndrome array
     fn get_syndrome(&self) -> Vec<usize> {
         let (vertices, _edges) = self.immutable_vertices_edges();

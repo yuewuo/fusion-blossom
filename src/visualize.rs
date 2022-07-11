@@ -57,7 +57,7 @@ pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) 
         // recover
         assert!(vertex.contains_key(key_is_virtual), "missing unrecoverable field");
         if !vertex.contains_key(key_is_syndrome) {
-            vertex[key_is_syndrome] = json!(0);  // by default no syndrome
+            vertex.insert(key_is_syndrome.to_string(), json!(0));  // by default no syndrome
         }
     }
     // fix edges missing fields
@@ -86,7 +86,7 @@ pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) 
     }
     let tree_nodes = value.get_mut("tree_nodes").unwrap().as_array_mut().expect("tree_nodes must be an array");
     for _tree_node in tree_nodes {
-        unimplemented!();
+        // unimplemented!();
     }
 }
 
@@ -283,133 +283,84 @@ pub fn print_visualize_link(filename: &String) {
 mod tests {
     use super::*;
     use super::super::*;
-    use super::super::fusion_single_thread::*;
-    use std::collections::HashMap;
-    use std::sync::Arc;
+    use super::super::example::*;
+    use super::super::dual_module_serial::*;
+    use super::super::dual_module::*;
 
     #[test]
     fn visualize_test_1() {  // cargo test visualize_test_1 -- --nocapture
-        let d = 11usize;
-        let p = 0.2f64;
-        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
-        let node_num = row_node_num * d;  // `d` rows
-        let mut pos = HashMap::<(isize, isize), usize>::new();
-        for row in 0..d {
-            let bias = row * row_node_num;
-            for i in 0..d-1 {
-                pos.insert((row as isize, i as isize), bias + i);
-            }
-            pos.insert((row as isize, -1), bias + d);
-        }
-        let half_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
-        let weight = half_weight * 2;  // to make sure weight is even number for ease of this test function
-        println!("half_weight: {}, weight: {}", half_weight, weight);
-        let weighted_edges = {
-            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
-            for row in 0..d {
-                let bias = row * row_node_num;
-                for i in 0..d-1 {
-                    weighted_edges.push((bias + i, bias + i+1, weight));
-                }
-                weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
-                if row + 1 < d {
-                    for i in 0..d-1 {
-                        weighted_edges.push((bias + i, bias + i + row_node_num, weight));
-                    }
-                }
-            }
-            weighted_edges
-        };
-        let virtual_nodes = {
-            let mut virtual_nodes = Vec::new();
-            for row in 0..d {
-                let bias = row * row_node_num;
-                virtual_nodes.push(bias + d - 1);
-                virtual_nodes.push(bias + d);
-            }
-            virtual_nodes
-        };
-        // hardcode syndrome
-        let syndrome_nodes = vec![39, 63, 52, 100, 90];
-        // run single-thread fusion blossom algorithm
-        let visualize_filename = static_visualize_data_filename();
-        print_visualize_link(&visualize_filename);
+        let visualize_filename = format!("visualize_test_1.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(11, 0.2, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        let mut positions = Vec::new();
-        for row in 0..d {
-            let pos_i = row as f64;
-            for i in 0..d {
-                positions.push(VisualizePosition::new(pos_i, i as f64, 0.));
-            }
-            positions.push(VisualizePosition::new(pos_i, -1., 0.));
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let syndrome_vertices = vec![39, 63, 52, 100, 90];
+        for syndrome_vertex in syndrome_vertices.iter() {
+            code.vertices[*syndrome_vertex].is_syndrome = true;
         }
-        visualizer.set_positions(positions, true);  // automatic center all nodes
-        let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
-        fusion_solver.load_syndrome(&syndrome_nodes);
-        visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
-        let syndrome_tree_nodes: Vec<TreeNodePtr> = syndrome_nodes.iter().map(|&node_index| {
-            Arc::clone(fusion_solver.nodes[node_index].read_recursive().tree_node.as_ref().unwrap())
-        }).collect();
+        let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot(format!("initial"), &dual_module).unwrap();
+        // create dual nodes and grow them by half length
         // test basic grow and shrink of a single tree node
         for _ in 0..4 {
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], half_weight);
-            visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
+            dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), half_weight);
+            visualizer.snapshot(format!("grow half weight"), &dual_module).unwrap();
         }
         for _ in 0..4 {
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], -half_weight);
-            visualizer.snapshot(format!("shrink half weight"), &fusion_solver).unwrap();
+            dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), -half_weight);
+            visualizer.snapshot(format!("shrink half weight"), &dual_module).unwrap();
         }
-        for _ in 0..3 {
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], half_weight);
+        for _ in 0..3 { dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), half_weight); }
+        visualizer.snapshot(format!("grow 3 half weight"), &dual_module).unwrap();
+        for _ in 0..3 { dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), -half_weight); }
+        visualizer.snapshot(format!("shrink 3 half weight"), &dual_module).unwrap();
+        // test all
+        for i in 0..interface.nodes.len() {
+            dual_module.grow_dual_node(interface.nodes[i].as_ref().unwrap(), half_weight);
+            visualizer.snapshot(format!("grow half weight"), &dual_module).unwrap();
         }
-        visualizer.snapshot(format!("grow 3 half weight"), &fusion_solver).unwrap();
-        for _ in 0..3 {
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes[0], -half_weight);
-        }
-        visualizer.snapshot(format!("shrink 3 half weight"), &fusion_solver).unwrap();
-        // // test all
-        // for i in 0..syndrome_tree_nodes.len() {
-        //     fusion_solver.grow_tree_node(&syndrome_tree_nodes[i], half_weight);
-        //     visualizer.snapshot(format!("grow half weight"), &fusion_solver).unwrap();
-        // }
-        // visualizer.snapshot(format!("end"), &fusion_solver).unwrap();
     }
 
 
     #[test]
     fn visualize_paper_weighted_union_find_decoder() {  // cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
+        let visualize_filename = format!("visualize_paper_weighted_union_find_decoder.json");
         let d = 3usize;
         let td = 4usize;
         let p = 0.2f64;
-        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
-        let t_node_num = row_node_num * d;  // `d` rows
-        let half_node_num = t_node_num * td;  // `td` layers
-        let node_num = half_node_num * 2;  // both X and Z type stabilizers altogether
+        let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
+        let t_vertex_num = row_vertex_num * d;  // `d` rows
+        let half_vertex_num = t_vertex_num * td;  // `td` layers
+        let vertex_num = half_vertex_num * 2;  // both X and Z type stabilizers altogether
         let half_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
         let weight = half_weight * 2;  // to make sure weight is even number for ease of this test function
         let weighted_edges = {
             let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
             for is_z in [true, false] {
                 for t in 0..td {
-                    let t_bias = t * t_node_num + if is_z { 0 } else { half_node_num };
+                    let t_bias = t * t_vertex_num + if is_z { 0 } else { half_vertex_num };
                     for row in 0..d {
-                        let bias = t_bias + row * row_node_num;
+                        let bias = t_bias + row * row_vertex_num;
                         for i in 0..d-1 {
                             weighted_edges.push((bias + i, bias + i+1, weight));
                         }
                         weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
                         if row + 1 < d {
                             for i in 0..d-1 {
-                                weighted_edges.push((bias + i, bias + i + row_node_num, weight));
+                                weighted_edges.push((bias + i, bias + i + row_vertex_num, weight));
                             }
                         }
                     }
                     // inter-layer connection
                     if t + 1 < td {
                         for row in 0..d {
-                            let bias = t_bias + row * row_node_num;
+                            let bias = t_bias + row * row_vertex_num;
                             for i in 0..d-1 {
-                                weighted_edges.push((bias + i, bias + i + t_node_num, weight));
+                                weighted_edges.push((bias + i, bias + i + t_vertex_num, weight));
                                 // diagonal edges
                                 let diagonal_diffs: Vec<(isize, isize)> = if is_z {
                                     vec![(0, 1), (1, 0), (1, 1)]
@@ -421,7 +372,7 @@ mod tests {
                                     let new_row = row as isize + di;  // row corresponds to `i`
                                     let new_i = i as isize + dj;  // i corresponds to `j`
                                     if new_row >= 0 && new_i >= 0 && new_row < d as isize && new_i < (d-1) as isize {
-                                        let new_bias = t_bias + (new_row as usize) * row_node_num + t_node_num;
+                                        let new_bias = t_bias + (new_row as usize) * row_vertex_num + t_vertex_num;
                                         weighted_edges.push((bias + i, new_bias + new_i as usize, weight));
                                     }
                                 }
@@ -432,25 +383,24 @@ mod tests {
             }
             weighted_edges
         };
-        let virtual_nodes = {
-            let mut virtual_nodes = Vec::new();
+        let virtual_vertices = {
+            let mut virtual_vertices = Vec::new();
             for is_z in [true, false] {
                 for t in 0..td {
-                    let t_bias = t * t_node_num + if is_z { 0 } else { half_node_num };
+                    let t_bias = t * t_vertex_num + if is_z { 0 } else { half_vertex_num };
                     for row in 0..d {
-                        let bias = t_bias + row * row_node_num;
-                        virtual_nodes.push(bias + d - 1);
-                        virtual_nodes.push(bias + d);
+                        let bias = t_bias + row * row_vertex_num;
+                        virtual_vertices.push(bias + d - 1);
+                        virtual_vertices.push(bias + d);
                     }
                 }
             }
-            virtual_nodes
+            virtual_vertices
         };
         // hardcode syndrome
-        let syndrome_nodes = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
+        let syndrome_vertices = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
         let grow_edges = vec![48, 156, 169, 81, 38, 135];
         // run single-thread fusion blossom algorithm
-        let visualize_filename = static_visualize_data_filename();
         print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))]);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         let mut positions = Vec::new();
@@ -476,143 +426,81 @@ mod tests {
             }
         }
         visualizer.set_positions(positions, true);  // automatic center all nodes
-        let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
-        fusion_solver.load_syndrome(&syndrome_nodes);
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        DualModuleInterface::new(&syndrome_vertices, &mut dual_module);
         // grow edges
         for &edge_index in grow_edges.iter() {
-            let mut edge = fusion_solver.edges[edge_index].write();
+            let mut edge = dual_module.edges[edge_index].write_force();
             edge.left_growth = edge.weight;
         }
         // save snapshot
-        visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
+        visualizer.snapshot(format!("initial"), &dual_module).unwrap();
     }
 
     #[test]
     fn visualize_rough_idea_fusion_blossom() {  // cargo test visualize_rough_idea_fusion_blossom -- --nocapture
-        let d: usize = 7;
-        let td: usize = 8;
-        let p: f64 = 0.2;
-        let is_circuit_level = false;
-        let row_node_num = (d-1) + 2;  // two virtual nodes at left and right
-        let t_node_num = row_node_num * d;  // `d` rows
-        let half_node_num = t_node_num * td;  // `td` layers
-        let node_num = half_node_num;  // only Z type stabilizers
-        let quarter_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
-        let half_weight = quarter_weight * 2;
-        let weight = half_weight * 2;  // to make sure weight is even number for ease of this test function
-        let weighted_edges = {
-            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
-            for t in 0..td {
-                let t_bias = t * t_node_num;
-                for row in 0..d {
-                    let bias = t_bias + row * row_node_num;
-                    for i in 0..d-1 {
-                        weighted_edges.push((bias + i, bias + i+1, weight));
-                    }
-                    weighted_edges.push((bias + 0, bias + d, weight));  // left most edge
-                    if row + 1 < d {
-                        for i in 0..d-1 {
-                            weighted_edges.push((bias + i, bias + i + row_node_num, weight));
-                        }
-                    }
-                }
-                // inter-layer connection
-                if t + 1 < td {
-                    for row in 0..d {
-                        let bias = t_bias + row * row_node_num;
-                        for i in 0..d-1 {
-                            weighted_edges.push((bias + i, bias + i + t_node_num, weight));
-                            // diagonal edges
-                            if is_circuit_level {
-                                let diagonal_diffs: Vec<(isize, isize)> = vec![(0, 1), (1, 0), (1, 1)];
-                                for (di, dj) in diagonal_diffs {
-                                    let new_row = row as isize + di;  // row corresponds to `i`
-                                    let new_i = i as isize + dj;  // i corresponds to `j`
-                                    if new_row >= 0 && new_i >= 0 && new_row < d as isize && new_i < (d-1) as isize {
-                                        let new_bias = t_bias + (new_row as usize) * row_node_num + t_node_num;
-                                        weighted_edges.push((bias + i, new_bias + new_i as usize, weight));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        let quarter_weight = 250;
+        let half_weight = 2 * quarter_weight;
+        for is_circuit_level in [false, true] {
+            let visualize_filename = if is_circuit_level {
+                format!("visualize_rough_idea_fusion_blossom_circuit_level.json")
+            } else {
+                format!("visualize_rough_idea_fusion_blossom.json")
+            };
+            let mut code: Box<dyn ExampleCode> = if is_circuit_level {
+                Box::new(CircuitLevelPlanarCode::new_diagonal(7, 7, 0.2, half_weight, 0.2))
+            } else {
+                Box::new(PhenomenologicalPlanarCode::new(7, 7, 0.2, half_weight))
+            };
+            let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+            visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+            print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
+            // create dual module
+            let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+            let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+            // hardcode syndrome          1   2   0   3    5    4    6    7
+            let syndrome_vertices = vec![25, 33, 20, 76, 203, 187, 243, 315];
+            code.set_syndrome(&syndrome_vertices);
+            // create dual nodes and grow them by half length
+            let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+            // save snapshot
+            visualizer.snapshot(format!("initial"), &dual_module).unwrap();
+            // first layer grow first
+            dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), quarter_weight);
+            dual_module.grow_dual_node(interface.nodes[1].as_ref().unwrap(), quarter_weight);
+            dual_module.grow_dual_node(interface.nodes[2].as_ref().unwrap(), quarter_weight);
+            visualizer.snapshot(format!("grow a quarter"), &dual_module).unwrap();
+            // merge and match
+            dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), quarter_weight);
+            dual_module.grow_dual_node(interface.nodes[1].as_ref().unwrap(), quarter_weight);
+            dual_module.grow_dual_node(interface.nodes[2].as_ref().unwrap(), quarter_weight);
+            visualizer.snapshot(format!("find a match"), &dual_module).unwrap();
+            // grow to boundary
+            dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), half_weight);
+            visualizer.snapshot(format!("touch temporal boundary"), &dual_module).unwrap();
+            // add more measurement rounds
+            visualizer.snapshot(format!("add measurement #2"), &dual_module).unwrap();
+            visualizer.snapshot(format!("add measurement #3"), &dual_module).unwrap();
+            visualizer.snapshot(format!("add measurement #4"), &dual_module).unwrap();
+            // handle errors at measurement round 4
+            dual_module.grow_dual_node(interface.nodes[5].as_ref().unwrap(), half_weight);
+            dual_module.grow_dual_node(interface.nodes[4].as_ref().unwrap(), half_weight);
+            visualizer.snapshot(format!("grow a half"), &dual_module).unwrap();
+            dual_module.grow_dual_node(interface.nodes[5].as_ref().unwrap(), half_weight);
+            dual_module.grow_dual_node(interface.nodes[4].as_ref().unwrap(), half_weight);
+            visualizer.snapshot(format!("temporary match"), &dual_module).unwrap();
+            // handle errors at measurement round 5
+            visualizer.snapshot(format!("add measurement #5"), &dual_module).unwrap();
+            for _ in 0..4 {
+                dual_module.grow_dual_node(interface.nodes[4].as_ref().unwrap(), -quarter_weight);
+                dual_module.grow_dual_node(interface.nodes[5].as_ref().unwrap(), quarter_weight);
+                dual_module.grow_dual_node(interface.nodes[6].as_ref().unwrap(), quarter_weight);
+                visualizer.snapshot(format!("grow or shrink a quarter"), &dual_module).unwrap();
             }
-            weighted_edges
-        };
-        let virtual_nodes = {
-            let mut virtual_nodes = Vec::new();
-            for t in 0..td {
-                let t_bias = t * t_node_num;
-                for row in 0..d {
-                    let bias = t_bias + row * row_node_num;
-                    virtual_nodes.push(bias + d - 1);
-                    virtual_nodes.push(bias + d);
-                }
-            }
-            virtual_nodes
-        };
-        // hardcode syndrome
-        let syndrome_nodes = vec![25, 33, 20, 76, 203, 187, 243, 315];
-        // run single-thread fusion blossom algorithm
-        let visualize_filename = static_visualize_data_filename();
-        print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        let mut positions = Vec::new();
-        let scale = 1f64;
-        for t in 0..td {
-            let pos_t = t as f64;
-            for row in 0..d {
-                let pos_i = row as f64;
-                for i in 0..d {
-                    positions.push(VisualizePosition::new(pos_i * scale, (i as f64 + 0.5) * scale, pos_t * scale));
-                }
-                positions.push(VisualizePosition::new(pos_i * scale, (-1. + 0.5) * scale, pos_t * scale));
-            }
+            visualizer.snapshot(format!("add measurement #6"), &dual_module).unwrap();
+            visualizer.snapshot(format!("add measurement #7"), &dual_module).unwrap();
+            visualizer.snapshot(format!("add measurement #8"), &dual_module).unwrap();
         }
-        visualizer.set_positions(positions, true);  // automatic center all nodes
-        let mut fusion_solver = FusionSingleThread::new(node_num, &weighted_edges, &virtual_nodes);
-        fusion_solver.load_syndrome(&syndrome_nodes);
-        let syndrome_tree_nodes = |fusion_solver: &FusionSingleThread, node_index: usize| {
-            Arc::clone(fusion_solver.nodes[node_index].read_recursive().tree_node.as_ref().unwrap())
-        };
-        // save snapshot
-        visualizer.snapshot(format!("initial"), &fusion_solver).unwrap();
-        // first layer grow first
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 25), quarter_weight);
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 33), quarter_weight);
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 20), quarter_weight);
-        visualizer.snapshot(format!("grow a quarter"), &fusion_solver).unwrap();
-        // merge and match
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 25), quarter_weight);
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 33), quarter_weight);
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 20), quarter_weight);
-        visualizer.snapshot(format!("find a match"), &fusion_solver).unwrap();
-        // grow to boundary
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 20), half_weight);
-        visualizer.snapshot(format!("touch temporal boundary"), &fusion_solver).unwrap();
-        // add more measurement rounds
-        visualizer.snapshot(format!("add measurement #2"), &fusion_solver).unwrap();
-        visualizer.snapshot(format!("add measurement #3"), &fusion_solver).unwrap();
-        visualizer.snapshot(format!("add measurement #4"), &fusion_solver).unwrap();
-        // handle errors at measurement round 4
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 203), half_weight);
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 187), half_weight);
-        visualizer.snapshot(format!("grow a half"), &fusion_solver).unwrap();
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 203), half_weight);
-        fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 187), half_weight);
-        visualizer.snapshot(format!("temporary match"), &fusion_solver).unwrap();
-        // handle errors at measurement round 5
-        visualizer.snapshot(format!("add measurement #5"), &fusion_solver).unwrap();
-        for _ in 0..4 {
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 187), -quarter_weight);
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 203), quarter_weight);
-            fusion_solver.grow_tree_node(&syndrome_tree_nodes(&fusion_solver, 243), quarter_weight);
-            visualizer.snapshot(format!("grow or shrink a quarter"), &fusion_solver).unwrap();
-        }
-        visualizer.snapshot(format!("add measurement #6"), &fusion_solver).unwrap();
-        visualizer.snapshot(format!("add measurement #7"), &fusion_solver).unwrap();
-        visualizer.snapshot(format!("add measurement #8"), &fusion_solver).unwrap();
     }
 
 }

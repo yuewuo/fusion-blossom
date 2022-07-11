@@ -36,8 +36,6 @@ pub enum DualNodeGrowState {
 pub enum MaxUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
-    /// no more nodes to constrain: no growing or shrinking
-    NoMoreNodes,
     /// conflicting growth
     Conflicting(DualNodePtr, DualNodePtr),
     /// conflicting growth because of touching virtual node
@@ -46,8 +44,8 @@ pub enum MaxUpdateLength {
     BlossomNeedExpand(DualNodePtr),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module
     VertexShrinkStop(DualNodePtr),
-    /// unimplemented length, only used during development, should be removed later
-    Unimplemented,
+    /// no more nodes to constrain: no growing or shrinking
+    NoMoreNodes,
 }
 
 /// A dual node corresponds to either a vertex or a blossom (on which the dual variables are defined)
@@ -100,7 +98,7 @@ impl DualNodePtr {
 /// note that a node can be destructed and we do not reuse its index, leaving a blank space
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct DualModuleRoot {
+pub struct DualModuleInterface {
     /// all the dual node that can be used to control a concrete dual module implementation
     pub nodes: Vec<Option<DualNodePtr>>,
 }
@@ -162,7 +160,7 @@ pub trait DualModuleImpl {
 
 }
 
-impl DualModuleRoot {
+impl DualModuleInterface {
 
     pub fn new(syndrome: &Vec<VertexIndex>, dual_module_impl: &mut impl DualModuleImpl) -> Self {
         let mut array = Self {
@@ -230,7 +228,7 @@ impl DualModuleRoot {
         let node = dual_node_ptr.read_recursive();
         let node_idx = node.index;
         assert!(self.nodes[node_idx].is_some(), "the blossom should not be expanded before");
-        assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_ptr, "the blossom doesn't belong to this DualModuleRoot");
+        assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
         self.nodes[node_idx] = None;  // remove this blossom from root
         match &node.class {
             DualNodeClass::Blossom { nodes_circle } => {
@@ -254,9 +252,6 @@ impl MaxUpdateLength {
     /// if any length is zero, then also choose one reason with highest priority
     pub fn min(a: Self, b: Self) -> Self {
         match (&a, &b) {
-            // panic when there is Unimplemented
-            (_, MaxUpdateLength::Unimplemented) => { unimplemented!("min of {:?} and {:?}", a, b) }
-            (MaxUpdateLength::Unimplemented, _) => { unimplemented!("min of {:?} and {:?}", a, b) }
             // if any of them is default, then take the other
             (_, MaxUpdateLength::NoMoreNodes) => { a },
             (MaxUpdateLength::NoMoreNodes, _) => { b },
