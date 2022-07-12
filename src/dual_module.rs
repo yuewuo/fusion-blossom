@@ -314,9 +314,6 @@ impl DualModuleInterface {
     /// create a dual node corresponding to a blossom, automatically set the grow state of internal nodes;
     /// the nodes circle MUST starts with a growing node and ends with a shrinking node
     pub fn create_blossom(&mut self, nodes_circle: Vec<DualNodePtr>, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
-        if self.debug_print_actions {
-            eprintln!("[DualModuleInterface::create_blossom] {:?} -> {}", nodes_circle, self.nodes.len());
-        }
         let blossom_node_ptr = DualNodePtr::new(DualNode {
             index: self.nodes.len(),
             internal: None,
@@ -338,6 +335,9 @@ impl DualModuleInterface {
             // then update parent
             let mut node = node_ptr.write();
             node.parent_blossom = Some(blossom_node_ptr.clone());
+        }
+        if self.debug_print_actions {
+            eprintln!("[DualModuleInterface::create_blossom] {:?} -> {}", nodes_circle, self.nodes.len());
         }
         {  // fill in the nodes because they're in a valid state (all linked to this blossom)
             let mut node = blossom_node_ptr.write();

@@ -59,6 +59,12 @@ pub struct AlternatingTreeNode {
     pub depth: usize,
 }
 
+#[derive(Debug, Clone)]
+pub enum MatchTarget {
+    Peer(PrimalNodeInternalPtr),
+    VirtualVertex(VertexIndex),
+}
+
 /// internal information of the primal node, added to the [`DualNode`]; note that primal nodes and dual nodes
 /// always have one-to-one correspondence
 #[derive(Derivative)]
@@ -71,7 +77,7 @@ pub struct PrimalNodeInternal {
     /// alternating tree information if applicable
     pub tree_node: Option<AlternatingTreeNode>,
     /// temporary match with another node
-    pub temporary_match: Option<PrimalNodeInternalPtr>,
+    pub temporary_match: Option<MatchTarget>,
 }
 
 impl PrimalNodeInternal {
@@ -141,8 +147,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let (free_1, free_2) = (primal_node_internal_1.is_free(), primal_node_internal_2.is_free());
                     if free_1 && free_2 {
                         // simply match them temporarily
-                        primal_node_internal_1.temporary_match = Some(primal_node_internal_ptr_2.clone());
-                        primal_node_internal_2.temporary_match = Some(primal_node_internal_ptr_1.clone());
+                        primal_node_internal_1.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_2.clone()));
+                        primal_node_internal_2.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_1.clone()));
                         // update dual module interface
                         interface.set_grow_state(&primal_node_internal_1.origin, DualNodeGrowState::Stay, dual_module);
                         interface.set_grow_state(&primal_node_internal_2.origin, DualNodeGrowState::Stay, dual_module);
@@ -156,31 +162,46 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
                         };
                         // creating an alternating tree: free node becomes the root, matched node becomes child
-                        let leaf_node_internal_ptr = matched_node_internal.temporary_match.as_ref().unwrap().clone();
-                        let mut leaf_node_internal = leaf_node_internal_ptr.write();
-                        free_node_internal.tree_node = Some(AlternatingTreeNode {
-                            root: free_node_internal_ptr.clone(),
-                            parent: None,
-                            children: vec![matched_node_internal_ptr.clone()],
-                            depth: 0,
-                        });
-                        matched_node_internal.tree_node = Some(AlternatingTreeNode {
-                            root: free_node_internal_ptr.clone(),
-                            parent: Some(free_node_internal_ptr.clone()),
-                            children: vec![leaf_node_internal_ptr.clone()],
-                            depth: 1,
-                        });
-                        leaf_node_internal.tree_node = Some(AlternatingTreeNode {
-                            root: free_node_internal_ptr.clone(),
-                            parent: Some(matched_node_internal_ptr.clone()),
-                            children: vec![],
-                            depth: 2,
-                        });
-                        // update dual module interface
-                        interface.set_grow_state(&free_node_internal.origin, DualNodeGrowState::Grow, dual_module);
-                        interface.set_grow_state(&matched_node_internal.origin, DualNodeGrowState::Shrink, dual_module);
-                        interface.set_grow_state(&leaf_node_internal.origin, DualNodeGrowState::Grow, dual_module);
-                        continue
+                        let matched_target: MatchTarget = matched_node_internal.temporary_match.as_ref().unwrap().clone();
+                        match &matched_target {
+                            MatchTarget::Peer(leaf_node_internal_ptr) => {
+                                let mut leaf_node_internal = leaf_node_internal_ptr.write();
+                                free_node_internal.tree_node = Some(AlternatingTreeNode {
+                                    root: free_node_internal_ptr.clone(),
+                                    parent: None,
+                                    children: vec![matched_node_internal_ptr.clone()],
+                                    depth: 0,
+                                });
+                                matched_node_internal.tree_node = Some(AlternatingTreeNode {
+                                    root: free_node_internal_ptr.clone(),
+                                    parent: Some(free_node_internal_ptr.clone()),
+                                    children: vec![leaf_node_internal_ptr.clone()],
+                                    depth: 1,
+                                });
+                                matched_node_internal.temporary_match = None;
+                                leaf_node_internal.tree_node = Some(AlternatingTreeNode {
+                                    root: free_node_internal_ptr.clone(),
+                                    parent: Some(matched_node_internal_ptr.clone()),
+                                    children: vec![],
+                                    depth: 2,
+                                });
+                                leaf_node_internal.temporary_match = None;
+                                // update dual module interface
+                                interface.set_grow_state(&free_node_internal.origin, DualNodeGrowState::Grow, dual_module);
+                                interface.set_grow_state(&matched_node_internal.origin, DualNodeGrowState::Shrink, dual_module);
+                                interface.set_grow_state(&leaf_node_internal.origin, DualNodeGrowState::Grow, dual_module);
+                                continue
+                            },
+                            MatchTarget::VirtualVertex(_) => {
+                                // virtual boundary doesn't have to be matched, so in this case simply match these two nodes together
+                                free_node_internal.temporary_match = Some(MatchTarget::Peer(matched_node_internal_ptr.clone()));
+                                matched_node_internal.temporary_match = Some(MatchTarget::Peer(free_node_internal_ptr.clone()));
+                                // update dual module interface
+                                interface.set_grow_state(&free_node_internal.origin, DualNodeGrowState::Stay, dual_module);
+                                interface.set_grow_state(&matched_node_internal.origin, DualNodeGrowState::Stay, dual_module);
+                                continue
+                            }
+                        }
                     }
                     if primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.tree_node.is_some() {
                         let root_1 = primal_node_internal_1.tree_node.as_ref().unwrap().root.clone();
@@ -214,6 +235,14 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     unimplemented!()
                 },
                 MaxUpdateLength::TouchingVirtual(node_ptr, virtual_vertex_index) => {
+                    let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr));
+                    let mut primal_node_internal = primal_node_internal_ptr.write();
+                    // this is the most probable case, so put it in the front
+                    if primal_node_internal.is_free() {
+                        primal_node_internal.temporary_match = Some(MatchTarget::VirtualVertex(virtual_vertex_index));
+                        interface.set_grow_state(&primal_node_internal.origin, DualNodeGrowState::Stay, dual_module);
+                        continue
+                    }
                     unimplemented!()
                 },
                 MaxUpdateLength::BlossomNeedExpand(node_ptr) => {
@@ -344,7 +373,7 @@ mod tests {
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
         visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
@@ -357,7 +386,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
         visualizer.snapshot(format!("alternating tree grow"), &dual_module).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
@@ -367,8 +396,83 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
-        visualizer.snapshot(format!("blossom grow"), &dual_module).unwrap();
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
+        visualizer.snapshot(format!("end"), &dual_module).unwrap();
+    }
+
+    #[test]
+    fn primal_module_serial_basic_2() {  // cargo test primal_module_serial_basic_2 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_2.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        // try to work on a simple syndrome
+        code.vertices[16].is_syndrome = true;
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
+        interface.grow(2 * half_weight, &mut dual_module);
+        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        // cannot grow anymore, resolve conflicts
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        // conflicts resolved, grow again
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        assert!(group_max_update_length.is_empty(), "no more things to solve");
+        visualizer.snapshot(format!("end"), &dual_module).unwrap();
+    }
+
+    #[test]
+    fn primal_module_serial_basic_3() {  // cargo test primal_module_serial_basic_3 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_3.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        // try to work on a simple syndrome
+        code.vertices[16].is_syndrome = true;
+        code.vertices[26].is_syndrome = true;
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
+        interface.grow(2 * half_weight, &mut dual_module);
+        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        // cannot grow anymore, resolve conflicts
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        // conflicts resolved, grow again
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        interface.grow(2 * half_weight, &mut dual_module);
+        // cannot grow anymore, resolve conflicts
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        // conflicts resolved, grow again
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.is_empty(), "no more things to solve");
+        visualizer.snapshot(format!("end"), &dual_module).unwrap();
     }
 
 }
