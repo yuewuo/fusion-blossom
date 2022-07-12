@@ -4,23 +4,7 @@
 //!
 
 use super::util::*;
-use crate::derivative::Derivative;
 use super::dual_module::*;
-
-
-/// generates a series of actions that the dual module needs to execute
-#[derive(Derivative, PartialEq)]
-#[derivative(Debug)]
-pub enum PrimalInstruction {
-    /// update dual node grow state
-    UpdateGrowState(DualNodePtr, DualNodeGrowState),
-    /// create a blossom
-    CreateBlossom(Vec<DualNodePtr>),
-    /// expand a blossom
-    ExpandBlossom(DualNodePtr),
-}
-
-pub type PrimalInstructionVec = Vec<PrimalInstruction>;
 
 /// common trait that must be implemented for each implementation of primal module
 pub trait PrimalModuleImpl {
@@ -38,6 +22,6 @@ pub trait PrimalModuleImpl {
     /// and then tell dual module what to do to resolve these conflicts;
     /// note that this function doesn't necessarily resolve all the conflicts, but can return early if some major change is made.
     /// when implementing this function, it's recommended that you resolve as many conflicts as possible.
-    fn resolve(&mut self, group_max_update_length: GroupMaxUpdateLength) -> PrimalInstructionVec;
+    fn resolve<D: DualModuleImpl>(&mut self, group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D);
 
 }

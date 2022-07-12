@@ -72,15 +72,16 @@ pub struct PrimalNodeInternal {
     pub tree_node: Option<AlternatingTreeNode>,
     /// temporary match with another node
     pub temporary_match: Option<PrimalNodeInternalPtr>,
-    /// cached interface that can be more up-to-date than the dual node interface
-    dual_node_cache: DualNode,
 }
 
 impl PrimalNodeInternal {
 
     /// check if in the cache, this node is a free node
     pub fn is_free(&self) -> bool {
-        assert!(self.dual_node_cache.parent_blossom.is_none(), "do not call this function to a internal node, consider call PrimalModuleSerial::get_outer_node");
+        debug_assert!({
+            let node = self.origin.read_recursive();
+            node.parent_blossom.is_none()
+        }, "do not call this function to a internal node, consider call PrimalModuleSerial::get_outer_node");
         if self.tree_node.is_some() { return false }  // this node belongs to an alternating tree
         if self.temporary_match.is_some() { return false }  // already temporarily matched
         true
@@ -114,17 +115,15 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                 index: index,
                 tree_node: None,
                 temporary_match: None,
-                dual_node_cache: node.clone(),
             };
             self.nodes.push(Some(PrimalNodeInternalPtr::new(primal_node_internal)));
         }
     }
 
-    fn resolve(&mut self, mut group_max_update_length: GroupMaxUpdateLength) -> PrimalInstructionVec {
+    fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
         debug_assert!(!group_max_update_length.is_empty() && group_max_update_length.get_none_zero_growth().is_none());
         let conflicts = group_max_update_length.get_conflicts();
         let mut current_conflict_index = 0;
-        let mut resolve_instructions = vec![];
         while let Some(conflict) = conflicts.pop() {
             current_conflict_index += 1;
             if self.debug_resolve_only_one && current_conflict_index > 1 {  // debug mode
@@ -144,9 +143,73 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         // simply match them temporarily
                         primal_node_internal_1.temporary_match = Some(primal_node_internal_ptr_2.clone());
                         primal_node_internal_2.temporary_match = Some(primal_node_internal_ptr_1.clone());
-                        resolve_instructions.push(PrimalInstruction::UpdateGrowState(node_ptr_1.clone(), DualNodeGrowState::Stay));
-                        resolve_instructions.push(PrimalInstruction::UpdateGrowState(node_ptr_2.clone(), DualNodeGrowState::Stay));
+                        // update dual module interface
+                        interface.set_grow_state(primal_node_internal_1.origin.clone(), DualNodeGrowState::Stay, dual_module);
+                        interface.set_grow_state(primal_node_internal_2.origin.clone(), DualNodeGrowState::Stay, dual_module);
                         continue
+                    }
+                    // second probable case: single node touches a temporary matched pair and become an alternating tree
+                    if (free_1 && primal_node_internal_2.temporary_match.is_some()) || (free_2 && primal_node_internal_1.temporary_match.is_some()) {
+                        let (free_node_internal_ptr, mut free_node_internal, matched_node_internal_ptr, mut matched_node_internal) = if free_1 {
+                            (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
+                        } else {
+                            (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
+                        };
+                        // creating an alternating tree: free node becomes the root, matched node becomes child
+                        let leaf_node_internal_ptr = matched_node_internal.temporary_match.as_ref().unwrap().clone();
+                        let mut leaf_node_internal = leaf_node_internal_ptr.write();
+                        free_node_internal.tree_node = Some(AlternatingTreeNode {
+                            root: free_node_internal_ptr.clone(),
+                            parent: None,
+                            children: vec![matched_node_internal_ptr.clone()],
+                            depth: 0,
+                        });
+                        matched_node_internal.tree_node = Some(AlternatingTreeNode {
+                            root: free_node_internal_ptr.clone(),
+                            parent: Some(free_node_internal_ptr.clone()),
+                            children: vec![leaf_node_internal_ptr.clone()],
+                            depth: 1,
+                        });
+                        leaf_node_internal.tree_node = Some(AlternatingTreeNode {
+                            root: free_node_internal_ptr.clone(),
+                            parent: Some(matched_node_internal_ptr.clone()),
+                            children: vec![],
+                            depth: 2,
+                        });
+                        // update dual module interface
+                        interface.set_grow_state(free_node_internal.origin.clone(), DualNodeGrowState::Grow, dual_module);
+                        interface.set_grow_state(matched_node_internal.origin.clone(), DualNodeGrowState::Shrink, dual_module);
+                        interface.set_grow_state(leaf_node_internal.origin.clone(), DualNodeGrowState::Grow, dual_module);
+                        continue
+                    }
+                    if primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.tree_node.is_some() {
+                        let root_1 = primal_node_internal_1.tree_node.as_ref().unwrap().root.clone();
+                        let root_2 = primal_node_internal_2.tree_node.as_ref().unwrap().root.clone();
+                        // form a blossom inside an alternating tree
+                        if root_1 == root_2 {
+                            // drop writer lock to allow reader locks
+                            drop(primal_node_internal_1);
+                            drop(primal_node_internal_2);
+                            // find LCA of two nodes
+                            let (lca_ptr, path_1, path_2) = self.find_lowest_common_ancestor(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone());
+                            let nodes_circle = {
+                                let mut nodes_circle: Vec<DualNodePtr> = path_1.iter().map(|ptr| ptr.read_recursive().origin.clone()).collect();
+                                nodes_circle.push(lca_ptr.read_recursive().origin.clone());
+                                for i in (0..path_2.len()).rev() { nodes_circle.push(path_2[i].read_recursive().origin.clone()); }
+                                nodes_circle
+                            };
+                            let blossom_node_ptr = interface.create_blossom(nodes_circle, dual_module);
+                            let primal_node_internal_blossom_ptr = PrimalNodeInternalPtr::new(PrimalNodeInternal {
+                                origin: blossom_node_ptr.clone(),
+                                index: self.nodes.len(),
+                                tree_node: None,
+                                temporary_match: None,
+                            });
+                            self.nodes.push(Some(primal_node_internal_blossom_ptr.clone()));
+                            // TODO: handle other tree structure
+                            
+                            continue
+                        }
                     }
                     unimplemented!()
                 },
@@ -169,7 +232,6 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                 _ => unreachable!("should not resolve these issues")
             }
         }
-        resolve_instructions
     }
 
 }
@@ -192,11 +254,62 @@ impl PrimalModuleSerial {
     /// get the outer node in the most up-to-date cache
     pub fn get_outer_node(&self, primal_node_internal_ptr: PrimalNodeInternalPtr) -> PrimalNodeInternalPtr {
         let node = primal_node_internal_ptr.read_recursive();
-        if let Some(parent_dual_node_ptr) = &node.dual_node_cache.parent_blossom {
+        let interface_node = node.origin.read_recursive();
+        if let Some(parent_dual_node_ptr) = &interface_node.parent_blossom {
             let parent_primal_node_internal_ptr = self.get_primal_node_internal_ptr(parent_dual_node_ptr);
             self.get_outer_node(parent_primal_node_internal_ptr)
         } else {
             primal_node_internal_ptr.clone()
+        }
+    }
+
+    /// find the lowest common ancestor (LCA) of two nodes in the alternating tree, return (LCA, path_1, path_2) where path includes leaf but exclude the LCA
+    pub fn find_lowest_common_ancestor(&self, mut primal_node_internal_ptr_1: PrimalNodeInternalPtr, mut primal_node_internal_ptr_2: PrimalNodeInternalPtr)
+            -> (PrimalNodeInternalPtr, Vec<PrimalNodeInternalPtr>, Vec<PrimalNodeInternalPtr>) {
+        let (depth_1, depth_2) = {
+            let primal_node_internal_1 = primal_node_internal_ptr_1.read_recursive();
+            let primal_node_internal_2 = primal_node_internal_ptr_2.read_recursive();
+            let tree_node_1 = primal_node_internal_1.tree_node.as_ref().unwrap();
+            let tree_node_2 = primal_node_internal_2.tree_node.as_ref().unwrap();
+            assert_eq!(tree_node_1.root, tree_node_2.root, "must belong to the same tree");
+            (tree_node_1.depth, tree_node_2.depth)
+        };
+        let mut path_1 = vec![];
+        let mut path_2 = vec![];
+        if depth_1 > depth_2 {
+            loop {
+                let ptr = primal_node_internal_ptr_1.clone();
+                let primal_node_internal = ptr.read_recursive();
+                let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
+                if tree_node.depth == depth_2 { break }
+                path_1.push(primal_node_internal_ptr_1.clone());
+                primal_node_internal_ptr_1 = tree_node.parent.as_ref().unwrap().clone();
+            }
+        } else if depth_2 > depth_1 {
+            loop {
+                let ptr = primal_node_internal_ptr_2.clone();
+                let primal_node_internal = ptr.read_recursive();
+                let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
+                if tree_node.depth == depth_1 { break }
+                path_2.push(primal_node_internal_ptr_2.clone());
+                primal_node_internal_ptr_2 = tree_node.parent.as_ref().unwrap().clone();
+            }
+        }
+        // now primal_node_internal_ptr_1 and primal_node_internal_ptr_2 has the same depth, compare them until they're equal
+        loop {
+            if primal_node_internal_ptr_1 == primal_node_internal_ptr_2 {
+                return (primal_node_internal_ptr_1, path_1, path_2)
+            }
+            let ptr_1 = primal_node_internal_ptr_1.clone();
+            let ptr_2 = primal_node_internal_ptr_2.clone();
+            let primal_node_internal_1 = ptr_1.read_recursive();
+            let primal_node_internal_2 = ptr_2.read_recursive();
+            let tree_node_1 = primal_node_internal_1.tree_node.as_ref().unwrap();
+            let tree_node_2 = primal_node_internal_2.tree_node.as_ref().unwrap();
+            path_1.push(primal_node_internal_ptr_1.clone());
+            path_2.push(primal_node_internal_ptr_2.clone());
+            primal_node_internal_ptr_1 = tree_node_1.parent.as_ref().unwrap().clone();
+            primal_node_internal_ptr_2 = tree_node_2.parent.as_ref().unwrap().clone();
         }
     }
 
@@ -232,16 +345,29 @@ mod tests {
         visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
         dual_module.grow(half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
-        // cannot grow anymore, find out the reason
+        // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
-        let resolve_instructions = primal_module.resolve(group_max_update_length);
-        println!("resolve_instructions: {:?}", resolve_instructions);
-        interface.execute_resolve_instructions(&mut dual_module, resolve_instructions);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
-        // let resolve_instructions = primal_module.resolve(group_max_update_length);
-        // println!("resolve_instructions: {:?}", resolve_instructions);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        // conflicts resolved, grow again
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(half_weight);
+        visualizer.snapshot(format!("alternating tree grow"), &dual_module).unwrap();
+        // cannot grow anymore, resolve conflicts
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        // conflicts resolved, grow again
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
+        visualizer.snapshot(format!("blossom grow"), &dual_module).unwrap();
     }
 
 }

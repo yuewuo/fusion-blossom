@@ -337,6 +337,10 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
+    fn set_grow_state(&mut self, _dual_node_ptr: &DualNodePtr, _grow_state: DualNodeGrowState) {
+        // do nothing, we don't record grow state here
+    }
+
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         let active_timestamp = self.active_timestamp;
         if !simultaneous_update {
@@ -921,8 +925,7 @@ mod tests {
         visualizer.snapshot(format!("before create blossom"), &dual_module).unwrap();
         let nodes_circle = vec![dual_node_19_ptr.clone(), dual_node_26_ptr.clone(), dual_node_35_ptr.clone()];
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        let dual_node_blossom = interface.create_blossom(nodes_circle);
-        dual_module.add_blossom(&dual_node_blossom);
+        let dual_node_blossom = interface.create_blossom(nodes_circle, &mut dual_module);
         dual_module.grow(half_weight);
         visualizer.snapshot(format!("blossom grow half weight"), &dual_module).unwrap();
         dual_module.grow(half_weight);
@@ -934,7 +937,7 @@ mod tests {
         visualizer.snapshot(format!("blossom shrink half weight"), &dual_module).unwrap();
         dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("blossom shrink weight"), &dual_module).unwrap();
-        dual_module.remove_blossom(interface.expand_blossom(dual_node_blossom));
+        interface.expand_blossom(dual_node_blossom, &mut dual_module);
         dual_node_19_ptr.set_grow_state(DualNodeGrowState::Shrink);
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
         dual_node_35_ptr.set_grow_state(DualNodeGrowState::Shrink);
@@ -1025,8 +1028,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
-        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()]);
-        dual_module.add_blossom(&dual_node_blossom);
+        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
@@ -1063,7 +1065,7 @@ mod tests {
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
             , "unexpected: {:?}", group_max_update_length);
         // expand blossom
-        dual_module.remove_blossom(interface.expand_blossom(dual_node_blossom));
+        interface.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
         dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
@@ -1117,8 +1119,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
-        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()]);
-        dual_module.add_blossom(&dual_node_blossom);
+        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
@@ -1151,7 +1152,7 @@ mod tests {
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
             , "unexpected: {:?}", group_max_update_length);
         // expand blossom
-        dual_module.remove_blossom(interface.expand_blossom(dual_node_blossom));
+        interface.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
         dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
