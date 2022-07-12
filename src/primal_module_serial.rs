@@ -144,8 +144,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         primal_node_internal_1.temporary_match = Some(primal_node_internal_ptr_2.clone());
                         primal_node_internal_2.temporary_match = Some(primal_node_internal_ptr_1.clone());
                         // update dual module interface
-                        interface.set_grow_state(primal_node_internal_1.origin.clone(), DualNodeGrowState::Stay, dual_module);
-                        interface.set_grow_state(primal_node_internal_2.origin.clone(), DualNodeGrowState::Stay, dual_module);
+                        interface.set_grow_state(&primal_node_internal_1.origin, DualNodeGrowState::Stay, dual_module);
+                        interface.set_grow_state(&primal_node_internal_2.origin, DualNodeGrowState::Stay, dual_module);
                         continue
                     }
                     // second probable case: single node touches a temporary matched pair and become an alternating tree
@@ -177,9 +177,9 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             depth: 2,
                         });
                         // update dual module interface
-                        interface.set_grow_state(free_node_internal.origin.clone(), DualNodeGrowState::Grow, dual_module);
-                        interface.set_grow_state(matched_node_internal.origin.clone(), DualNodeGrowState::Shrink, dual_module);
-                        interface.set_grow_state(leaf_node_internal.origin.clone(), DualNodeGrowState::Grow, dual_module);
+                        interface.set_grow_state(&free_node_internal.origin, DualNodeGrowState::Grow, dual_module);
+                        interface.set_grow_state(&matched_node_internal.origin, DualNodeGrowState::Shrink, dual_module);
+                        interface.set_grow_state(&leaf_node_internal.origin, DualNodeGrowState::Grow, dual_module);
                         continue
                     }
                     if primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.tree_node.is_some() {
@@ -341,6 +341,7 @@ mod tests {
         code.vertices[26].is_syndrome = true;
         code.vertices[34].is_syndrome = true;
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
         visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
         dual_module.grow(half_weight);

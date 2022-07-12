@@ -921,27 +921,34 @@ mod tests {
         let dual_node_19_ptr = interface.nodes[0].as_ref().unwrap().clone();
         let dual_node_26_ptr = interface.nodes[1].as_ref().unwrap().clone();
         let dual_node_35_ptr = interface.nodes[2].as_ref().unwrap().clone();
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
         visualizer.snapshot(format!("before create blossom"), &dual_module).unwrap();
         let nodes_circle = vec![dual_node_19_ptr.clone(), dual_node_26_ptr.clone(), dual_node_35_ptr.clone()];
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         let dual_node_blossom = interface.create_blossom(nodes_circle, &mut dual_module);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 7 * half_weight);
         visualizer.snapshot(format!("blossom grow half weight"), &dual_module).unwrap();
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 8 * half_weight);
         visualizer.snapshot(format!("blossom grow half weight"), &dual_module).unwrap();
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 9 * half_weight);
         visualizer.snapshot(format!("blossom grow half weight"), &dual_module).unwrap();
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
-        dual_module.grow(half_weight);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 8 * half_weight);
         visualizer.snapshot(format!("blossom shrink half weight"), &dual_module).unwrap();
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
         visualizer.snapshot(format!("blossom shrink weight"), &dual_module).unwrap();
         interface.expand_blossom(dual_node_blossom, &mut dual_module);
-        dual_node_19_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        dual_node_35_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        dual_module.grow(half_weight);
+        interface.set_grow_state(&dual_node_19_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.set_grow_state(&dual_node_35_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 3 * half_weight);
         visualizer.snapshot(format!("individual shrink half weight"), &dual_module).unwrap();
     }
 
@@ -959,7 +966,7 @@ mod tests {
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
-        let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
         // create dual nodes and grow them by half length
         let dual_node_19_ptr = interface.nodes[0].as_ref().unwrap().clone();
@@ -967,12 +974,14 @@ mod tests {
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
@@ -1003,26 +1012,28 @@ mod tests {
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 3 * half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
             || group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
-        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Stay);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Stay);
+        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
-        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Grow);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
@@ -1032,12 +1043,14 @@ mod tests {
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
         visualizer.snapshot(format!("grow blossom"), &dual_module).unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 8 * half_weight);
         visualizer.snapshot(format!("grow blossom"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
@@ -1045,20 +1058,22 @@ mod tests {
             || group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 39)
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Stay);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.is_empty(), "unexpected: {:?}", group_max_update_length);
         // also test the reverse procedure: shrinking and expanding blossom
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
         visualizer.snapshot(format!("shrink blossom"), &dual_module).unwrap();
         // before expand
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
         visualizer.snapshot(format!("shrink blossom"), &dual_module).unwrap();
         // cannot shrink anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
@@ -1067,12 +1082,13 @@ mod tests {
         // expand blossom
         interface.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
-        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
-        dual_node_34_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface.set_grow_state(&dual_node_34_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 2 * half_weight);
         visualizer.snapshot(format!("shrink"), &dual_module).unwrap();
     }
 
@@ -1096,25 +1112,27 @@ mod tests {
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 3 * half_weight);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
             || group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
-        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Stay);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Stay);
+        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
-        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Grow);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(half_weight);
+        interface.grow(half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
@@ -1123,30 +1141,30 @@ mod tests {
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 23)
             || group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 39)
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Stay);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.is_empty(), "unexpected: {:?}", group_max_update_length);
         // also test the reverse procedure: shrinking and expanding blossom
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
         // before expand
-        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
         // cannot shrink anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
@@ -1154,12 +1172,13 @@ mod tests {
         // expand blossom
         interface.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
-        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
-        dual_node_34_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface.set_grow_state(&dual_node_34_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        dual_module.grow(2 * half_weight);
+        interface.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface.sum_dual_variables, 2 * half_weight);
     }
 
 }
