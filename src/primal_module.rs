@@ -28,11 +28,14 @@ pub trait PrimalModuleImpl {
     /// create a primal module given the same parameters of the dual module, although not all of them is needed
     fn new(vertex_num: usize, weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: &Vec<VertexIndex>) -> Self;
 
-    /// clear all states to prepare for the next decoding task
+    /// clear all states; however this method is not necessarily called when load a new decoding problem, so you need to call it yourself
     fn clear(&mut self);
+
+    /// load a new decoding problem given dual interface: note that all 
+    fn load(&mut self, interface: &DualModuleInterface);
 
     /// analyze the reason why dual module cannot further grow, update primal data structure (alternating tree, temporary matches, etc)
     /// and then tell dual module what to do
-    fn update(&mut self, max_update_length: &MaxUpdateLength) -> PrimalInstructionVec;
+    fn update(&mut self, group_max_update_length: GroupMaxUpdateLength) -> PrimalInstructionVec;
 
 }

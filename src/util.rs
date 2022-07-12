@@ -114,6 +114,13 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
         ret
     }
 
+    /// dynamically clear it if not already cleared; it's safe to call many times, but it will acquire a writer lock
+    #[inline(always)]
+    fn dynamic_clear(&self, active_timestamp: FastClearTimestamp) {
+        let mut value = self.write_force();
+        value.dynamic_clear(active_timestamp);
+    }
+
     fn clone(&self) -> Self where Self: Sized {
         Self::new_ptr(Arc::clone(self.ptr()))
     }

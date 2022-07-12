@@ -58,8 +58,13 @@ impl PrimalModuleImpl for PrimalModuleSerial {
     fn clear(&mut self) {
         unimplemented!()
     }
+    
+    fn load(&mut self, interface: &DualModuleInterface) {
+        self.clear();
+        unimplemented!()
+    }
 
-    fn update(&mut self, max_update_length: &MaxUpdateLength) -> PrimalInstructionVec {
+    fn update(&mut self, group_max_update_length: GroupMaxUpdateLength) -> PrimalInstructionVec {
         unimplemented!()
     }
 

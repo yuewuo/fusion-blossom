@@ -37,7 +37,8 @@ impl SolverSerial {
     }
 
     pub fn load_syndrome(&mut self, syndrome_vertices: &Vec<usize>) {
-        unimplemented!()
+        self.interface = DualModuleInterface::new(syndrome_vertices, &mut self.dual_module);
+        self.primal_module.load(&self.interface);
     }
 
     // utilities to call this solver

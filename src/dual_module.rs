@@ -122,7 +122,7 @@ impl GroupMaxUpdateLength {
 #[derivative(Debug)]
 pub struct DualNode {
     /// the index of this dual node, helps to locate internal details of this dual node
-    index: NodeIndex,
+    pub index: NodeIndex,
     /// the implementation internal node, providing the index of it
     pub internal: Option<usize>,
     /// the class of this dual node
@@ -255,6 +255,7 @@ impl DualModuleInterface {
         let mut array = Self {
             nodes: Vec::new(),
         };
+        dual_module_impl.clear();
         for vertex_idx in syndrome.iter() {
             array.create_syndrome_node(*vertex_idx, dual_module_impl);
         }

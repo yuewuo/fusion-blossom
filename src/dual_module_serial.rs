@@ -256,10 +256,12 @@ impl DualModuleImpl for DualModuleSerial {
                     let vertex_idx = syndrome_index - self.vertex_index_bias;
                     assert!(vertex_idx < self.vertices.len(), "syndrome not belonging to this dual module");
                     let vertex_ptr = &self.vertices[vertex_idx];
+                    vertex_ptr.dynamic_clear(active_timestamp);
                     let mut vertex = vertex_ptr.write(active_timestamp);
                     vertex.propagated_dual_node = Some(node_internal_ptr.clone());
                     vertex.is_syndrome = true;
                     for edge_ptr in vertex.edges.iter() {
+                        edge_ptr.dynamic_clear(active_timestamp);
                         let mut edge = edge_ptr.write(active_timestamp);
                         let is_left = vertex_ptr == &edge.left;
                         assert!(if is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
@@ -622,16 +624,18 @@ impl FusionVisualizer for DualModuleSerial {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let active_timestamp = self.active_timestamp;
         let mut vertices = Vec::<serde_json::Value>::new();
-        for vertex in self.vertices.iter() {
-            let vertex = vertex.read_recursive(active_timestamp);
+        for vertex_ptr in self.vertices.iter() {
+            vertex_ptr.dynamic_clear(active_timestamp);
+            let vertex = vertex_ptr.read_recursive(active_timestamp);
             vertices.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
             }));
         }
         let mut edges = Vec::<serde_json::Value>::new();
-        for edge in self.edges.iter() {
-            let edge = edge.read_recursive(active_timestamp);
+        for edge_ptr in self.edges.iter() {
+            edge_ptr.dynamic_clear(active_timestamp);
+            let edge = edge_ptr.read_recursive(active_timestamp);
             edges.push(json!({
                 if abbrev { "w" } else { "weight" }: edge.weight,
                 if abbrev { "l" } else { "left" }: edge.left.read_recursive(active_timestamp).vertex_index,
@@ -686,6 +690,7 @@ impl DualModuleSerial {
                         edge.left.clone()
                     };
                     // to avoid already occupied node being propagated
+                    peer_vertex_ptr.dynamic_clear(active_timestamp);
                     let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
                     if peer_vertex.is_virtual {  // virtual node is never propagated, so keep this edge in the boundary
                         updated_boundary.push((is_left, edge_ptr.clone()));
@@ -712,6 +717,7 @@ impl DualModuleSerial {
                     node.propagated_dual_node = Some(dual_node_internal_ptr.clone());
                     for edge_ptr in node.edges.iter() {
                         let (is_left, newly_propagated_edge) = {
+                            edge_ptr.dynamic_clear(active_timestamp);
                             let edge = edge_ptr.read_recursive(active_timestamp);
                             let is_left = vertex_ptr == &edge.left;
                             let not_fully_grown = edge.left_growth + edge.right_growth < edge.weight;
@@ -1046,6 +1052,92 @@ mod tests {
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("shrink"), &dual_module).unwrap();
+    }
+
+    /// this test helps observe bugs of fast clear, by removing snapshot: snapshot will do the clear automatically
+    #[test]
+    fn dual_module_serial_fast_clear_1() {  // cargo test dual_module_serial_fast_clear_1 -- --nocapture
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // try to work on a simple syndrome
+        code.vertices[18].is_syndrome = true;
+        code.vertices[26].is_syndrome = true;
+        code.vertices[34].is_syndrome = true;
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        // create dual nodes and grow them by half length
+        let dual_node_18_ptr = interface.nodes[0].as_ref().unwrap().clone();
+        let dual_node_26_ptr = interface.nodes[1].as_ref().unwrap().clone();
+        let dual_node_34_ptr = interface.nodes[2].as_ref().unwrap().clone();
+        // grow the maximum
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(half_weight);
+        // cannot grow anymore, find out the reason
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
+            || group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
+        // first match 18 and 26
+        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Stay);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Stay);
+        // cannot grow anymore, find out the reason
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
+            , "unexpected: {:?}", group_max_update_length);
+        // 34 touches 26, so it will grow the tree by absorbing 18 and 26
+        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Grow);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        // grow the maximum
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(half_weight);
+        // cannot grow anymore, find out the reason
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
+        // for a blossom because 18 and 34 come from the same alternating tree
+        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], &mut dual_module);
+        // grow the maximum
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
+        // grow the maximum
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
+        // cannot grow anymore, find out the reason
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 23)
+            || group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 39)
+            , "unexpected: {:?}", group_max_update_length);
+        // blossom touches virtual boundary, so it's matched
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Stay);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.is_empty(), "unexpected: {:?}", group_max_update_length);
+        // also test the reverse procedure: shrinking and expanding blossom
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);;
+        // before expand
+        dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
+        // cannot shrink anymore, find out the reason
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
+            , "unexpected: {:?}", group_max_update_length);
+        // expand blossom
+        interface.expand_blossom(dual_node_blossom, &mut dual_module);
+        // regain access to underlying nodes
+        dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
+        dual_node_34_ptr.set_grow_state(DualNodeGrowState::Shrink);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
     }
 
 }
