@@ -121,10 +121,6 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
         value.dynamic_clear(active_timestamp);
     }
 
-    fn clone(&self) -> Self where Self: Sized {
-        Self::new_ptr(Arc::clone(self.ptr()))
-    }
-
     fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(self.ptr(), other.ptr())
     }
@@ -151,10 +147,6 @@ pub trait RwLockPtr<ObjType> {
     fn write(&self) -> RwLockWriteGuard<RawRwLock, ObjType> {
         let ret = self.ptr().write();
         ret
-    }
-
-    fn clone(&self) -> Self where Self: Sized {
-        Self::new_ptr(Arc::clone(self.ptr()))
     }
 
     fn ptr_eq(&self, other: &Self) -> bool {

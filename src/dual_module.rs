@@ -9,10 +9,11 @@ use crate::derivative::Derivative;
 use crate::parking_lot::RwLock;
 use core::cmp::Ordering;
 use std::collections::BinaryHeap;
+use super::primal_module::*;
 
 
 /// A dual node is either a blossom or a vertex
-#[derive(Derivative)]
+#[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub enum DualNodeClass {
     Blossom {
@@ -24,7 +25,7 @@ pub enum DualNodeClass {
 }
 
 /// Three possible states: Grow (+1), Stay (+0), Shrink (-1)
-#[derive(Derivative, PartialEq)]
+#[derive(Derivative, PartialEq, Clone)]
 #[derivative(Debug)]
 pub enum DualNodeGrowState {
     Grow,
@@ -33,7 +34,7 @@ pub enum DualNodeGrowState {
 }
 
 /// gives the maximum absolute length to grow, if not possible, give the reason
-#[derive(Derivative, PartialEq, Eq)]
+#[derive(Derivative, PartialEq, Eq, Clone)]
 #[derivative(Debug)]
 pub enum MaxUpdateLength {
     /// non-zero maximum update length
@@ -48,7 +49,7 @@ pub enum MaxUpdateLength {
     VertexShrinkStop(DualNodePtr),
 }
 
-#[derive(Derivative)]
+#[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub enum GroupMaxUpdateLength {
     /// non-zero maximum update length
@@ -118,7 +119,7 @@ impl GroupMaxUpdateLength {
 }
 
 /// A dual node corresponds to either a vertex or a blossom (on which the dual variables are defined)
-#[derive(Derivative)]
+#[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct DualNode {
     /// the index of this dual node, helps to locate internal details of this dual node
@@ -135,6 +136,12 @@ pub struct DualNode {
 
 /// the shared pointer of [`DualNode`]
 pub struct DualNodePtr { ptr: Arc<RwLock<DualNode>>, }
+
+impl Clone for DualNodePtr {
+    fn clone(&self) -> Self {
+        Self::new_ptr(Arc::clone(self.ptr()))
+    }
+}
 
 impl RwLockPtr<DualNode> for DualNodePtr {
     fn new_ptr(ptr: Arc<RwLock<DualNode>>) -> Self { Self { ptr: ptr }  }
@@ -201,26 +208,26 @@ pub trait DualModuleImpl {
     fn clear(&mut self);
 
     /// add corresponding dual node, note that [`DualNode.internal`] must be None, i.e. each dual node must be created exactly once
-    fn add_dual_node(&mut self, node: DualNodePtr);
+    fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
 
     #[inline(always)]
     /// helper function to specifically add a syndrome node
-    fn add_syndrome_node(&mut self, node: DualNodePtr) {
+    fn add_syndrome_node(&mut self, dual_node_ptr: &DualNodePtr) {
         debug_assert!({
-            let node = node.read_recursive();
+            let node = dual_node_ptr.read_recursive();
             matches!(node.class, DualNodeClass::SyndromeVertex{ .. })
         }, "node class mismatch");
-        self.add_dual_node(node)
+        self.add_dual_node(dual_node_ptr)
     }
 
     #[inline(always)]
     /// helper function to specifically add a blossom node
-    fn add_blossom(&mut self, node: DualNodePtr) {
+    fn add_blossom(&mut self, dual_node_ptr: &DualNodePtr) {
         debug_assert!({
-            let node = node.read_recursive();
+            let node = dual_node_ptr.read_recursive();
             matches!(node.class, DualNodeClass::Blossom{ .. })
         }, "node class mismatch");
-        self.add_dual_node(node)
+        self.add_dual_node(dual_node_ptr)
     }
 
     /// remove a blossom, note that this dual node ptr is already expanded from the root: normally you only need to remove this blossom
@@ -251,6 +258,7 @@ pub trait DualModuleImpl {
 
 impl DualModuleInterface {
 
+    /// a dual module interface MUST be created given a concrete implementation of the dual module
     pub fn new(syndrome: &Vec<VertexIndex>, dual_module_impl: &mut impl DualModuleImpl) -> Self {
         let mut array = Self {
             nodes: Vec::new(),
@@ -275,13 +283,14 @@ impl DualModuleInterface {
             parent_blossom: None,
         });
         self.nodes.push(Some(node_ptr.clone()));
-        dual_module_impl.add_syndrome_node(node_ptr.clone());
+        dual_module_impl.add_syndrome_node(&node_ptr);
         node_ptr
     }
 
     /// create a dual node corresponding to a blossom, automatically set the grow state of internal nodes;
     /// the nodes circle MUST starts with a growing node and ends with a shrinking node
-    pub fn create_blossom(&mut self, nodes_circle: Vec<DualNodePtr>, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
+    #[must_use = "you must call DualModuleImpl::add_blossom using the returned pointer"]
+    pub fn create_blossom(&mut self, nodes_circle: Vec<DualNodePtr>) -> DualNodePtr {
         let node_idx = self.nodes.len();
         let node_ptr = DualNodePtr::new(DualNode {
             index: node_idx,
@@ -307,31 +316,52 @@ impl DualModuleInterface {
             };
             self.nodes.push(Some(node_ptr.clone()));
         }
-        dual_module_impl.add_blossom(node_ptr.clone());
         node_ptr
     }
 
     /// expand a blossom: note that different from Blossom V library, we do not maintain tree structure after a blossom is expanded;
     /// this is because we're growing all trees together, and due to the natural of quantum codes, this operation is not likely to cause
     /// bottleneck as long as physical error rate is well below the threshold. All internal nodes will have a [`DualNodeGrowState::Stay`] state afterwards.
-    pub fn expand_blossom(&mut self, dual_node_ptr: DualNodePtr, dual_module_impl: &mut impl DualModuleImpl) {
-        let node = dual_node_ptr.read_recursive();
-        let node_idx = node.index;
-        assert!(self.nodes[node_idx].is_some(), "the blossom should not be expanded before");
-        assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
-        self.nodes[node_idx] = None;  // remove this blossom from root
-        match &node.class {
-            DualNodeClass::Blossom { nodes_circle } => {
-                for node in nodes_circle.iter() {
-                    let mut node = node.write();
-                    assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &dual_node_ptr, "internal error: parent blossom must be this blossom");
-                    assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
-                    node.parent_blossom = None;
-                }
-            },
-            _ => { unreachable!() }
+    /// note that you need to call [`DualModuleImpl::remove_blossom`] AFTER this function
+    #[must_use = "you must call DualModuleImpl::remove_blossom using the returned pointer"]
+    pub fn expand_blossom(&mut self, dual_node_ptr: DualNodePtr) -> DualNodePtr {
+        {  // do the expand at interface level
+            let node = dual_node_ptr.read_recursive();
+            let node_idx = node.index;
+            assert!(self.nodes[node_idx].is_some(), "the blossom should not be expanded before");
+            assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
+            self.nodes[node_idx] = None;  // remove this blossom from root
+            match &node.class {
+                DualNodeClass::Blossom { nodes_circle } => {
+                    for node in nodes_circle.iter() {
+                        let mut node = node.write();
+                        assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &dual_node_ptr, "internal error: parent blossom must be this blossom");
+                        assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
+                        node.parent_blossom = None;
+                    }
+                },
+                _ => { unreachable!() }
+            }
         }
-        dual_module_impl.remove_blossom(dual_node_ptr.clone());
+        dual_node_ptr
+    }
+
+    pub fn execute_resolve_instructions(&mut self, dual_module_impl: &mut impl DualModuleImpl, resolve_instructions: PrimalInstructionVec) {
+        for instruction in resolve_instructions.into_iter() {
+            match instruction {
+                PrimalInstruction::UpdateGrowState(dual_node_ptr, grow_state) => {
+                    dual_node_ptr.set_grow_state(grow_state);
+                },
+                PrimalInstruction::CreateBlossom(nodes_circle) => {
+                    let dual_node_blossom = self.create_blossom(nodes_circle);
+                    dual_module_impl.add_blossom(&dual_node_blossom);
+                },
+                PrimalInstruction::ExpandBlossom(dual_node_blossom) => {
+                    let dual_node_blossom = self.expand_blossom(dual_node_blossom);
+                    dual_module_impl.remove_blossom(dual_node_blossom);
+                },
+            }
+        }
     }
 
 }
@@ -369,14 +399,14 @@ impl Ord for MaxUpdateLength {
             (true, true) => {
                 let (a, c) = self.get_touching_virtual().unwrap();
                 let (b, d) = other.get_touching_virtual().unwrap();
-                return a.cmp(b).then(c.cmp(&d))
+                return a.cmp(b).reverse().then(c.cmp(&d).reverse())
             },  // don't care, just compare pointer
             _ => { }
         }
         // last, both of them MUST be MaxUpdateLength::Conflicting
         let (a, c) = self.get_conflicting().unwrap();
         let (b, d) = other.get_conflicting().unwrap();
-        a.cmp(b).then(c.cmp(&d))
+        a.cmp(b).reverse().then(c.cmp(&d).reverse())
     }
 }
 

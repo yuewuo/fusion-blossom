@@ -35,7 +35,9 @@ pub trait PrimalModuleImpl {
     fn load(&mut self, interface: &DualModuleInterface);
 
     /// analyze the reason why dual module cannot further grow, update primal data structure (alternating tree, temporary matches, etc)
-    /// and then tell dual module what to do
-    fn update(&mut self, group_max_update_length: GroupMaxUpdateLength) -> PrimalInstructionVec;
+    /// and then tell dual module what to do to resolve these conflicts;
+    /// note that this function doesn't necessarily resolve all the conflicts, but can return early if some major change is made.
+    /// when implementing this function, it's recommended that you resolve as many conflicts as possible.
+    fn resolve(&mut self, group_max_update_length: GroupMaxUpdateLength) -> PrimalInstructionVec;
 
 }

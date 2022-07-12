@@ -25,9 +25,9 @@ pub struct SolverSerial {
 impl SolverSerial {
 
     /// create a 
-    pub fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>) -> Self {
-        let mut dual_module = DualModuleSerial::new(vertex_num, weighted_edges, virtual_nodes);
-        let primal_module = PrimalModuleSerial::new(vertex_num, weighted_edges, virtual_nodes);
+    pub fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>) -> Self {
+        let mut dual_module = DualModuleSerial::new(vertex_num, weighted_edges, virtual_vertices);
+        let primal_module = PrimalModuleSerial::new(vertex_num, weighted_edges, virtual_vertices);
         let interface = DualModuleInterface::new(&vec![], &mut dual_module);  // initialize with empty syndrome
         Self {
             primal_module: primal_module,
@@ -42,16 +42,16 @@ impl SolverSerial {
     }
 
     // utilities to call this solver
-    pub fn solve_mwpm_visualizer(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>
+    pub fn solve_mwpm_visualizer(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>
             , syndrome_vertices: &Vec<usize>, mut visualizer: Option<&mut Visualizer>) -> Vec<usize> {
-        let mut solver = Self::new(node_num, weighted_edges, virtual_nodes);
+        let mut solver = Self::new(node_num, weighted_edges, virtual_vertices);
         solver.load_syndrome(syndrome_vertices);
         if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("start"), &solver).unwrap(); }
         unimplemented!()
     }
 
-    pub fn solve_mwpm(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_nodes: &Vec<usize>, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
-        Self::solve_mwpm_visualizer(node_num, weighted_edges, virtual_nodes, syndrome_nodes, None)
+    pub fn solve_mwpm(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
+        Self::solve_mwpm_visualizer(node_num, weighted_edges, virtual_vertices, syndrome_nodes, None)
     }
 
 }
