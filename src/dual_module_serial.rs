@@ -439,7 +439,7 @@ impl DualModuleImpl for DualModuleSerial {
         MaxUpdateLength::NonZeroGrow(max_length_abs)
     }
 
-    fn compute_maximum_update_length(&mut self) -> MaxUpdateLength {
+    fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
         // first prepare all nodes for individual grow or shrink; Stay nodes will be prepared to shrink in order to minimize effect on others
         for i in 0..self.nodes.len() {
             let dual_node_ptr = {
@@ -458,7 +458,7 @@ impl DualModuleImpl for DualModuleSerial {
                 DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
             };
         }
-        let mut max_update_length = MaxUpdateLength::NoMoreNodes;
+        let mut group_max_update_length = GroupMaxUpdateLength::new();
         for i in 0..self.nodes.len() {
             let dual_node_ptr = {
                 match self.nodes[i].as_ref() {
@@ -475,10 +475,10 @@ impl DualModuleImpl for DualModuleSerial {
                 DualNodeGrowState::Shrink => false,
                 DualNodeGrowState::Stay => { continue }
             };
-            let local_max_update_length = self.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, true);
-            max_update_length = MaxUpdateLength::min(max_update_length, local_max_update_length);
+            let max_update_length = self.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, true);
+            group_max_update_length.add(max_update_length);
         }
-        max_update_length
+        group_max_update_length
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
@@ -937,18 +937,18 @@ mod tests {
         let dual_node_19_ptr = interface.nodes[0].as_ref().unwrap().clone();
         let dual_node_25_ptr = interface.nodes[1].as_ref().unwrap().clone();
         // grow the maximum
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // grow the maximum
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length.is_conflicting(&dual_node_19_ptr, &dual_node_25_ptr), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_19_ptr, &dual_node_25_ptr), "unexpected: {:?}", group_max_update_length);
     }
 
     #[test]
@@ -973,84 +973,78 @@ mod tests {
         let dual_node_26_ptr = interface.nodes[1].as_ref().unwrap().clone();
         let dual_node_34_ptr = interface.nodes[2].as_ref().unwrap().clone();
         // grow the maximum
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length.is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr) || max_update_length.is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
-            , "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
+            || group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
         dual_node_18_ptr.set_grow_state(DualNodeGrowState::Stay);
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Stay);
         // cannot grow anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length.is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
-            , "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
+            , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
         dual_node_18_ptr.set_grow_state(DualNodeGrowState::Grow);
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Shrink);
         // grow the maximum
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(half_weight);
         visualizer.snapshot(format!("grow"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length.is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
         let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], &mut dual_module);
         // grow the maximum
-        let max_update_length = dual_module.compute_maximum_update_length();
-        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
-            assert_eq!(*length, 2 * half_weight);
-            dual_module.grow(*length);
-        } else {
-            panic!("unexpected max update length: {:?}", max_update_length)
-        }
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("grow blossom"), &dual_module).unwrap();
         // grow the maximum
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("grow blossom"), &dual_module).unwrap();
         // cannot grow anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 23)
-            || max_update_length == MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 39), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 23)
+            || group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.clone(), 39)
+            , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
         dual_node_blossom.set_grow_state(DualNodeGrowState::Stay);
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NoMoreNodes, "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.is_empty(), "unexpected: {:?}", group_max_update_length);
         // also test the reverse procedure: shrinking and expanding blossom
         dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("shrink blossom"), &dual_module).unwrap();
         // before expand
         dual_node_blossom.set_grow_state(DualNodeGrowState::Shrink);
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::NonZeroGrow(2 * half_weight), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("shrink blossom"), &dual_module).unwrap();
         // cannot shrink anymore, find out the reason
-        let max_update_length = dual_module.compute_maximum_update_length();
-        assert!(max_update_length == MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone()), "unexpected max update length: {:?}", max_update_length);
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
+            , "unexpected: {:?}", group_max_update_length);
         // expand blossom
         interface.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
         dual_node_18_ptr.set_grow_state(DualNodeGrowState::Shrink);
         dual_node_26_ptr.set_grow_state(DualNodeGrowState::Grow);
         dual_node_34_ptr.set_grow_state(DualNodeGrowState::Shrink);
-        let max_update_length = dual_module.compute_maximum_update_length();
-        if let MaxUpdateLength::NonZeroGrow(length) = &max_update_length {
-            assert_eq!(*length, 2 * half_weight);
-            dual_module.grow(*length);
-        } else {
-            panic!("unexpected max update length: {:?}", max_update_length)
-        }
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
+        dual_module.grow(2 * half_weight);
         visualizer.snapshot(format!("shrink"), &dual_module).unwrap();
     }
 

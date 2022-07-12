@@ -7,6 +7,8 @@ use super::util::*;
 use std::sync::Arc;
 use crate::derivative::Derivative;
 use crate::parking_lot::RwLock;
+use core::cmp::Ordering;
+use std::collections::BinaryHeap;
 
 
 /// A dual node is either a blossom or a vertex
@@ -31,7 +33,7 @@ pub enum DualNodeGrowState {
 }
 
 /// gives the maximum absolute length to grow, if not possible, give the reason
-#[derive(Derivative, PartialEq)]
+#[derive(Derivative, PartialEq, Eq)]
 #[derivative(Debug)]
 pub enum MaxUpdateLength {
     /// non-zero maximum update length
@@ -44,8 +46,75 @@ pub enum MaxUpdateLength {
     BlossomNeedExpand(DualNodePtr),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module
     VertexShrinkStop(DualNodePtr),
-    /// no more nodes to constrain: no growing or shrinking
-    NoMoreNodes,
+}
+
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub enum GroupMaxUpdateLength {
+    /// non-zero maximum update length
+    NonZeroGrow(Weight),
+    /// conflicting reasons
+    Conflicts(BinaryHeap<MaxUpdateLength>),
+}
+
+impl GroupMaxUpdateLength {
+
+    pub fn new() -> Self {
+        Self::NonZeroGrow(Weight::MAX)
+    }
+
+    pub fn add(&mut self, max_update_length: MaxUpdateLength) {
+        match self {
+            Self::NonZeroGrow(current_length) => {
+                if let MaxUpdateLength::NonZeroGrow(length) = max_update_length {
+                    *current_length = std::cmp::min(*current_length, length);
+                } else {
+                    let mut heap = BinaryHeap::new();
+                    heap.push(max_update_length);
+                    *self = Self::Conflicts(heap);
+                }
+            },
+            Self::Conflicts(conflicts) => {
+                // only add conflicts, not NonZeroGrow
+                if !matches!(max_update_length, MaxUpdateLength::NonZeroGrow(_)) {
+                    conflicts.push(max_update_length)
+                }
+            },
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::NonZeroGrow(Weight::MAX))
+    }
+
+    pub fn get_none_zero_growth(&self) -> Option<Weight> {
+        match self {
+            Self::NonZeroGrow(length) => {
+                debug_assert!(*length != Weight::MAX, "please call GroupMaxUpdateLength::is_empty to check if this group is empty");
+                Some(*length)
+            },
+            _ => { None }
+        }
+    }
+
+    pub fn get_conflicts(&mut self) -> &mut BinaryHeap<MaxUpdateLength> {
+        match self {
+            Self::NonZeroGrow(_) => {
+                panic!("please call GroupMaxUpdateLength::get_none_zero_growth to check if this group is none_zero_growth");
+            },
+            Self::Conflicts(conflicts) => { conflicts }
+        }
+    }
+
+    pub fn get_conflicts_immutable(&self) -> &BinaryHeap<MaxUpdateLength> {
+        match self {
+            Self::NonZeroGrow(_) => {
+                panic!("please call GroupMaxUpdateLength::get_none_zero_growth to check if this group is none_zero_growth");
+            },
+            Self::Conflicts(conflicts) => { conflicts }
+        }
+    }
+
 }
 
 /// A dual node corresponds to either a vertex or a blossom (on which the dual variables are defined)
@@ -76,6 +145,25 @@ impl RwLockPtr<DualNode> for DualNodePtr {
 
 impl PartialEq for DualNodePtr {
     fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
+impl Eq for DualNodePtr { }
+
+impl Ord for DualNodePtr {
+    /// compare pointer address, just to have a consistent order between pointers
+    fn cmp(&self, other: &Self) -> Ordering {
+        let ptr1 = Arc::as_ptr(self.ptr());
+        let ptr2 = Arc::as_ptr(other.ptr());
+        // https://doc.rust-lang.org/reference/types/pointer.html
+        // "When comparing raw pointers they are compared by their address, rather than by what they point to."
+        ptr1.cmp(&ptr2)
+    }
+}
+
+impl PartialOrd for DualNodePtr {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl std::fmt::Debug for DualNodePtr {
@@ -146,8 +234,9 @@ pub trait DualModuleImpl {
         panic!("this dual module implementation doesn't support this function, please use another dual module")
     }
 
-    /// check the maximum length to grow (shrink) for all nodes
-    fn compute_maximum_update_length(&mut self) -> MaxUpdateLength;
+    /// check the maximum length to grow (shrink) for all nodes, return a list of conflicting reason and a single number indicating the maximum length to grow:
+    /// this number will be 0 if any conflicting reason presents
+    fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength;
 
     /// An optional function that can manipulate individual dual node, not necessarily supported by all implementations
     fn grow_dual_node(&mut self, _dual_node_ptr: &DualNodePtr, _length: Weight) {
@@ -246,30 +335,57 @@ impl DualModuleInterface {
 
 }
 
-impl MaxUpdateLength {
-
-    /// get the minimum update length of all individual maximum update length;
-    /// if any length is zero, then also choose one reason with highest priority
-    pub fn min(a: Self, b: Self) -> Self {
-        match (&a, &b) {
-            // if any of them is default, then take the other
-            (_, MaxUpdateLength::NoMoreNodes) => { a },
-            (MaxUpdateLength::NoMoreNodes, _) => { b },
-            // if both of them is non-zero, then take the smaller one
-            (MaxUpdateLength::NonZeroGrow(length_1), MaxUpdateLength::NonZeroGrow(length_2)) => {
-                if length_1 < length_2 { a } else { b }
-            },
-            // TODO: complex priority
-            (MaxUpdateLength::Conflicting( .. ), _) => { a },
-            (_, MaxUpdateLength::Conflicting( .. )) => { b },
-            // VertexShrinkStop has the lowest priority
-            (MaxUpdateLength::NonZeroGrow(_), MaxUpdateLength::VertexShrinkStop(_)) => { a },
-            (MaxUpdateLength::VertexShrinkStop(_), MaxUpdateLength::NonZeroGrow(_)) => { b },
-            _ => {
-                unimplemented!("min of {:?} and {:?}", a, b)
-            }
+impl Ord for MaxUpdateLength {
+    fn cmp(&self, other: &Self) -> Ordering {
+        debug_assert!(!matches!(self, MaxUpdateLength::NonZeroGrow(_)), "priority ordering is not valid for NonZeroGrow");
+        debug_assert!(!matches!(other, MaxUpdateLength::NonZeroGrow(_)), "priority ordering is not valid for NonZeroGrow");
+        if self == other {
+            return Ordering::Equal
         }
+        // VertexShrinkStop has the lowest priority: it should be put at the end of any ordered list
+        // this is because solving VertexShrinkStop conflict is not possible, but when this happens, the primal module
+        // should have put this node as a "-" node in the alternating tree, so there must be a parent and a child that
+        // are "+" nodes, conflicting with each other at exactly this VertexShrinkStop node. In this case, as long as
+        // one solves those "+" nodes conflicting, e.g. forming a blossom, this node's VertexShrinkStop conflict is automatically solved
+        match (matches!(self, MaxUpdateLength::VertexShrinkStop( .. )), matches!(other, MaxUpdateLength::VertexShrinkStop( .. ))) {
+            (true, false) => { return Ordering::Less },  // less priority
+            (false, true) => { return Ordering::Greater },  // greater priority
+            (true, true) => { return self.get_vertex_shrink_stop().unwrap().cmp(other.get_vertex_shrink_stop().unwrap()) },  // don't care, just compare pointer
+            _ => { }
+        }
+        // then, blossom expanding has the low priority, because it's infrequent and expensive
+        match (matches!(self, MaxUpdateLength::BlossomNeedExpand( .. )), matches!(other, MaxUpdateLength::BlossomNeedExpand( .. ))) {
+            (true, false) => { return Ordering::Less },  // less priority
+            (false, true) => { return Ordering::Greater },  // greater priority
+            (true, true) => { return self.get_blossom_need_expand().unwrap().cmp(other.get_blossom_need_expand().unwrap()) },  // don't care, just compare pointer
+            _ => { }
+        }
+        // We'll prefer match nodes internally instead of to boundary, because there might be less path connecting to boundary
+        // this is only an attempt to optimize the MWPM decoder, but anyway it won't be an optimal decoder
+        match (matches!(self, MaxUpdateLength::TouchingVirtual( .. )), matches!(other, MaxUpdateLength::TouchingVirtual( .. ))) {
+            (true, false) => { return Ordering::Less },  // less priority
+            (false, true) => { return Ordering::Greater },  // greater priority
+            (true, true) => {
+                let (a, c) = self.get_touching_virtual().unwrap();
+                let (b, d) = other.get_touching_virtual().unwrap();
+                return a.cmp(b).then(c.cmp(&d))
+            },  // don't care, just compare pointer
+            _ => { }
+        }
+        // last, both of them MUST be MaxUpdateLength::Conflicting
+        let (a, c) = self.get_conflicting().unwrap();
+        let (b, d) = other.get_conflicting().unwrap();
+        a.cmp(b).then(c.cmp(&d))
     }
+}
+
+impl PartialOrd for MaxUpdateLength {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl MaxUpdateLength {
 
     /// useful function to assert expected case
     #[allow(dead_code)]
@@ -283,6 +399,56 @@ impl MaxUpdateLength {
             }
         }
         false
+    }
+
+    /// helper function that get values out of the enum
+    #[allow(dead_code)]
+    #[inline(always)]
+    pub fn get_none_zero_growth(&self) -> Option<Weight> {
+        match self {
+            Self::NonZeroGrow(length) => { Some(*length) },
+            _ => { None },
+        }
+    }
+
+    /// helper function that get values out of the enum
+    #[allow(dead_code)]
+    #[inline(always)]
+    pub fn get_conflicting(&self) -> Option<(&DualNodePtr, &DualNodePtr)> {
+        match self {
+            Self::Conflicting(a, b) => { Some((a, b)) },
+            _ => { None },
+        }
+    }
+
+    /// helper function that get values out of the enum
+    #[allow(dead_code)]
+    #[inline(always)]
+    pub fn get_touching_virtual(&self) -> Option<(&DualNodePtr, VertexIndex)> {
+        match self {
+            Self::TouchingVirtual(a, b) => { Some((a, *b)) },
+            _ => { None },
+        }
+    }
+
+    /// helper function that get values out of the enum
+    #[allow(dead_code)]
+    #[inline(always)]
+    pub fn get_blossom_need_expand(&self) -> Option<&DualNodePtr> {
+        match self {
+            Self::BlossomNeedExpand(a) => { Some(a) },
+            _ => { None },
+        }
+    }
+
+    /// helper function that get values out of the enum
+    #[allow(dead_code)]
+    #[inline(always)]
+    pub fn get_vertex_shrink_stop(&self) -> Option<&DualNodePtr> {
+        match self {
+            Self::VertexShrinkStop(a) => { Some(a) },
+            _ => { None },
+        }
     }
 
 }

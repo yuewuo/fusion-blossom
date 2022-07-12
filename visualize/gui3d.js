@@ -63,6 +63,7 @@ if (is_mock) {
 
 export const scene = new THREE.Scene()
 scene.add( new THREE.AmbientLight( 0xffffff ) )
+window.scene = scene
 export const perspective_camera = new THREE.PerspectiveCamera( 75, sizes.canvas_width / sizes.canvas_height, 0.1, 10000 )
 const orthogonal_camera_init_scale = 6
 export const orthogonal_camera = new THREE.OrthographicCamera( sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
