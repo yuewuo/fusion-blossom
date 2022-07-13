@@ -337,7 +337,7 @@ impl DualModuleInterface {
             node.parent_blossom = Some(blossom_node_ptr.clone());
         }
         if self.debug_print_actions {
-            eprintln!("[DualModuleInterface::create_blossom] {:?} -> {}", nodes_circle, self.nodes.len());
+            eprintln!("[create blossom] {:?} -> {}", nodes_circle, self.nodes.len());
         }
         {  // fill in the nodes because they're in a valid state (all linked to this blossom)
             let mut node = blossom_node_ptr.write();
@@ -357,7 +357,10 @@ impl DualModuleInterface {
     /// bottleneck as long as physical error rate is well below the threshold. All internal nodes will have a [`DualNodeGrowState::Grow`] state afterwards.
     pub fn expand_blossom(&mut self, blossom_node_ptr: DualNodePtr, dual_module_impl: &mut impl DualModuleImpl) {
         if self.debug_print_actions {
-            eprintln!("[DualModuleInterface::expand_blossom] {:?}", blossom_node_ptr);
+            let node = blossom_node_ptr.read_recursive();
+            if let DualNodeClass::Blossom { nodes_circle } = &node.class {
+                eprintln!("[expand blossom] {:?} -> {:?}", blossom_node_ptr, nodes_circle);
+            } else { unreachable!() }
         }
         dual_module_impl.remove_blossom(blossom_node_ptr.clone());
         let node = blossom_node_ptr.read_recursive();
@@ -388,7 +391,7 @@ impl DualModuleInterface {
     /// a helper function to update grow state
     pub fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState, dual_module_impl: &mut impl DualModuleImpl) {
         if self.debug_print_actions {
-            eprintln!("[DualModuleInterface::set_grow_state] {:?} {:?}", dual_node_ptr, grow_state);
+            eprintln!("[set grow state] {:?} {:?}", dual_node_ptr, grow_state);
         }
         {  // update sum_grow_speed
             let node = dual_node_ptr.read_recursive();

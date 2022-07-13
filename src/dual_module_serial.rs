@@ -440,6 +440,7 @@ impl DualModuleImpl for DualModuleSerial {
                             if peer_vertex.is_virtual {
                                 return MaxUpdateLength::TouchingVirtual(dual_node_ptr.clone(), peer_vertex.vertex_index);
                             } else {
+                                println!("edge: {edge_ptr:?}, peer_vertex_ptr: {peer_vertex_ptr:?}");
                                 unreachable!("this edge should've been removed from boundary because it's already fully grown, and it's peer vertex is not virtual")
                             }
                         }
@@ -477,8 +478,25 @@ impl DualModuleImpl for DualModuleSerial {
             };
             let dual_node = dual_node_ptr.read_recursive();
             match dual_node.grow_state {
-                DualNodeGrowState::Grow => { self.prepare_dual_node_growth(&dual_node_ptr, true); },
+                DualNodeGrowState::Grow => { },
                 DualNodeGrowState::Shrink => { self.prepare_dual_node_growth(&dual_node_ptr, false); },
+                DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
+            };
+        }
+        for i in 0..self.nodes.len() {
+            let dual_node_ptr = {
+                match self.nodes[i].as_ref() {
+                    Some(internal_dual_node_ptr) => {
+                        let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                        dual_node_internal.origin.clone()
+                    },
+                    _ => { continue }
+                }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            match dual_node.grow_state {
+                DualNodeGrowState::Grow => { self.prepare_dual_node_growth(&dual_node_ptr, true); },
+                DualNodeGrowState::Shrink => { },
                 DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
             };
         }
@@ -742,8 +760,7 @@ impl DualModuleSerial {
                             edge_ptr.dynamic_clear(active_timestamp);
                             let edge = edge_ptr.read_recursive(active_timestamp);
                             let is_left = vertex_ptr == &edge.left;
-                            let not_fully_grown = edge.left_growth + edge.right_growth < edge.weight;
-                            let newly_propagated_edge = not_fully_grown && if is_left {
+                            let newly_propagated_edge = if is_left {
                                 edge.left_dual_node.is_none()
                             } else {
                                 edge.right_dual_node.is_none()
