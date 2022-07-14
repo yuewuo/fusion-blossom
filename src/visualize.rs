@@ -167,6 +167,10 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
             assert!(dual_nodes.len() == dual_nodes_2.len(), "dual_nodes must be compatible");
             for (dual_node_idx, dual_node) in dual_nodes.iter_mut().enumerate() {
                 let dual_node_2 = &mut dual_nodes_2[dual_node_idx];
+                if dual_node.is_null() {
+                    assert!(dual_node_2.is_null(), "dual node must be simultaneously be null, if necessary");
+                    continue
+                }
                 let dual_node = dual_node.as_object_mut().expect("each dual_node must be an object");
                 let dual_node_2 = dual_node_2.as_object_mut().expect("each dual_node must be an object");
                 // list known keys
@@ -322,25 +326,25 @@ mod tests {
             code.vertices[*syndrome_vertex].is_syndrome = true;
         }
         let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot(format!("initial"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("initial"), vec![&interface, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         // test basic grow and shrink of a single tree node
         for _ in 0..4 {
             dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), half_weight);
-            visualizer.snapshot(format!("grow half weight"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("grow half weight"), vec![&interface, &dual_module]).unwrap();
         }
         for _ in 0..4 {
             dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), -half_weight);
-            visualizer.snapshot(format!("shrink half weight"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("shrink half weight"), vec![&interface, &dual_module]).unwrap();
         }
         for _ in 0..3 { dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), half_weight); }
-        visualizer.snapshot(format!("grow 3 half weight"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow 3 half weight"), vec![&interface, &dual_module]).unwrap();
         for _ in 0..3 { dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), -half_weight); }
-        visualizer.snapshot(format!("shrink 3 half weight"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("shrink 3 half weight"), vec![&interface, &dual_module]).unwrap();
         // test all
         for i in 0..interface.nodes.len() {
             dual_module.grow_dual_node(interface.nodes[i].as_ref().unwrap(), half_weight);
-            visualizer.snapshot(format!("grow half weight"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("grow half weight"), vec![&interface, &dual_module]).unwrap();
         }
     }
 
@@ -446,14 +450,14 @@ mod tests {
         }
         visualizer.set_positions(positions, true);  // automatic center all vertices
         let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        DualModuleInterface::new(&syndrome_vertices, &mut dual_module);
+        let interface = DualModuleInterface::new(&syndrome_vertices, &mut dual_module);
         // grow edges
         for &edge_index in grow_edges.iter() {
             let mut edge = dual_module.edges[edge_index].write_force();
             edge.left_growth = edge.weight;
         }
         // save snapshot
-        visualizer.snapshot(format!("initial"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("initial"), vec![&interface, &dual_module]).unwrap();
     }
 
     #[test]
@@ -483,42 +487,42 @@ mod tests {
             // create dual nodes and grow them by half length
             let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
             // save snapshot
-            visualizer.snapshot(format!("initial"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("initial"), vec![&interface, &dual_module]).unwrap();
             // first layer grow first
             dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), quarter_weight);
             dual_module.grow_dual_node(interface.nodes[1].as_ref().unwrap(), quarter_weight);
             dual_module.grow_dual_node(interface.nodes[2].as_ref().unwrap(), quarter_weight);
-            visualizer.snapshot(format!("grow a quarter"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("grow a quarter"), vec![&interface, &dual_module]).unwrap();
             // merge and match
             dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), quarter_weight);
             dual_module.grow_dual_node(interface.nodes[1].as_ref().unwrap(), quarter_weight);
             dual_module.grow_dual_node(interface.nodes[2].as_ref().unwrap(), quarter_weight);
-            visualizer.snapshot(format!("find a match"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("find a match"), vec![&interface, &dual_module]).unwrap();
             // grow to boundary
             dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), half_weight);
-            visualizer.snapshot(format!("touch temporal boundary"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("touch temporal boundary"), vec![&interface, &dual_module]).unwrap();
             // add more measurement rounds
-            visualizer.snapshot(format!("add measurement #2"), &dual_module).unwrap();
-            visualizer.snapshot(format!("add measurement #3"), &dual_module).unwrap();
-            visualizer.snapshot(format!("add measurement #4"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #2"), vec![&interface, &dual_module]).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #3"), vec![&interface, &dual_module]).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #4"), vec![&interface, &dual_module]).unwrap();
             // handle errors at measurement round 4
             dual_module.grow_dual_node(interface.nodes[5].as_ref().unwrap(), half_weight);
             dual_module.grow_dual_node(interface.nodes[4].as_ref().unwrap(), half_weight);
-            visualizer.snapshot(format!("grow a half"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("grow a half"), vec![&interface, &dual_module]).unwrap();
             dual_module.grow_dual_node(interface.nodes[5].as_ref().unwrap(), half_weight);
             dual_module.grow_dual_node(interface.nodes[4].as_ref().unwrap(), half_weight);
-            visualizer.snapshot(format!("temporary match"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("temporary match"), vec![&interface, &dual_module]).unwrap();
             // handle errors at measurement round 5
-            visualizer.snapshot(format!("add measurement #5"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #5"), vec![&interface, &dual_module]).unwrap();
             for _ in 0..4 {
                 dual_module.grow_dual_node(interface.nodes[4].as_ref().unwrap(), -quarter_weight);
                 dual_module.grow_dual_node(interface.nodes[5].as_ref().unwrap(), quarter_weight);
                 dual_module.grow_dual_node(interface.nodes[6].as_ref().unwrap(), quarter_weight);
-                visualizer.snapshot(format!("grow or shrink a quarter"), &dual_module).unwrap();
+                visualizer.snapshot_combined(format!("grow or shrink a quarter"), vec![&interface, &dual_module]).unwrap();
             }
-            visualizer.snapshot(format!("add measurement #6"), &dual_module).unwrap();
-            visualizer.snapshot(format!("add measurement #7"), &dual_module).unwrap();
-            visualizer.snapshot(format!("add measurement #8"), &dual_module).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #6"), vec![&interface, &dual_module]).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #7"), vec![&interface, &dual_module]).unwrap();
+            visualizer.snapshot_combined(format!("add measurement #8"), vec![&interface, &dual_module]).unwrap();
         }
     }
 

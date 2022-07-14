@@ -26,12 +26,12 @@ function base64_encode (arraybuffer) {
 export async function visualize_paper_weighted_union_find_decoder() {
     this.warning_message = "please adjust your screen to 1920 * 1080 in order to get best draw effect (use developer tool of your browser if your screen resolution is not native 1920 * 1080); The default output image is set to 2634 * 2155 in this case, click \"download\" to save it."
     this.lock_view = true
-    // hide virtual nodes
-    gui3d.controller.virtual_node_opacity.setValue(0)
-    gui3d.controller.virtual_node_outline_opacity.setValue(0)
-    gui3d.controller.real_node_opacity.setValue(1)
+    // hide virtual vertices
+    gui3d.controller.virtual_vertex_opacity.setValue(0)
+    gui3d.controller.virtual_vertex_outline_opacity.setValue(0)
+    gui3d.controller.real_vertex_opacity.setValue(1)
     gui3d.controller.edge_opacity.setValue(0.05)
-    gui3d.controller.node_radius_scale.setValue(0.7)
+    gui3d.controller.vertex_radius_scale.setValue(0.7)
     gui3d.controller.edge_radius_scale.setValue(0.7)
     await Vue.nextTick()  // make sure all changes have been applied
     // adjust camera location (use `camera.value.position`, `camera.value.quaternion` and `camera.value.zoom` to update it here)
@@ -39,17 +39,17 @@ export async function visualize_paper_weighted_union_find_decoder() {
     gui3d.camera.value.lookAt(0, 0, 0)
     gui3d.camera.value.zoom = 1.43
     gui3d.camera.value.updateProjectionMatrix()  // need to call after setting zoom
-    // remove the bottom nodes
+    // remove the bottom vertices
     const fusion_data = gui3d.active_fusion_data.value
     const snapshot_idx = gui3d.active_snapshot_idx.value
     const snapshot = fusion_data.snapshots[snapshot_idx][1]
-    for (let [i, node] of snapshot.nodes.entries()) {
+    for (let [i, vertex] of snapshot.vertices.entries()) {
         let position = fusion_data.positions[i]
         if (position.t <= -3) {
-            const node_mesh = gui3d.node_meshes[i]
-            node_mesh.visible = false
-            const node_outline_mesh = gui3d.node_outline_meshes[i]
-            node_outline_mesh.visible = false
+            const vertex_mesh = gui3d.vertex_meshes[i]
+            vertex_mesh.visible = false
+            const vertex_outline_mesh = gui3d.vertex_outline_meshes[i]
+            vertex_outline_mesh.visible = false
         }
     }
     // remove bottom edges except straight up and down
@@ -102,16 +102,16 @@ export async function visualize_paper_weighted_union_find_decoder() {
     bottom_image_mesh.rotateX(-Math.PI / 2)
     gui3d.scene.add(bottom_image_mesh)
     if (true) {  // add transparent layers
-        // change the color of nodes
-        const stab_z_material = gui3d.real_node_material.clone()
+        // change the color of vertices
+        const stab_z_material = gui3d.real_vertex_material.clone()
         stab_z_material.color = new THREE.Color(0xCFE2F3)
-        const stab_x_material = gui3d.real_node_material.clone()
+        const stab_x_material = gui3d.real_vertex_material.clone()
         stab_x_material.color = new THREE.Color(0xFFFF00)
-        for (let [i, node] of snapshot.nodes.entries()) {
+        for (let [i, vertex] of snapshot.vertices.entries()) {
             let position = fusion_data.positions[i]
-            const node_mesh = gui3d.node_meshes[i]
-            if (!node.s && !node.v) {
-                node_mesh.material = position.i % 2 == 0 ? stab_z_material : stab_x_material
+            const vertex_mesh = gui3d.vertex_meshes[i]
+            if (!vertex.s && !vertex.v) {
+                vertex_mesh.material = position.i % 2 == 0 ? stab_z_material : stab_x_material
             }
         }
         // remove all edges, otherwise too messy
@@ -153,13 +153,13 @@ export async function visualize_paper_weighted_union_find_decoder() {
 
 function retain_only_indices_smaller_than(snapshot_select, retain_index) {
     const snapshot = index.fusion_data.snapshots[snapshot_select][1]
-    let nodes = []
-    for (let [i, node] of snapshot.nodes.entries()) {
+    let vertices = []
+    for (let [i, vertex] of snapshot.vertices.entries()) {
         if (i < retain_index) {
-            nodes.push(node)
+            vertices.push(vertex)
         }
     }
-    snapshot.nodes = nodes
+    snapshot.vertices = vertices
     let edges = []
     for (let [i, edge] of snapshot.edges.entries()) {
         if (edge.l < retain_index || edge.r < retain_index) {
@@ -167,22 +167,22 @@ function retain_only_indices_smaller_than(snapshot_select, retain_index) {
         }
     }
     snapshot.edges = edges
-    let tree_nodes = []
-    for (let [i, tree_node] of snapshot.tree_nodes.entries()) {
-        let has_tree_node = false
-        if (tree_node.s != null && tree_node.s < retain_index) {
-            has_tree_node = true
+    let dual_nodes = []
+    for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
+        let has_dual_node = false
+        if (dual_node.s != null && dual_node.s < retain_index) {
+            has_dual_node = true
         }
-        for (let node_index of tree_node.b) {
+        for (let node_index of dual_node.b) {
             if (node_index < retain_index) {
-                has_tree_node = true
+                has_dual_node = true
             }
         }
-        if (has_tree_node) {
-            tree_nodes.push(tree_node)
+        if (has_dual_node) {
+            dual_nodes.push(dual_node)
         }
     }
-    snapshot.tree_nodes = tree_nodes
+    snapshot.dual_nodes = dual_nodes
 }
 
 function shift_all_positions_upward(shift_t = null) {

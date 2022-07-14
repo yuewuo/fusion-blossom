@@ -681,6 +681,7 @@ impl FusionVisualizer for DualModuleSerial {
             vertices.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
+                if abbrev { "p" } else { "propagated_dual_node" }: vertex.propagated_dual_node.as_ref().map(|ptr| ptr.read_recursive().index),
             }));
         }
         let mut edges = Vec::<serde_json::Value>::new();
@@ -693,6 +694,8 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "r" } else { "right" }: edge.right.read_recursive(active_timestamp).vertex_index,
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
+                if abbrev { "ld" } else { "left_dual_node" }: edge.left_dual_node.as_ref().map(|ptr| ptr.read_recursive().index),
+                if abbrev { "rd" } else { "right_dual_node" }: edge.right_dual_node.as_ref().map(|ptr| ptr.read_recursive().index),
             }));
         }
         let mut dual_nodes = Vec::<serde_json::Value>::new();

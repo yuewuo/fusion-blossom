@@ -239,7 +239,7 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
             }));
         }
         json!({
-            "nodes": vertices,  // TODO: update HTML code to use the same language
+            "vertices": vertices,  // TODO: update HTML code to use the same language
             "edges": edges,
         })
     }

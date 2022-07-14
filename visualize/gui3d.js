@@ -227,6 +227,8 @@ export const blossom_convex_material = new THREE.MeshStandardMaterial({
     transparent: true,
     side: THREE.BackSide,
 })
+export const blossom_convex_material_2d = blossom_convex_material.clone()
+blossom_convex_material_2d.side = THREE.DoubleSide
 
 // meshes that can be reused across different snapshots
 export var vertex_meshes = []
@@ -237,6 +239,7 @@ window.vertex_outline_meshes = vertex_outline_meshes
 const scaled_vertex_outline_radius = computed(() => {
     return scaled_vertex_radius.value * outline_ratio.value
 })
+export var vertex_caches = []  // store some information that can be useful
 export var left_edge_meshes = []
 export var right_edge_meshes = []
 export var middle_edge_meshes = []
@@ -301,6 +304,7 @@ export function translate_edge(left_grown, right_grown, weight) {
 
 export const active_fusion_data = ref(null)
 export const active_snapshot_idx = ref(0)
+window.is_vertices_2d_plane = false  // will be true only if all vertices' t position = 0
 export async function refresh_snapshot_data() {
     // console.log("refresh_snapshot_data")
     if (active_fusion_data.value != null) {  // no fusion data provided
@@ -313,6 +317,19 @@ export async function refresh_snapshot_data() {
         current_selected.value = null
         await Vue.nextTick()
         await Vue.nextTick()
+        // update vertex cache
+        vertex_caches = []
+        window.is_vertices_2d_plane = true
+        for (let position of fusion_data.positions) {
+            if (position.t != 0) {
+                window.is_vertices_2d_plane = false
+            }
+            vertex_caches.push({
+                position: {
+                    center: compute_vector3(position),
+                }
+            })
+        }
         // draw vertices
         for (let [i, vertex] of snapshot.vertices.entries()) {
             let position = fusion_data.positions[i]
@@ -446,26 +463,50 @@ export async function refresh_snapshot_data() {
                 let points = []
                 for (let [is_left, edge_index] of dual_node.b) {
                     let cached_position = edge_caches[edge_index].position
+                    const edge = snapshot.edges[edge_index]
                     if (is_left) {
-                        points.push(cached_position.left_end.clone())
+                        if (edge.lg == edge.w) {
+                            points.push(vertex_caches[edge.r].position.center.clone())
+                        } else if (edge.lg == 0) {
+                            points.push(vertex_caches[edge.l].position.center.clone())
+                        } else {
+                            points.push(cached_position.left_end.clone())
+                        }
                     } else {
-                        points.push(cached_position.right_end.clone())
+                        if (edge.rg == edge.w) {
+                            points.push(vertex_caches[edge.l].position.center.clone())
+                        } else if (edge.rg == 0) {
+                            points.push(vertex_caches[edge.r].position.center.clone())
+                        } else {
+                            points.push(cached_position.right_end.clone())
+                        }
                     }
                 }
-                let is_2d_plane = true
-                for (let point of points) {
-                    if (point.y != 0) {
-                        is_2d_plane = false
-                        break
+                if (points.length >= 3) {  // only display if points is more than 3
+                    if (window.is_vertices_2d_plane) {
+                        // special optimization for 2D points, because ConvexGeometry doesn't work well on them
+                        const points_2d = []
+                        for (let point of points) {
+                            points_2d.push([ point.x, point.z ])
+                        }
+                        const hull_points = hull(points_2d, 1)
+                        const shape_points = []
+                        for (let hull_point of hull_points) {
+                            shape_points.push( new THREE.Vector2( hull_point[0], hull_point[1] ) );
+                        }
+                        const shape = new THREE.Shape( shape_points )
+                        const geometry = new THREE.ShapeGeometry( shape )
+                        const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material_2d )
+                        blossom_convex_mesh.position.set( 0, -0.2, 0 )  // place the plane to slightly below the vertices for better viz
+                        blossom_convex_mesh.rotation.set( Math.PI / 2, 0, 0 );
+                        scene.add( blossom_convex_mesh )
+                        blossom_convex_meshes.push(blossom_convex_mesh)
+                    } else {
+                        const geometry = new ConvexGeometry( points )
+                        const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
+                        scene.add( blossom_convex_mesh )
+                        blossom_convex_meshes.push(blossom_convex_mesh)
                     }
-                }
-                if (is_2d_plane) {
-                    // special optimization for 2D points, because ConvexGeometry doesn't work well on them
-                } else {
-                    const geometry = new ConvexGeometry( points )
-                    const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
-                    scene.add( blossom_convex_mesh )
-                    blossom_convex_meshes.push(blossom_convex_mesh)
                 }
             }
         }
