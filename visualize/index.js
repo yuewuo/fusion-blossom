@@ -1,5 +1,6 @@
 import * as gui3d from './gui3d.js'
 import * as patches from './patches.js'
+import * as primal from './primal.js'
 
 if (typeof window === 'undefined' || typeof document === 'undefined') {
     await import('./mocker.js')
@@ -54,8 +55,8 @@ const App = {
             is_browser_supported: is_browser_supported,
             // select
             current_selected: gui3d.current_selected,
-            selected_node_neighbor_edges: ref([]),
-            selected_node_attributes: ref(""),
+            selected_vertex_neighbor_edges: ref([]),
+            selected_vertex_attributes: ref(""),
             selected_edge: ref(null),
         }
     },
@@ -69,6 +70,9 @@ const App = {
             this.error_message = "fetch file error"
             throw e
         }
+        // hook primal div
+        primal.initialize_primal_div()
+        // load snapshot
         this.show_snapshot(0)  // load the first snapshot
         this.snapshot_num = fusion_data.snapshots.length
         for (let [idx, [name, _]] of fusion_data.snapshots.entries()) {
@@ -148,6 +152,7 @@ const App = {
         show_snapshot(snapshot_idx) {
             try {
                 gui3d.show_snapshot(snapshot_idx, fusion_data)
+                primal.show_snapshot(snapshot_idx, fusion_data)
             } catch (e) {
                 this.error_message = "load data error"
                 throw e
@@ -158,20 +163,20 @@ const App = {
         },
         update_selected_display() {
             if (this.current_selected == null) return
-            if (this.current_selected.type == "node") {
-                let node_index = this.current_selected.node_index
-                let node = this.snapshot.nodes[node_index]
-                this.selected_node_attributes = ""
-                if (node.s == 1) {
-                    this.selected_node_attributes = "(syndrome)"
-                } else if (node.v == 1) {
-                    this.selected_node_attributes = "(virtual)"
+            if (this.current_selected.type == "vertex") {
+                let vertex_index = this.current_selected.vertex_index
+                let vertex = this.snapshot.vertices[vertex_index]
+                this.selected_vertex_attributes = ""
+                if (vertex.s == 1) {
+                    this.selected_vertex_attributes = "(syndrome)"
+                } else if (vertex.v == 1) {
+                    this.selected_vertex_attributes = "(virtual)"
                 }
-                console.assert(!(node.s == 1 && node.v == 1), "a node cannot be both syndrome and virtual")
+                console.assert(!(vertex.s == 1 && vertex.v == 1), "a vertex cannot be both syndrome and virtual")
                 // fetch edge list
                 let neighbor_edges = []
                 for (let [edge_index, edge] of this.snapshot.edges.entries()) {
-                    if (edge.l == node_index) {
+                    if (edge.l == vertex_index) {
                         const [translated_left_grown, translated_right_grown] = gui3d.translate_edge(edge.lg, edge.rg, edge.w)
                         const translated_unexplored = edge.w - translated_left_grown - translated_right_grown
                         neighbor_edges.push({
@@ -180,12 +185,12 @@ const App = {
                             unexplored: edge.w - edge.lg - edge.rg,
                             right_grown: edge.rg,
                             weight: edge.w,
-                            node_index: edge.r,
+                            vertex_index: edge.r,
                             translated_left_grown,
                             translated_right_grown,
                             translated_unexplored,
                         })
-                    } else if (edge.r == node_index) {
+                    } else if (edge.r == vertex_index) {
                         const [translated_left_grown, translated_right_grown] = gui3d.translate_edge(edge.rg, edge.lg, edge.w)
                         const translated_unexplored = edge.w - translated_left_grown - translated_right_grown
                         neighbor_edges.push({
@@ -194,14 +199,14 @@ const App = {
                             unexplored: edge.w - edge.lg - edge.rg,
                             right_grown: edge.lg,
                             weight: edge.w,
-                            node_index: edge.l,
+                            vertex_index: edge.l,
                             translated_left_grown,
                             translated_right_grown,
                             translated_unexplored,
                         })
                     }
                 }
-                this.selected_node_neighbor_edges = neighbor_edges
+                this.selected_vertex_neighbor_edges = neighbor_edges
             }
             if (this.current_selected.type == "edge") {
                 const edge_index = this.current_selected.edge_index
@@ -214,8 +219,8 @@ const App = {
                     unexplored: edge.w - edge.lg - edge.rg,
                     right_grown: edge.rg,
                     weight: edge.w,
-                    left_node_index: edge.l,
-                    right_node_index: edge.r,
+                    left_vertex_index: edge.l,
+                    right_vertex_index: edge.r,
                     translated_left_grown,
                     translated_right_grown,
                     translated_unexplored,
@@ -229,9 +234,9 @@ const App = {
                     type, edge_index: data
                 }
             }
-            if (type == "node") {
+            if (type == "vertex") {
                 current_ref.value = {
-                    type, node_index: data
+                    type, vertex_index: data
                 }
             }
         },

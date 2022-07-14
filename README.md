@@ -35,7 +35,10 @@ To start a server, run the following
 ```sh
 cd visualize
 npm install  # to download packages
-node index.js <url> <width> <height>
+# you can choose to render locally or to view it in a browser interactively
+# interactive: open url using a browser (Chrome recommended)
+node index.js <url> <width> <height>  # local render
+
 # for example you can run the following command to get url
 cd ..
 cargo test visualize_paper_weighted_union_find_decoder -- --nocapture

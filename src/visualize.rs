@@ -40,7 +40,7 @@ pub struct Visualizer {
     file: Option<File>,
     /// basic snapshot
     base: serde_json::Value,
-    /// positions of the nodes
+    /// positions of the vertices
     positions: Vec<VisualizePosition>,
     /// all snapshots
     snapshots: Vec<(String, serde_json::Value)>,
@@ -49,7 +49,7 @@ pub struct Visualizer {
 pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) {
     let value = value.as_object_mut().expect("snapshot must be an object");
     // fix vertices missing fields
-    let vertices = value.get_mut("nodes").expect("missing unrecoverable field").as_array_mut().expect("vertices must be an array");
+    let vertices = value.get_mut("vertices").expect("missing unrecoverable field").as_array_mut().expect("vertices must be an array");
     for vertex in vertices {
         let vertex = vertex.as_object_mut().expect("each vertex must be an object");
         let key_is_virtual = if abbrev { "v" } else { "is_virtual" };
@@ -80,14 +80,6 @@ pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) 
             edge.insert(key_right_growth.to_string(), json!(0));  // by default no growth
         }
     }
-    // fix tree node missing fields
-    if !value.contains_key("tree_nodes") {
-        value.insert("tree_nodes".to_string(), json!([]));  // by default no tree nodes
-    }
-    let tree_nodes = value.get_mut("tree_nodes").unwrap().as_array_mut().expect("tree_nodes must be an array");
-    for _tree_node in tree_nodes {
-        // unimplemented!();
-    }
 }
 
 pub type ObjectMap = serde_json::Map<String, serde_json::Value>;
@@ -115,12 +107,12 @@ pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap
 pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde_json::Value, abbrev: bool) {
     let value = value.as_object_mut().expect("snapshot must be an object");
     let value_2 = value_2.as_object_mut().expect("snapshot must be an object");
-    match (value.contains_key("nodes"), value_2.contains_key("nodes")) {
+    match (value.contains_key("vertices"), value_2.contains_key("vertices")) {
         (_, false) => { },  // do nothing
-        (false, true) => { value.insert("nodes".to_string(), value_2.remove("nodes").unwrap()); }
+        (false, true) => { value.insert("vertices".to_string(), value_2.remove("vertices").unwrap()); }
         (true, true) => {  // combine
-            let vertices = value.get_mut("nodes").unwrap().as_array_mut().expect("vertices must be an array");
-            let vertices_2 = value_2.get_mut("nodes").unwrap().as_array_mut().expect("vertices must be an array");
+            let vertices = value.get_mut("vertices").unwrap().as_array_mut().expect("vertices must be an array");
+            let vertices_2 = value_2.get_mut("vertices").unwrap().as_array_mut().expect("vertices must be an array");
             assert!(vertices.len() == vertices_2.len(), "vertices must be compatible");
             for (vertex_idx, vertex) in vertices.iter_mut().enumerate() {
                 let vertex_2 = &mut vertices_2[vertex_idx];
@@ -134,7 +126,9 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                     snapshot_combine_object_known_key(vertex, vertex_2, key);
                 }
                 snapshot_copy_remaining_fields(vertex, vertex_2);
+                assert_eq!(vertex_2.len(), 0, "there should be nothing left");
             }
+            value_2.remove("vertices").unwrap();
         }
     }
     match (value.contains_key("edges"), value_2.contains_key("edges")) {
@@ -159,16 +153,41 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                     snapshot_combine_object_known_key(edge, edge_2, key);
                 }
                 snapshot_copy_remaining_fields(edge, edge_2);
+                assert_eq!(edge_2.len(), 0, "there should be nothing left");
             }
+            value_2.remove("edges").unwrap();
         }
     }
-    match (value.contains_key("tree_nodes"), value_2.contains_key("tree_nodes")) {
+    match (value.contains_key("dual_nodes"), value_2.contains_key("dual_nodes")) {
         (_, false) => { },  // do nothing
-        (false, true) => { value.insert("tree_nodes".to_string(), value_2.remove("tree_nodes").unwrap()); }
+        (false, true) => { value.insert("dual_nodes".to_string(), value_2.remove("dual_nodes").unwrap()); }
         (true, true) => {  // combine
-            unimplemented!();
+            let dual_nodes = value.get_mut("dual_nodes").unwrap().as_array_mut().expect("dual_nodes must be an array");
+            let dual_nodes_2 = value_2.get_mut("dual_nodes").unwrap().as_array_mut().expect("dual_nodes must be an array");
+            assert!(dual_nodes.len() == dual_nodes_2.len(), "dual_nodes must be compatible");
+            for (dual_node_idx, dual_node) in dual_nodes.iter_mut().enumerate() {
+                let dual_node_2 = &mut dual_nodes_2[dual_node_idx];
+                let dual_node = dual_node.as_object_mut().expect("each dual_node must be an object");
+                let dual_node_2 = dual_node_2.as_object_mut().expect("each dual_node must be an object");
+                // list known keys
+                let key_boundary = if abbrev { "b" } else { "boundary" };
+                let key_dual_variable = if abbrev { "d" } else { "dual_variable" };
+                let key_blossom = if abbrev { "o" } else { "blossom" };
+                let key_syndrome_vertex = if abbrev { "s" } else { "syndrome_vertex" };
+                let key_grow_state = if abbrev { "g" } else { "grow_state" };
+                let key_unit_growth = if abbrev { "u" } else { "unit_growth" };
+                let key_parent_blossom = if abbrev { "p" } else { "parent_blossom" };
+                let known_keys = [key_boundary, key_dual_variable, key_blossom, key_syndrome_vertex, key_grow_state, key_unit_growth, key_parent_blossom];
+                for key in known_keys {
+                    snapshot_combine_object_known_key(dual_node, dual_node_2, key);
+                }
+                snapshot_copy_remaining_fields(dual_node, dual_node_2);
+                assert_eq!(dual_node_2.len(), 0, "there should be nothing left");
+            }
+            value_2.remove("dual_nodes").unwrap();
         }
     }
+    snapshot_copy_remaining_fields(value, value_2);
 }
 
 impl Visualizer {
@@ -293,7 +312,7 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.2, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all vertices
         print_visualize_link(&visualize_filename);
         // create dual module
         let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
@@ -332,7 +351,7 @@ mod tests {
         let d = 3usize;
         let td = 4usize;
         let p = 0.2f64;
-        let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
+        let row_vertex_num = (d-1) + 2;  // two virtual vertices at left and right
         let t_vertex_num = row_vertex_num * d;  // `d` rows
         let half_vertex_num = t_vertex_num * td;  // `td` layers
         let vertex_num = half_vertex_num * 2;  // both X and Z type stabilizers altogether
@@ -425,7 +444,7 @@ mod tests {
                 }
             }
         }
-        visualizer.set_positions(positions, true);  // automatic center all nodes
+        visualizer.set_positions(positions, true);  // automatic center all vertices
         let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
         DualModuleInterface::new(&syndrome_vertices, &mut dual_module);
         // grow edges
@@ -453,7 +472,7 @@ mod tests {
                 Box::new(PhenomenologicalPlanarCode::new(7, 7, 0.2, half_weight))
             };
             let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-            visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+            visualizer.set_positions(code.get_positions(), true);  // automatic center all vertices
             print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
             // create dual module
             let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();

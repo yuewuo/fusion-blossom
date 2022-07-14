@@ -11,7 +11,9 @@
   "license": "MIT",
   "dependencies": {
     "canvas": "^2.9.1",
+    "d3": "^7.6.1",
     "gl": "^5.0.0",
+    "hull.js": "^1.0.2",
     "jimp": "^0.16.1",
     "jsdom": "^19.0.0",
     "three": "^0.139.2",

@@ -59,7 +59,7 @@ pub struct AlternatingTreeNode {
     pub depth: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MatchTarget {
     Peer(PrimalNodeInternalPtr),
     VirtualVertex(VertexIndex),
@@ -185,8 +185,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
                         };
                         // creating an alternating tree: free node becomes the root, matched node becomes child
-                        let matched_target: MatchTarget = matched_node_internal.temporary_match.as_ref().unwrap().clone();
-                        match &matched_target {
+                        let match_target: MatchTarget = matched_node_internal.temporary_match.as_ref().unwrap().clone();
+                        match &match_target {
                             MatchTarget::Peer(leaf_node_internal_ptr) => {
                                 let mut leaf_node_internal = leaf_node_internal_ptr.write();
                                 free_node_internal.tree_node = Some(AlternatingTreeNode {
@@ -364,7 +364,35 @@ impl PrimalModuleImpl for PrimalModuleSerial {
 
 impl FusionVisualizer for PrimalModuleSerial {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
-        unimplemented!()
+        // do the sanity check first before taking snapshot
+        self.sanity_check().unwrap();
+        let mut primal_nodes = Vec::<serde_json::Value>::new();
+        for primal_node_ptr in self.nodes.iter() {
+            if let Some(primal_node_ptr) = &primal_node_ptr {
+                let primal_node = primal_node_ptr.read_recursive();
+                primal_nodes.push(json!({
+                    if abbrev { "m" } else { "temporary_match" }: primal_node.temporary_match.as_ref().map(|match_target| {
+                        match match_target {
+                            MatchTarget::Peer(peer_ptr) => json!({ if abbrev { "p" } else { "peer" }: peer_ptr.read_recursive().index }),
+                            MatchTarget::VirtualVertex(vertex_idx) => json!({ if abbrev { "v" } else { "virtual_vertex" }: vertex_idx }),
+                        }
+                    }),
+                    if abbrev { "t" } else { "tree_node" }: primal_node.tree_node.as_ref().map(|tree_node| {
+                        json!({
+                            if abbrev { "r" } else { "root" }: tree_node.root.read_recursive().index,
+                            if abbrev { "p" } else { "parent" }: tree_node.parent.as_ref().map(|ptr| ptr.read_recursive().index),
+                            if abbrev { "c" } else { "children" }: tree_node.children.iter().map(|ptr| ptr.read_recursive().index).collect::<Vec<NodeIndex>>(),
+                            if abbrev { "d" } else { "depth" }: tree_node.depth,
+                        })
+                    }),
+                }));
+            } else {
+                primal_nodes.push(json!(null));
+            }
+        }
+        json!({
+            "primal_nodes": primal_nodes,
+        })
     }
 }
 
@@ -439,6 +467,120 @@ impl PrimalModuleSerial {
         }
     }
 
+    /// do a sanity check of it's tree structure and internal state
+    pub fn sanity_check(&self) -> Result<(), String> {
+        for (index, primal_module_internal_ptr) in self.nodes.iter().enumerate() {
+            match primal_module_internal_ptr {
+                Some(primal_module_internal_ptr) => {
+                    let primal_module_internal = primal_module_internal_ptr.read_recursive();
+                    if primal_module_internal.index != index { return Err(format!("primal node index wrong: expected {}, actual {}", index, primal_module_internal.index)) }
+                    let origin_node = primal_module_internal.origin.read_recursive();
+                    if origin_node.index != primal_module_internal.index { return Err(format!("origin index wrong: expected {}, actual {}", index, origin_node.index)) }
+                    if primal_module_internal.temporary_match.is_some() && primal_module_internal.tree_node.is_some() {
+                        return Err(format!("{} temporary match and tree node cannot both exists", index))
+                    }
+                    if let Some(match_target) = primal_module_internal.temporary_match.as_ref() {
+                        match match_target {
+                            MatchTarget::Peer(peer_ptr) => {
+                                let peer = peer_ptr.read_recursive();
+                                if let Some(peer_match_target) = peer.temporary_match.as_ref() {
+                                    if peer_match_target != &MatchTarget::Peer(primal_module_internal_ptr.clone()) {
+                                        return Err(format!("match peer {} is not matched with {}, instead it's {:?}", peer.index, index, peer_match_target))
+                                    }
+                                } else {
+                                    return Err(format!("match peer is not marked as matched"))
+                                }
+                            },
+                            MatchTarget::VirtualVertex(_vertex_idx) => { },  // nothing to check
+                        }
+                    }
+                    if let Some(tree_node) = primal_module_internal.tree_node.as_ref() {
+                        // first check if every child's parent is myself
+                        for child_ptr in tree_node.children.iter() {
+                            let child = child_ptr.read_recursive();
+                            if let Some(child_tree_node) = child.tree_node.as_ref() {
+                                if child_tree_node.parent.as_ref() != Some(&primal_module_internal_ptr) {
+                                    return Err(format!("{}'s child {} has a different parent, link broken", index, child.index))
+                                }
+                            } else { return Err(format!("{}'s child {} doesn't belong to any tree, link broken", index, child.index)) }
+                            // check if child is still tracked, i.e. inside self.nodes
+                            if child.index >= self.nodes.len() || self.nodes[child.index].is_none() {
+                                return Err(format!("child's index {} is not in the interface", child.index))
+                            }
+                            let tracked_child_ptr = self.nodes[child.index].as_ref().unwrap();
+                            if tracked_child_ptr != child_ptr {
+                                return Err(format!("the tracked ptr of child {} is not what's being pointed", child.index))
+                            }
+                        }
+                        // then check if I'm my parent's child
+                        if let Some(parent_ptr) = tree_node.parent.as_ref() {
+                            let parent = parent_ptr.read_recursive();
+                            if let Some(parent_tree_node) = parent.tree_node.as_ref() {
+                                let mut found_match_count = 0;
+                                for node_ptr in parent_tree_node.children.iter() {
+                                    if node_ptr == primal_module_internal_ptr {
+                                        found_match_count += 1;
+                                    }
+                                }
+                                if found_match_count != 1 {
+                                    return Err(format!("{} is the parent of {} but the child only presents {} times", parent.index, index, found_match_count))
+                                }
+                            } else { return Err(format!("{}'s parent {} doesn't belong to any tree, link broken", index, parent.index)) }
+                            // check if parent is still tracked, i.e. inside self.nodes
+                            if parent.index >= self.nodes.len() || self.nodes[parent.index].is_none() {
+                                return Err(format!("parent's index {} is not in the interface", parent.index))
+                            }
+                            let tracked_parent_ptr = self.nodes[parent.index].as_ref().unwrap();
+                            if tracked_parent_ptr != parent_ptr {
+                                return Err(format!("the tracked ptr of child {} is not what's being pointed", parent.index))
+                            }
+                        } else {
+                            if &tree_node.root != primal_module_internal_ptr {
+                                return Err(format!("{} is not the root of the tree, yet it has no parent", index))
+                            }
+                        }
+                        // then check if the root and the depth is correct
+                        let mut current_ptr = primal_module_internal_ptr.clone();
+                        let mut current_up = 0;
+                        loop {
+                            let current = current_ptr.read_recursive();
+                            // check if current is still tracked, i.e. inside self.nodes
+                            if current.index >= self.nodes.len() || self.nodes[current.index].is_none() {
+                                return Err(format!("current's index {} is not in the interface", current.index))
+                            }
+                            let tracked_current_ptr = self.nodes[current.index].as_ref().unwrap();
+                            if tracked_current_ptr != &current_ptr {
+                                return Err(format!("the tracked ptr of current {} is not what's being pointed", current.index))
+                            }
+                            // go to parent
+                            if let Some(current_tree_node) = current.tree_node.as_ref() {
+                                if let Some(current_parent_ptr) = current_tree_node.parent.as_ref() {
+                                    let current_parent_ptr = current_parent_ptr.clone();
+                                    drop(current);
+                                    current_ptr = current_parent_ptr;
+                                    current_up += 1;
+                                } else {
+                                    // confirm this is root and then break the loop
+                                    if &current_tree_node.root != &current_ptr {
+                                        return Err(format!("current {} is not the root of the tree, yet it has no parent", current.index))
+                                    }
+                                    break
+                                }
+                            } else { return Err(format!("climbing up from {} to {} but it doesn't belong to a tree anymore", index, current.index)) }
+                        }
+                        if current_up != tree_node.depth {
+                            return Err(format!("{} is marked with depth {} but the real depth is {}", index, tree_node.depth, current_up))
+                        }
+                        if current_ptr != tree_node.root {
+                            return Err(format!("{} is marked with root {:?} but the real root is {:?}", index, tree_node.root, current_ptr))
+                        }
+                    }
+                }, _ => { }
+            }
+        }
+        Ok(())
+    }
+
 }
 
 
@@ -469,9 +611,9 @@ mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
         interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -484,7 +626,7 @@ mod tests {
         println!("group_max_update_length: {:?}", group_max_update_length);
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
         interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot(format!("alternating tree grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("alternating tree grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -495,7 +637,7 @@ mod tests {
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         interface.grow(2 * half_weight, &mut dual_module);
         assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot(format!("end"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
     }
 
     #[test]
@@ -517,9 +659,9 @@ mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
         interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -528,7 +670,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         assert!(group_max_update_length.is_empty(), "no more things to solve");
-        visualizer.snapshot(format!("end"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
     }
 
     #[test]
@@ -551,9 +693,9 @@ mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
         interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -569,7 +711,7 @@ mod tests {
         // conflicts resolved, grow again
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.is_empty(), "no more things to solve");
-        visualizer.snapshot(format!("end"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
     }
 
     #[test]
@@ -595,9 +737,9 @@ mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot(format!("syndrome"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
         interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -612,7 +754,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -624,7 +766,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot(format!("grow"), &dual_module).unwrap();
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);

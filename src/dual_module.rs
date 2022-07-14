@@ -9,6 +9,8 @@ use crate::derivative::Derivative;
 use crate::parking_lot::RwLock;
 use core::cmp::Ordering;
 use std::collections::BinaryHeap;
+use super::visualize::*;
+use std::collections::HashSet;
 
 
 /// A dual node is either a blossom or a vertex
@@ -266,6 +268,49 @@ pub trait DualModuleImpl {
 
 }
 
+impl FusionVisualizer for DualModuleInterface {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        // do the sanity check first before taking snapshot
+        self.sanity_check().unwrap();
+        let mut dual_nodes = Vec::<serde_json::Value>::new();
+        for dual_node_ptr in self.nodes.iter() {
+            if let Some(dual_node_ptr) = &dual_node_ptr {
+                let dual_node = dual_node_ptr.read_recursive();
+                dual_nodes.push(json!({
+                    if abbrev { "o" } else { "blossom" }: match &dual_node.class {
+                        DualNodeClass::Blossom { nodes_circle } => Some(nodes_circle.iter().map(|node_ptr| node_ptr.read_recursive().index).collect::<Vec<NodeIndex>>()),
+                        _ => None,
+                    },
+                    if abbrev { "s" } else { "syndrome_vertex" }: match &dual_node.class {
+                        DualNodeClass::SyndromeVertex { syndrome_index } => Some(syndrome_index),
+                        _ => None,
+                    },
+                    if abbrev { "g" } else { "grow_state" }: match &dual_node.grow_state {
+                        DualNodeGrowState::Grow => "grow",
+                        DualNodeGrowState::Shrink => "shrink",
+                        DualNodeGrowState::Stay => "stay",
+                    },
+                    if abbrev { "u" } else { "unit_growth" }: match &dual_node.grow_state {
+                        DualNodeGrowState::Grow => 1,
+                        DualNodeGrowState::Shrink => -1,
+                        DualNodeGrowState::Stay => 0,
+                    },
+                    if abbrev { "p" } else { "parent_blossom" }: dual_node.parent_blossom.as_ref().map(|ptr| ptr.read_recursive().index),
+                }));
+            } else {
+                dual_nodes.push(json!(null));
+            }
+        }
+        json!({
+            "interface": {
+                if abbrev { "s" } else { "sum_grow_speed" }: self.sum_grow_speed,
+                if abbrev { "d" } else { "sum_dual_variables" }: self.sum_dual_variables,
+            },
+            "dual_nodes": dual_nodes,
+        })
+    }
+}
+
 impl DualModuleInterface {
 
     /// a dual module interface MUST be created given a concrete implementation of the dual module
@@ -381,6 +426,10 @@ impl DualModuleInterface {
                     assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
                     node.parent_blossom = None;
                     drop(node);
+                    // TODO: expanding a blossom like this way MAY CAUSE DEADLOCK!
+                    // think about this extreme case: after a blossom is expanded, they may gradually form a new blossom and needs expanding again!
+                    // the solution is to provide two entry points, the two children of this blossom that directly connect to the two + node in the alternating tree
+                    // only in that way it's guaranteed to make some progress without re-constructing this blossom
                     self.set_grow_state(node_ptr, DualNodeGrowState::Grow, dual_module_impl);
                 }
             },
@@ -414,6 +463,74 @@ impl DualModuleInterface {
     pub fn grow(&mut self, length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
         dual_module_impl.grow(length);
         self.sum_dual_variables += length * self.sum_grow_speed;
+    }
+
+    /// do a sanity check of if all the nodes are in consistent state
+    pub fn sanity_check(&self) -> Result<(), String> {
+        let mut visited_syndrome = HashSet::with_capacity(self.nodes.len() * 2);
+        for (index, dual_node_ptr) in self.nodes.iter().enumerate() {
+            match dual_node_ptr {
+                Some(dual_node_ptr) => {
+                    let dual_node = dual_node_ptr.read_recursive();
+                    if dual_node.index != index { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
+                    if dual_node.internal.is_none() { return Err(format!("the dual node {} is not connected to an concrete implementation of dual module", dual_node.index)) }
+                    match &dual_node.class {
+                        DualNodeClass::Blossom { nodes_circle } => {
+                            for circle_node_ptr in nodes_circle.iter() {
+                                if circle_node_ptr == dual_node_ptr { return Err(format!("a blossom should not contain itself")) }
+                                let circle_node = circle_node_ptr.read_recursive();
+                                if circle_node.parent_blossom.as_ref() != Some(&dual_node_ptr) {
+                                    return Err(format!("blossom {} contains {} but child's parent pointer = {:?} is not pointing back"
+                                        , dual_node.index, circle_node.index, circle_node.parent_blossom))
+                                }
+                                if circle_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", circle_node.index)) }
+                                // check if circle node is still tracked, i.e. inside self.nodes
+                                if circle_node.index >= self.nodes.len() || self.nodes[circle_node.index].is_none() {
+                                    return Err(format!("child's index {} is not in the interface", circle_node.index))
+                                }
+                                let tracked_circle_node_ptr = self.nodes[circle_node.index].as_ref().unwrap();
+                                if tracked_circle_node_ptr != circle_node_ptr {
+                                    return Err(format!("the tracked ptr of child {} is not what's being pointed", circle_node.index))
+                                }
+                            }
+                        },
+                        DualNodeClass::SyndromeVertex { syndrome_index } => {
+                            if visited_syndrome.contains(syndrome_index) { return Err(format!("duplicate syndrome index: {}", syndrome_index)) }
+                            visited_syndrome.insert(*syndrome_index);
+                        },
+                    }
+                    match &dual_node.parent_blossom {
+                        Some(parent_blossom_ptr) => {
+                            if dual_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", dual_node.index)) }
+                            let parent_blossom = parent_blossom_ptr.read_recursive();
+                            // check if child is actually inside this blossom
+                            match &parent_blossom.class {
+                                DualNodeClass::Blossom { nodes_circle } => {
+                                    let mut found_match_count = 0;
+                                    for node_ptr in nodes_circle.iter() {
+                                        if node_ptr == dual_node_ptr {
+                                            found_match_count += 1;
+                                        }
+                                    }
+                                    if found_match_count != 1 {
+                                        return Err(format!("{} is the parent of {} but the child only presents {} times", parent_blossom.index, dual_node.index, found_match_count))
+                                    }
+                                }, _ => { return Err(format!("{}, as the parent of {}, is not a blossom", parent_blossom.index, dual_node.index)) }
+                            }
+                            // check if blossom is still tracked, i.e. inside self.nodes
+                            if parent_blossom.index >= self.nodes.len() || self.nodes[parent_blossom.index].is_none() {
+                                return Err(format!("parent blossom's index {} is not in the interface", parent_blossom.index))
+                            }
+                            let tracked_parent_blossom_ptr = self.nodes[parent_blossom.index].as_ref().unwrap();
+                            if tracked_parent_blossom_ptr != parent_blossom_ptr {
+                                return Err(format!("the tracked ptr of parent blossom {} is not what's being pointed", parent_blossom.index))
+                            }
+                        }, _ => { }
+                    }
+                }, _ => { }
+            }
+        }
+        Ok(())
     }
 
 }
