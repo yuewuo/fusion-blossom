@@ -458,12 +458,16 @@ export async function refresh_snapshot_data() {
             blossom_convex_mesh.geometry.dispose()
         }
         for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
+            if (dual_node == null) { continue }
             // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
             if (dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)) {  // no parent and (positive dual variable or it's a blossom)
                 let points = []
                 for (let [is_left, edge_index] of dual_node.b) {
                     let cached_position = edge_caches[edge_index].position
                     const edge = snapshot.edges[edge_index]
+                    if (edge.ld == edge.rd) {
+                        continue  // do not draw this edge, this is an internal edge
+                    }
                     if (is_left) {
                         if (edge.lg == edge.w) {
                             points.push(vertex_caches[edge.r].position.center.clone())

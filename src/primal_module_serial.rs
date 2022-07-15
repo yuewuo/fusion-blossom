@@ -618,9 +618,11 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // conflicts resolved, grow again
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -631,6 +633,7 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // conflicts resolved, grow again
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -744,12 +747,15 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // conflicts resolved, grow again
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -759,9 +765,11 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // conflicts resolved, grow again
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -771,12 +779,15 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         // primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);

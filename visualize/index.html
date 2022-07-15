@@ -181,7 +181,7 @@ h3 {
             <q-btn push color="brown-5" rounded label="preview" style="margin-left: 10px;" no-caps @click="preview_image"></q-btn>
             <q-btn push color="brown-5" rounded label="download" style="margin-left: 10px;" no-caps @click="download_image"></q-btn>
         </div>
-        <div class="primal-div" id="primal-div"></div>
+        <div class="primal-div" id="primal-div" v-show="show_primal"></div>
         <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'vertex'">
             <q-card-section class="bg-cyan text-white">
                 <div class="text-h6">Vertex {{ current_selected.vertex_index }} {{ selected_vertex_attributes }}</div>

@@ -47,6 +47,7 @@ const App = {
             sizes: gui3d.sizes,
             export_scale_selected: ref(1),
             export_resolution_options: ref([]),
+            show_primal: primal.show_primal,
             // GUI related states
             show_stats: gui3d.show_stats,
             show_config: gui3d.show_config,

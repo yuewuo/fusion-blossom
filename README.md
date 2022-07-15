@@ -43,3 +43,7 @@ node index.js <url> <width> <height>  # local render
 cd ..
 cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
 ```
+
+# TODOs
+
+- [ ] add option for visualizer using high-quality renderer: https://github.com/erichlof/THREE.js-PathTracing-Renderer

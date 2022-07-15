@@ -1,84 +1,106 @@
 const d3 = window.d3
+const { ref, reactive, watch, computed } = Vue
 
 var primal_div_control = {
     chart: null,
 }
 
-export function show_snapshot(snapshot_idx, fusion_data) {
+const match_width = 12
+const unmatch_width = 3
+
+export const show_primal = ref(false)
+export async function show_snapshot(snapshot_idx, fusion_data) {
     let chart = primal_div_control.chart
     console.assert(chart != null, "chart should not be null when calling `show_snapshot`")
 
-    let graph_example = {
-        nodes: [
-            {id: "a"},
-            {id: "b"},
-            {id: "c"},
-            {id: "0"},
-            {id: "1"},
-            {id: "2"},
-            {id: "a2"},
-            {id: "b2"},
-            {id: "c2"},
-            {id: "a3"},
-            {id: "b3"},
-            {id: "c3"},
-            {id: "a4"},
-            {id: "b4"},
-            {id: "c4"},
-            {id: "a5"},
-            {id: "b5"},
-            {id: "c5"},
-            {id: "a6"},
-            {id: "b6"},
-            {id: "c6"},
-            {id: "a7"},
-            {id: "b7"},
-            {id: "c7"},
-            {id: "a8"},
-            {id: "b8"},
-            {id: "c8"},
-            {id: "a9"},
-            {id: "b9"},
-            {id: "c9"},
-            {id: "aa"},
-            {id: "ba"},
-            {id: "ca"},
-            {id: "ab"},
-            {id: "bb"},
-            {id: "cb"},
-            {id: "ac"},
-            {id: "bc"},
-            {id: "cc"},
-            {id: "ad"},
-            {id: "bd"},
-            {id: "cd"},
-            {id: "ae"},
-            {id: "be"},
-            {id: "ce"},
-            {id: "af"},
-            {id: "bf"},
-            {id: "cf"},
-            {id: "ag"},
-            {id: "bg"},
-            {id: "cg"},
-            {id: "ah"},
-            {id: "bh"},
-            {id: "ch"},
-            {id: "ai"},
-            {id: "bi"},
-            {id: "ci"},
-            {id: "aj"},
-            {id: "bj"},
-            {id: "cj"},
-        ],
-        links: [
-            {source: "a", target: "b"},
-            {source: "b", target: "c"},
-            {source: "c", target: "a"}
-        ],
+    // if primal nodes or dual nodes are not present, we cannot show it
+    const snapshot = fusion_data.snapshots[snapshot_idx][1]
+    if (snapshot.dual_nodes == null || snapshot.primal_nodes == null) {
+        console.error("snapshot doesn't have dual and primal nodes, so primal module is disabled")
+        show_primal.value = false
+        return
+    }
+    show_primal.value = true
+
+    function get_child_count(dual_node) {
+        if (dual_node.s != null) { return 1 }  // syndrome vertex
+        let count = 0
+        for (const child_idx of dual_node.o) {
+            const child_dual_node = snapshot.dual_nodes[child_idx]
+            count += get_child_count(child_dual_node)
+        }
+        return count
+    }
+
+    const nodes_count = snapshot.primal_nodes.length
+    let nodes = []
+    let links = []
+    for (let i=0; i<nodes_count; ++i) {
+        const primal_node = snapshot.primal_nodes[i]
+        const dual_node = snapshot.dual_nodes[i]
+        if (primal_node == null) { continue }  // expanded blossom
+        const id = `${i}`
+        if (dual_node.p != null) { continue }  // internal node of a blossom
+        const child_count = get_child_count(dual_node)
+        if (child_count % 2 == 0) {
+            console.error("found even child count, invalid blossom")
+        }
+        nodes.push({
+            id: id,
+            radius: Math.pow(child_count, 0.3),
+            stroke_color: "#fff"
+        })
+        if (primal_node.t != null) {
+            const tree_node = primal_node.t
+            if (tree_node.d % 2 == 1) {
+                // shrinking node has black stroke color
+                nodes[nodes.length - 1].stroke_color = "#888"
+            }
+            if (tree_node.p != null) {
+                links.push({
+                    source: id,
+                    target: `${tree_node.p}`,
+                    color: tree_node.d % 2 == 1 ? "#f00" : "#00f",
+                    width: tree_node.d % 2 == 1 ? unmatch_width : match_width,
+                })
+            }
+        }
+        if (primal_node.m != null) {
+            const match_target = primal_node.m
+            if (match_target != null) {
+                if (match_target.p != null) {  // matching to peer
+                    if (i < match_target.p) {
+                        links.push({
+                            source: id,
+                            target: `${match_target.p}`,
+                            color: "#090",
+                            width: match_width,
+                        })
+                    }
+                }
+                if (match_target.v != null) {  // matching to virtual vertex
+                    nodes.push({
+                        id: `v${match_target.v}`,
+                        radius: 1.2,
+                        stroke_color: "#ff0"  // virtual node has yellow stroke color
+                    })
+                    links.push({
+                        source: id,
+                        target: `v${match_target.v}`,
+                        color: "#090",
+                        width: match_width,
+                    })
+                }
+            }
+        }
+    }
+
+    let graph = {
+        nodes: nodes,
+        links: links,
     }
     
-    chart.update(graph_example)
+    chart.update(graph)
 
 }
 
@@ -103,7 +125,7 @@ export function initialize_primal_div() {
         .selectAll("line");
 
     let node = svg.append("g")
-        .attr("stroke", "#fff")
+        // .attr("stroke", "#fff")
         .attr("stroke-width", 2)
         .selectAll("circle");
 
@@ -125,8 +147,8 @@ export function initialize_primal_div() {
     }
 
     const simulation = d3.forceSimulation()
-        .force("charge", d3.forceManyBody().strength(-80))
-        .force("link", d3.forceLink().id(d => d.id).distance(50))
+        .force("charge", d3.forceManyBody().strength(-120))
+        .force("link", d3.forceLink().id(d => d.id).distance(60))
         .force("x", d3.forceX())
         .force("y", d3.forceY())
         .on("tick", ticked);
@@ -176,11 +198,11 @@ export function initialize_primal_div() {
 
             node = node
                 .data(nodes, d => d.id)
-                .join(enter => enter.append("circle")
-                    .attr("r", 15)
-                    .call(drag(simulation))
-                    .attr("fill", d => color(d.id)));
-                
+                .join(enter => enter.append("circle").call(drag(simulation)))
+                .attr("fill", d => color(d.id))
+                .attr("r", d => d.radius * 15)
+                .attr("stroke", d => d.stroke_color)
+
             node.on("click", node_on_click)
             
             text = text
@@ -197,7 +219,9 @@ export function initialize_primal_div() {
 
             link = link
                 .data(links, d => `${d.source.id}\t${d.target.id}`)
-                .join("line");
+                .join(enter => enter.append("line"))
+                .attr("stroke", d => d.color)
+                .attr("stroke-width", d => d.width);
         }
     });
 
