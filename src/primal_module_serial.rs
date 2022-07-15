@@ -106,18 +106,6 @@ impl PrimalNodeInternal {
 
 }
 
-impl PrimalNodeInternalPtr {
-
-    /// make this the new root of an independet alternating tree
-    pub fn make_independent_tree(&self) {
-        let mut node = self.write();
-        let tree_node = node.tree_node.as_mut().unwrap();
-        assert!(tree_node.depth % 2 == 0, "only '+' node can make independent tree");
-        node.change_sub_tree_root(0, self.clone());
-    }
-
-}
-
 impl PrimalModuleImpl for PrimalModuleSerial {
 
     fn new(_vertex_num: usize, _weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, _virtual_vertices: &Vec<VertexIndex>) -> Self {
@@ -274,23 +262,33 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             }
                             let mut lca = lca_ptr.write();
                             let lca_tree_node = lca.tree_node.as_ref().unwrap();
-                            if lca_tree_node.parent.is_some() && children.len() > 0 {
-                                // connect this blossom to the new alternating tree
-                                for child_ptr in children.iter() {
-                                    let mut child = child_ptr.write();
-                                    let child_tree_node = child.tree_node.as_mut().unwrap();
-                                    assert!(child_tree_node.parent.is_some(), "child should be a '-' node");
-                                    child_tree_node.parent = Some(primal_node_internal_blossom_ptr.clone());
-                                }
+                            if lca_tree_node.parent.is_some() || children.len() > 0 {
                                 let mut primal_node_internal_blossom = primal_node_internal_blossom_ptr.write();
                                 let new_tree_root = if lca_tree_node.depth == 0 { primal_node_internal_blossom_ptr.clone() } else { lca_tree_node.root.clone() };
-                                primal_node_internal_blossom.tree_node = Some(AlternatingTreeNode {
+                                let tree_node = AlternatingTreeNode {
                                     root: new_tree_root.clone(),
                                     parent: if lca_tree_node.depth == 0 { None } else { lca_tree_node.parent.clone() },
                                     children: children,
                                     depth: lca_tree_node.depth,
-                                });
-                                primal_node_internal_blossom.change_sub_tree_root(lca_tree_node.depth, new_tree_root);
+                                };
+                                if lca_tree_node.parent.is_some() {
+                                    let parent_ptr = lca_tree_node.parent.as_ref().unwrap();
+                                    let mut parent = parent_ptr.write();
+                                    let parent_tree_node = parent.tree_node.as_mut().unwrap();
+                                    parent_tree_node.children.retain(|ptr| ptr != &lca_ptr);
+                                    parent_tree_node.children.push(primal_node_internal_blossom_ptr.clone());
+                                }
+                                if tree_node.children.len() > 0 {
+                                    // connect this blossom to the new alternating tree
+                                    for child_ptr in tree_node.children.iter() {
+                                        let mut child = child_ptr.write();
+                                        let child_tree_node = child.tree_node.as_mut().unwrap();
+                                        assert!(child_tree_node.parent.is_some(), "child should be a '-' node");
+                                        child_tree_node.parent = Some(primal_node_internal_blossom_ptr.clone());
+                                    }
+                                    primal_node_internal_blossom.change_sub_tree_root(lca_tree_node.depth, new_tree_root);
+                                }
+                                primal_node_internal_blossom.tree_node = Some(tree_node);
                             }
                             lca.tree_node = None;
                             continue
@@ -310,10 +308,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     unimplemented!()
                 },
                 MaxUpdateLength::BlossomNeedExpand(node_ptr) => {
-                    // do we need to break the while loop here because expanding a blossom will lead to ambiguous conflicts?
                     // blossom breaking is assumed to be very rare given our multiple-tree approach, so don't need to optimize for it
-                    // for now, I assume it won't cause problem
-                    // first, isolate this blossom from it's alternating tree
+                    // first, isolate this blossom from its alternating tree
                     let primal_node_internal_ptr = self.get_primal_node_internal_ptr(&node_ptr);
                     let outer_primal_node_internal_ptr = self.get_outer_node(primal_node_internal_ptr.clone());
                     if outer_primal_node_internal_ptr != primal_node_internal_ptr {
@@ -321,32 +317,112 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         continue
                     }
                     let primal_node_internal = primal_node_internal_ptr.read_recursive();
+                    // copy the nodes circle
+                    let nodes_circle = {
+                        let blossom = node_ptr.read_recursive();
+                        match &blossom.class {
+                            DualNodeClass::Blossom{ nodes_circle } => nodes_circle.clone(),
+                            _ => unreachable!("the expanding node is not a blossom")
+                        }
+                    };
                     // remove it from nodes
                     assert_eq!(self.nodes[primal_node_internal.index], Some(primal_node_internal_ptr.clone()), "index wrong");
                     self.nodes[primal_node_internal.index] = None;
                     assert!(primal_node_internal.tree_node.is_some(), "expanding blossom must belong to an alternating tree");
                     let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                     assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
-                    {  // remove it from it's parent's tree
+                    let (parent_ptr, parent_touching_ptr) = {  // remove it from it's parent's tree
                         let parent_ptr = tree_node.parent.as_ref().unwrap();
                         let mut parent = parent_ptr.write();
                         let parent_tree_node = parent.tree_node.as_mut().unwrap();
                         parent_tree_node.children.retain(|ptr| ptr != &primal_node_internal_ptr);
-                        if parent_tree_node.children.len() == 0 && parent_tree_node.depth == 0 {
-                            parent.tree_node = None;  // no longer an alternating tree
-                        }
-                    }
-                    {  // make children independent trees
-                        for child_ptr in tree_node.children.iter() {
-                            child_ptr.make_independent_tree();
-                            let mut child = child_ptr.write();
-                            let tree_node = child.tree_node.as_ref().unwrap();
-                            if tree_node.children.len() == 0 && tree_node.depth == 0 {
-                                child.tree_node = None;
+                        // find which blossom-child is touching the parent
+                        let parent_touching_ptr = dual_module.peek_touching_child(&node_ptr, &parent.origin);
+                        (parent_ptr, parent_touching_ptr)
+                    };
+                    let (child_ptr, child_touching_ptr) = {  // make children independent trees
+                        assert_eq!(tree_node.children.len(), 1, "a - node must have exactly ONE child");
+                        let child_ptr = &tree_node.children[0];
+                        let child = child_ptr.read_recursive();
+                        // find which blossom-child is touching this child
+                        let child_touching_ptr = dual_module.peek_touching_child(&node_ptr, &child.origin);
+                        (child_ptr, child_touching_ptr)
+                    };
+                    interface.expand_blossom(node_ptr, dual_module);
+                    // now we need to re-connect all the expanded nodes, by analyzing the relationship of nodes_circle, parent_touching_ptr and child_touching_ptr
+                    let parent_touching_index = nodes_circle.iter().position(|ptr| ptr == &parent_touching_ptr).expect("touching node should be in the blossom circle");
+                    let child_touching_index = nodes_circle.iter().position(|ptr| ptr == &child_touching_ptr).expect("touching node should be in the blossom circle");
+                    let (match_sequence, tree_sequence) = {  // tree sequence is from parent to child
+                        let mut match_sequence = Vec::new();
+                        let mut tree_sequence = Vec::new();
+                        if parent_touching_index == child_touching_index {
+                            tree_sequence.push(nodes_circle[parent_touching_index].clone());
+                            for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].clone()); }
+                            for i in 0 .. parent_touching_index { match_sequence.push(nodes_circle[i].clone()); }
+                        } else if parent_touching_index > child_touching_index {
+                            if parent_touching_index - child_touching_index % 2 == 0 {  // [... c <----- p ...]
+                                for i in (child_touching_index .. parent_touching_index+1).rev() { tree_sequence.push(nodes_circle[i].clone()); }
+                                for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].clone()); }
+                                for i in 0 .. child_touching_index { match_sequence.push(nodes_circle[i].clone()); }
+                            } else {  // [--> c ...... p ---]
+                                for i in parent_touching_index .. nodes_circle.len() { tree_sequence.push(nodes_circle[i].clone()); }
+                                for i in 0 .. child_touching_index+1 { tree_sequence.push(nodes_circle[i].clone()); }
+                                for i in child_touching_index+1 .. parent_touching_index { match_sequence.push(nodes_circle[i].clone()); }
+                            }
+                        } else {  // parent_touching_index < child_touching_index
+                            if child_touching_index - parent_touching_index % 2 == 0 {  // [... p -----> c ...]
+                                for i in parent_touching_index .. child_touching_index+1 { tree_sequence.push(nodes_circle[i].clone()); }
+                                for i in child_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].clone()); }
+                                for i in 0 .. parent_touching_index { match_sequence.push(nodes_circle[i].clone()); }
+                            } else {  // [--- p ...... c <--]
+                                for i in (0 .. parent_touching_index+1).rev() { tree_sequence.push(nodes_circle[i].clone()); }
+                                for i in (child_touching_index .. nodes_circle.len()).rev() { tree_sequence.push(nodes_circle[i].clone()); }
+                                for i in parent_touching_index+1 .. child_touching_index { match_sequence.push(nodes_circle[i].clone()); }
                             }
                         }
+                        // println!("match_sequence: {match_sequence:?}");
+                        // println!("tree_sequence: {tree_sequence:?}");
+                        (match_sequence, tree_sequence)
+                    };
+                    debug_assert!(match_sequence.len() % 2 == 0 && tree_sequence.len() % 2 == 1, "parity of sequence wrong");
+                    // match the nodes in the match sequence
+                    for i in (0..match_sequence.len()).step_by(2) {
+                        let primal_node_internal_ptr_1 = self.get_primal_node_internal_ptr(&match_sequence[i]);
+                        let primal_node_internal_ptr_2 = self.get_primal_node_internal_ptr(&match_sequence[i+1]);
+                        let mut primal_node_internal_1 = primal_node_internal_ptr_1.write();
+                        let mut primal_node_internal_2 = primal_node_internal_ptr_2.write();
+                        primal_node_internal_1.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_2.clone()));
+                        primal_node_internal_2.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_1.clone()));
+                        interface.set_grow_state(&primal_node_internal_1.origin, DualNodeGrowState::Stay, dual_module);
+                        interface.set_grow_state(&primal_node_internal_2.origin, DualNodeGrowState::Stay, dual_module);
                     }
-                    interface.expand_blossom(node_ptr, dual_module);
+                    // connect the nodes in the tree sequence to the alternating tree
+                    for (idx, current_ptr) in tree_sequence.iter().enumerate() {
+                        let current_parent_ptr = if idx == 0 { parent_ptr.clone() } else { self.get_primal_node_internal_ptr(&tree_sequence[idx - 1]) };
+                        let current_child_ptr = if idx == tree_sequence.len() - 1 { child_ptr.clone() } else { self.get_primal_node_internal_ptr(&tree_sequence[idx + 1]) };
+                        let current_ptr = self.get_primal_node_internal_ptr(current_ptr);
+                        let mut current = current_ptr.write();
+                        current.tree_node = Some(AlternatingTreeNode {
+                            root: tree_node.root.clone(),
+                            parent: Some(current_parent_ptr),
+                            children: vec![current_child_ptr],
+                            depth: tree_node.depth + idx,
+                        });
+                        interface.set_grow_state(&current.origin, if idx % 2 == 0 { DualNodeGrowState::Shrink } else { DualNodeGrowState::Grow }, dual_module);
+                    }
+                    {  // connect parent
+                        let mut parent = parent_ptr.write();
+                        let parent_tree_node = parent.tree_node.as_mut().unwrap();
+                        let child_ptr = self.get_primal_node_internal_ptr(&tree_sequence[0]);
+                        parent_tree_node.children.push(child_ptr.clone());
+                    }
+                    {  // connect child and fix the depth information of the child
+                        let mut child = child_ptr.write();
+                        let child_tree_node = child.tree_node.as_mut().unwrap();
+                        let parent_ptr = self.get_primal_node_internal_ptr(&tree_sequence[tree_sequence.len()-1]);
+                        child_tree_node.parent = Some(parent_ptr);
+                        child.change_sub_tree_root(tree_node.depth + tree_sequence.len(), tree_node.root.clone());
+                    }
                 },
                 MaxUpdateLength::VertexShrinkStop(_node_ptr) => {
                     if current_conflict_index == 1 {
@@ -780,6 +856,12 @@ mod tests {
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
         visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        // conflicts resolved, grow again
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        interface.grow(2 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        // cannot grow anymore, resolve conflicts
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
@@ -788,11 +870,23 @@ mod tests {
         println!("group_max_update_length: {:?}", group_max_update_length);
         primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
         visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        // conflicts resolved, grow again
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
-        // primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        // let group_max_update_length = dual_module.compute_maximum_update_length();
-        // println!("group_max_update_length: {:?}", group_max_update_length);
+        interface.grow(2 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        interface.grow(2 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();// cannot grow anymore, resolve conflicts
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        // algorithm stops
+        let group_max_update_length = dual_module.compute_maximum_update_length();
+        println!("group_max_update_length: {:?}", group_max_update_length);
+        assert!(group_max_update_length.is_empty(), "algorithm terminated");
     }
 
 }

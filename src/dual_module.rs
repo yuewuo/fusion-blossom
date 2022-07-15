@@ -266,6 +266,9 @@ pub trait DualModuleImpl {
     /// note that reversing the process is possible, but not recommended: to do that, reverse the state of each dual node, Grow->Shrink, Shrink->Grow
     fn grow(&mut self, length: Weight);
 
+    /// peek the child node inside a blossom who's touching with an external node
+    fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
+
 }
 
 impl FusionVisualizer for DualModuleInterface {
@@ -426,11 +429,14 @@ impl DualModuleInterface {
                     assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
                     node.parent_blossom = None;
                     drop(node);
-                    // TODO: expanding a blossom like this way MAY CAUSE DEADLOCK!
-                    // think about this extreme case: after a blossom is expanded, they may gradually form a new blossom and needs expanding again!
-                    // the solution is to provide two entry points, the two children of this blossom that directly connect to the two + node in the alternating tree
-                    // only in that way it's guaranteed to make some progress without re-constructing this blossom
-                    self.set_grow_state(node_ptr, DualNodeGrowState::Grow, dual_module_impl);
+                    {  // safest way: to avoid sub-optimal result being found, set all nodes to growing state
+                        // WARNING: expanding a blossom like this way MAY CAUSE DEADLOCK!
+                        // think about this extreme case: after a blossom is expanded, they may gradually form a new blossom and needs expanding again!
+                        self.set_grow_state(node_ptr, DualNodeGrowState::Grow, dual_module_impl);
+                        // the solution is to provide two entry points, the two children of this blossom that directly connect to the two + node in the alternating tree
+                        // only in that way it's guaranteed to make some progress without re-constructing this blossom
+                        // It's the primal module's responsibility to avoid this happening, using the dual module's API: [``]
+                    }
                 }
             },
             _ => { unreachable!() }
