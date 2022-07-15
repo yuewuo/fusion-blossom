@@ -214,6 +214,64 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             }
                         }
                     }
+                    // third probable case: tree touches single vertex
+                    if (primal_node_internal_1.tree_node.is_some() && free_2) || (free_1 && primal_node_internal_2.tree_node.is_some()) {
+                        let (tree_node_internal_ptr, tree_node_internal, free_node_internal_ptr, mut free_node_internal) = 
+                            if primal_node_internal_1.tree_node.is_some() {
+                                (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
+                            } else {
+                                (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
+                            };
+                        free_node_internal.temporary_match = Some(MatchTarget::Peer(tree_node_internal_ptr.clone()));
+                        free_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+                        drop(tree_node_internal);  // unlock
+                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr);
+                        continue
+                    }
+                    // fourth probable case: tree touches matched pair
+                    if (primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.temporary_match.is_some())
+                            || (primal_node_internal_1.temporary_match.is_some() && primal_node_internal_2.tree_node.is_some()) {
+                        let (tree_node_internal_ptr, mut tree_node_internal, matched_node_internal_ptr, mut matched_node_internal) = 
+                            if primal_node_internal_1.tree_node.is_some() {
+                                (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
+                            } else {
+                                (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
+                            };
+                        let match_target: MatchTarget = matched_node_internal.temporary_match.as_ref().unwrap().clone();
+                        match &match_target {
+                            MatchTarget::Peer(leaf_node_internal_ptr) => {
+                                let tree_node = tree_node_internal.tree_node.as_mut().unwrap();
+                                assert!(tree_node.depth % 2 == 0, "conflicting one must be + node");
+                                // simply add this matched pair to the children
+                                tree_node.children.push(matched_node_internal_ptr.clone());
+                                // link children to parent
+                                matched_node_internal.tree_node = Some(AlternatingTreeNode {
+                                    root: tree_node.root.clone(),
+                                    parent: Some(tree_node_internal_ptr.clone()),
+                                    children: vec![leaf_node_internal_ptr.clone()],
+                                    depth: tree_node.depth + 1,
+                                });
+                                matched_node_internal.temporary_match = None;
+                                let mut leaf_node_internal = leaf_node_internal_ptr.write();
+                                leaf_node_internal.tree_node = Some(AlternatingTreeNode {
+                                    root: tree_node.root.clone(),
+                                    parent: Some(matched_node_internal_ptr.clone()),
+                                    children: vec![],
+                                    depth: tree_node.depth + 2,
+                                });
+                                leaf_node_internal.temporary_match = None;
+                                // update dual module interface
+                                interface.set_grow_state(&matched_node_internal.origin, DualNodeGrowState::Shrink, dual_module);
+                                interface.set_grow_state(&leaf_node_internal.origin, DualNodeGrowState::Grow, dual_module);
+                                continue
+                            },
+                            MatchTarget::VirtualVertex(_) => {
+                                // virtual boundary doesn't have to be matched, so in this case remove it and expand the tree
+                                unimplemented!();
+                            }
+                        }
+                    }
+                    // much less probable case: two trees touch
                     if primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.tree_node.is_some() {
                         let root_1 = primal_node_internal_1.tree_node.as_ref().unwrap().root.clone();
                         let root_2 = primal_node_internal_2.tree_node.as_ref().unwrap().root.clone();
@@ -245,9 +303,14 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                     let mut last_ptr = path[0].clone();
                                     for (height, ptr) in path.iter().enumerate() {
                                         let mut node = ptr.write();
-                                        if height > 1 {
+                                        if height == 0 {
+                                            let tree_node = node.tree_node.as_ref().unwrap();
+                                            for child_ptr in tree_node.children.iter() {
+                                                children.push(child_ptr.clone());
+                                            }
+                                        } else {
                                             if height % 2 == 0 {
-                                                let tree_node = node.tree_node.as_mut().unwrap();
+                                                let tree_node = node.tree_node.as_ref().unwrap();
                                                 for child_ptr in tree_node.children.iter() {
                                                     if child_ptr != &last_ptr {  // not in the blossom circle
                                                         children.push(child_ptr.clone());
@@ -262,12 +325,19 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             }
                             let mut lca = lca_ptr.write();
                             let lca_tree_node = lca.tree_node.as_ref().unwrap();
+                            {  // add children of lca_ptr
+                                for child_ptr in lca_tree_node.children.iter() {
+                                    if path_1.len() > 0 && &path_1[path_1.len() - 1] == child_ptr { continue }
+                                    if path_2.len() > 0 && &path_2[path_2.len() - 1] == child_ptr { continue }
+                                    children.push(child_ptr.clone());
+                                }
+                            }
                             if lca_tree_node.parent.is_some() || children.len() > 0 {
                                 let mut primal_node_internal_blossom = primal_node_internal_blossom_ptr.write();
                                 let new_tree_root = if lca_tree_node.depth == 0 { primal_node_internal_blossom_ptr.clone() } else { lca_tree_node.root.clone() };
                                 let tree_node = AlternatingTreeNode {
                                     root: new_tree_root.clone(),
-                                    parent: if lca_tree_node.depth == 0 { None } else { lca_tree_node.parent.clone() },
+                                    parent: lca_tree_node.parent.clone(),
                                     children: children,
                                     depth: lca_tree_node.depth,
                                 };
@@ -286,12 +356,16 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                         assert!(child_tree_node.parent.is_some(), "child should be a '-' node");
                                         child_tree_node.parent = Some(primal_node_internal_blossom_ptr.clone());
                                     }
+                                    primal_node_internal_blossom.tree_node = Some(tree_node);
                                     primal_node_internal_blossom.change_sub_tree_root(lca_tree_node.depth, new_tree_root);
+                                } else {
+                                    primal_node_internal_blossom.tree_node = Some(tree_node);
                                 }
-                                primal_node_internal_blossom.tree_node = Some(tree_node);
                             }
                             lca.tree_node = None;
                             continue
+                        } else {
+                            unimplemented!()
                         }
                     }
                     unimplemented!()
@@ -543,6 +617,53 @@ impl PrimalModuleSerial {
         }
     }
 
+    /// for any - node, match the children by matching them with + node
+    pub fn match_subtree(&self, tree_node_internal_ptr: PrimalNodeInternalPtr) {
+        let mut tree_node_internal = tree_node_internal_ptr.write();
+        let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
+        debug_assert!(tree_node.depth % 2 == 1, "only match - node is possible");
+        let child_node_internal_ptr = tree_node.children[0].clone();
+        tree_node_internal.temporary_match = Some(MatchTarget::Peer(child_node_internal_ptr.clone()));
+        tree_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+        tree_node_internal.tree_node = None;
+        let mut child_node_internal = child_node_internal_ptr.write();
+        child_node_internal.temporary_match = Some(MatchTarget::Peer(tree_node_internal_ptr.clone()));
+        child_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+        let child_tree_node = child_node_internal.tree_node.as_ref().unwrap();
+        for grandson_ptr in child_tree_node.children.iter() {
+            self.match_subtree(grandson_ptr.clone());
+        }
+        child_node_internal.tree_node = None;
+    }
+
+    /// for any + node, match it with another node will augment the whole tree, breaking out into several matched pairs
+    pub fn augment_tree_given_matched(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, match_node_internal_ptr: PrimalNodeInternalPtr) {
+        let mut tree_node_internal = tree_node_internal_ptr.write();
+        tree_node_internal.temporary_match = Some(MatchTarget::Peer(match_node_internal_ptr.clone()));
+        tree_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+        let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
+        debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
+        for child_ptr in tree_node.children.iter() {
+            if child_ptr != &match_node_internal_ptr {
+                self.match_subtree(child_ptr.clone());
+            }
+        }
+        if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
+            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap();
+            let grandparent_node_internal_ptr = {  // must unlock parent
+                let mut parent_node_internal = parent_node_internal_ptr.write();
+                let parent_tree_node = parent_node_internal.tree_node.as_ref().unwrap();
+                let grandparent_node_internal_ptr = parent_tree_node.parent.as_ref().unwrap().clone();
+                parent_node_internal.tree_node = None;
+                parent_node_internal.temporary_match = Some(MatchTarget::Peer(grandparent_node_internal_ptr.clone()));
+                parent_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+                grandparent_node_internal_ptr
+            };
+            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone());
+        }
+        tree_node_internal.tree_node = None;
+    }
+
     /// do a sanity check of it's tree structure and internal state
     pub fn sanity_check(&self) -> Result<(), String> {
         for (index, primal_module_internal_ptr) in self.nodes.iter().enumerate() {
@@ -555,7 +676,12 @@ impl PrimalModuleSerial {
                     if primal_module_internal.temporary_match.is_some() && primal_module_internal.tree_node.is_some() {
                         return Err(format!("{} temporary match and tree node cannot both exists", index))
                     }
+                    if origin_node.parent_blossom.is_some() {
+                        if primal_module_internal.tree_node.is_some() { return Err(format!("blossom internal node {index} is still in a tree")) }
+                        if primal_module_internal.temporary_match.is_some() { return Err(format!("blossom internal node {index} is still matched")) }
+                    }
                     if let Some(match_target) = primal_module_internal.temporary_match.as_ref() {
+                        if origin_node.grow_state != DualNodeGrowState::Stay { return Err(format!("matched node {index} is not set to Stay")) }
                         match match_target {
                             MatchTarget::Peer(peer_ptr) => {
                                 let peer = peer_ptr.read_recursive();
@@ -887,6 +1013,55 @@ mod tests {
         let group_max_update_length = dual_module.compute_maximum_update_length();
         println!("group_max_update_length: {:?}", group_max_update_length);
         assert!(group_max_update_length.is_empty(), "algorithm terminated");
+    }
+
+    fn primal_module_serial_basic_standard_syndrome(visualize_filename: String, syndrome_vertices: Vec<VertexIndex>) {
+        println!("{syndrome_vertices:?}");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        // try to work on a simple syndrome
+        code.set_syndrome(&syndrome_vertices);
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        // grow until end
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        while !group_max_update_length.is_empty() {
+            println!("group_max_update_length: {:?}", group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                interface.grow(length, &mut dual_module);
+                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
+            } else {
+                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
+            }
+            group_max_update_length = dual_module.compute_maximum_update_length();
+        }
+    }
+
+    #[test]
+    fn primal_module_serial_basic_5() {  // cargo test primal_module_serial_basic_5 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_5.json");
+        let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
+        primal_module_serial_basic_standard_syndrome(visualize_filename, syndrome_vertices);
+    }
+
+    #[test]
+    fn primal_module_serial_basic_6() {  // cargo test primal_module_serial_basic_6 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_6.json");
+        let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87];
+        primal_module_serial_basic_standard_syndrome(visualize_filename, syndrome_vertices);
     }
 
 }
