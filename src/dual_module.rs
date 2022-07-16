@@ -34,6 +34,18 @@ pub enum DualNodeGrowState {
     Shrink,
 }
 
+impl DualNodeGrowState {
+
+    pub fn is_against(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Grow, Self::Grow | Self::Stay) => true,
+            (Self::Stay, Self::Grow) => true,
+            _ => false,
+        }
+    }
+
+}
+
 /// gives the maximum absolute length to grow, if not possible, give the reason
 #[derive(Derivative, PartialEq, Eq, Clone)]
 #[derivative(Debug)]

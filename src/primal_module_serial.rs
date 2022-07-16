@@ -154,6 +154,11 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2));
                     let mut primal_node_internal_1 = primal_node_internal_ptr_1.write();
                     let mut primal_node_internal_2 = primal_node_internal_ptr_2.write();
+                    let grow_state_1 = primal_node_internal_1.origin.read_recursive().grow_state;
+                    let grow_state_2 = primal_node_internal_2.origin.read_recursive().grow_state;
+                    if !grow_state_1.is_against(&grow_state_2) {
+                        continue  // this is no longer a conflict
+                    }
                     // this is the most probable case, so put it in the front
                     let (free_1, free_2) = (primal_node_internal_1.is_free(), primal_node_internal_2.is_free());
                     if free_1 && free_2 {
@@ -215,7 +220,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         }
                     }
                     // third probable case: tree touches single vertex
-                    if (primal_node_internal_1.tree_node.is_some() && free_2) || (free_1 && primal_node_internal_2.tree_node.is_some()) {
+                    if (free_1 && primal_node_internal_2.tree_node.is_some()) || (primal_node_internal_1.tree_node.is_some() && free_2) {
                         let (tree_node_internal_ptr, tree_node_internal, free_node_internal_ptr, mut free_node_internal) = 
                             if primal_node_internal_1.tree_node.is_some() {
                                 (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
@@ -266,8 +271,12 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 continue
                             },
                             MatchTarget::VirtualVertex(_) => {
-                                // virtual boundary doesn't have to be matched, so in this case remove it and expand the tree
-                                unimplemented!();
+                                // virtual boundary doesn't have to be matched, so in this case remove it and augment the tree
+                                matched_node_internal.temporary_match = Some(MatchTarget::Peer(tree_node_internal_ptr.clone()));
+                                drop(matched_node_internal);  // unlock
+                                drop(tree_node_internal);  // unlock
+                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr);
+                                continue
                             }
                         }
                     }
@@ -365,21 +374,35 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             lca.tree_node = None;
                             continue
                         } else {
-                            unimplemented!()
+                            drop(primal_node_internal_1);  // unlock
+                            drop(primal_node_internal_2);  // unlock
+                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone());
+                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone());
+                            continue
                         }
                     }
-                    unimplemented!()
+                    unreachable!()
                 },
                 MaxUpdateLength::TouchingVirtual(node_ptr, virtual_vertex_index) => {
                     let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr));
                     let mut primal_node_internal = primal_node_internal_ptr.write();
+                    let grow_state = primal_node_internal.origin.read_recursive().grow_state;
+                    if grow_state != DualNodeGrowState::Grow {
+                        continue  // this is no longer a conflict
+                    }
                     // this is the most probable case, so put it in the front
                     if primal_node_internal.is_free() {
                         primal_node_internal.temporary_match = Some(MatchTarget::VirtualVertex(virtual_vertex_index));
                         interface.set_grow_state(&primal_node_internal.origin, DualNodeGrowState::Stay, dual_module);
                         continue
                     }
-                    unimplemented!()
+                    // tree touching virtual boundary will just augment the whole tree
+                    if primal_node_internal.tree_node.is_some() {
+                        drop(primal_node_internal);
+                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index);
+                        continue
+                    }
+                    unreachable!()
                 },
                 MaxUpdateLength::BlossomNeedExpand(node_ptr) => {
                     // blossom breaking is assumed to be very rare given our multiple-tree approach, so don't need to optimize for it
@@ -391,6 +414,10 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         continue
                     }
                     let primal_node_internal = primal_node_internal_ptr.read_recursive();
+                    let grow_state = primal_node_internal.origin.read_recursive().grow_state;
+                    if grow_state != DualNodeGrowState::Shrink {
+                        continue  // this is no longer a conflict
+                    }
                     // copy the nodes circle
                     let nodes_circle = {
                         let blossom = node_ptr.read_recursive();
@@ -664,6 +691,32 @@ impl PrimalModuleSerial {
         tree_node_internal.tree_node = None;
     }
 
+    /// for any + node, match it with virtual boundary will augment the whole tree, breaking out into several matched pairs
+    pub fn augment_tree_given_virtual_vertex(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, virtual_vertex_index: VertexIndex) {
+        let mut tree_node_internal = tree_node_internal_ptr.write();
+        tree_node_internal.temporary_match = Some(MatchTarget::VirtualVertex(virtual_vertex_index));
+        tree_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+        let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
+        debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
+        for child_ptr in tree_node.children.iter() {
+            self.match_subtree(child_ptr.clone());
+        }
+        if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
+            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap();
+            let grandparent_node_internal_ptr = {  // must unlock parent
+                let mut parent_node_internal = parent_node_internal_ptr.write();
+                let parent_tree_node = parent_node_internal.tree_node.as_ref().unwrap();
+                let grandparent_node_internal_ptr = parent_tree_node.parent.as_ref().unwrap().clone();
+                parent_node_internal.tree_node = None;
+                parent_node_internal.temporary_match = Some(MatchTarget::Peer(grandparent_node_internal_ptr.clone()));
+                parent_node_internal.origin.write().grow_state = DualNodeGrowState::Stay;
+                grandparent_node_internal_ptr
+            };
+            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone());
+        }
+        tree_node_internal.tree_node = None;
+    }
+
     /// do a sanity check of it's tree structure and internal state
     pub fn sanity_check(&self) -> Result<(), String> {
         for (index, primal_module_internal_ptr) in self.nodes.iter().enumerate() {
@@ -792,233 +845,10 @@ mod tests {
     use super::super::example::*;
     use super::super::dual_module_serial::*;
 
-    #[test]
-    fn primal_module_serial_basic_1() {  // cargo test primal_module_serial_basic_1 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_1.json");
-        let half_weight = 500;
-        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
-        // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
-        // try to work on a simple syndrome
-        code.vertices[18].is_syndrome = true;
-        code.vertices[26].is_syndrome = true;
-        code.vertices[34].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        interface.debug_print_actions = true;
-        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("alternating tree grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-    }
-
-    #[test]
-    fn primal_module_serial_basic_2() {  // cargo test primal_module_serial_basic_2 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_2.json");
-        let half_weight = 500;
-        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
-        // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
-        // try to work on a simple syndrome
-        code.vertices[16].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        interface.debug_print_actions = true;
-        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        assert!(group_max_update_length.is_empty(), "no more things to solve");
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-    }
-
-    #[test]
-    fn primal_module_serial_basic_3() {  // cargo test primal_module_serial_basic_3 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_3.json");
-        let half_weight = 500;
-        let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
-        // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
-        // try to work on a simple syndrome
-        code.vertices[16].is_syndrome = true;
-        code.vertices[26].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        interface.debug_print_actions = true;
-        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.is_empty(), "no more things to solve");
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-    }
-
-    #[test]
-    fn primal_module_serial_basic_4() {  // cargo test primal_module_serial_basic_4 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_4.json");
-        let half_weight = 500;
-        let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
-        // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
-        // try to work on a simple syndrome
-        code.vertices[16].is_syndrome = true;
-        code.vertices[52].is_syndrome = true;
-        code.vertices[65].is_syndrome = true;
-        code.vertices[76].is_syndrome = true;
-        code.vertices[112].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        interface.debug_print_actions = true;
-        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // conflicts resolved, grow again
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module, &primal_module]).unwrap();// cannot grow anymore, resolve conflicts
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-        visualizer.snapshot_combined(format!("resolve one"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // algorithm stops
-        let group_max_update_length = dual_module.compute_maximum_update_length();
-        println!("group_max_update_length: {:?}", group_max_update_length);
-        assert!(group_max_update_length.is_empty(), "algorithm terminated");
-    }
-
-    fn primal_module_serial_basic_standard_syndrome(visualize_filename: String, syndrome_vertices: Vec<VertexIndex>) {
+    fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
-        let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
+        let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
@@ -1050,18 +880,76 @@ mod tests {
         }
     }
 
+    /// test a simple blossom
+    #[test]
+    fn primal_module_serial_basic_1() {  // cargo test primal_module_serial_basic_1 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_1.json");
+        let syndrome_vertices = vec![18, 26, 34];
+        primal_module_serial_basic_standard_syndrome(7, visualize_filename, syndrome_vertices);
+    }
+
+    /// test a free node conflict with a virtual boundary
+    #[test]
+    fn primal_module_serial_basic_2() {  // cargo test primal_module_serial_basic_2 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_2.json");
+        let syndrome_vertices = vec![16];
+        primal_module_serial_basic_standard_syndrome(7, visualize_filename, syndrome_vertices);
+    }
+
+    /// test a free node conflict with a matched node (with virtual boundary)
+    #[test]
+    fn primal_module_serial_basic_3() {  // cargo test primal_module_serial_basic_3 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_3.json");
+        let syndrome_vertices = vec![16, 26];
+        primal_module_serial_basic_standard_syndrome(7, visualize_filename, syndrome_vertices);
+    }
+
+    /// test blossom shrinking and expanding
+    #[test]
+    fn primal_module_serial_basic_4() {  // cargo test primal_module_serial_basic_4 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_4.json");
+        let syndrome_vertices = vec![16, 52, 65, 76, 112];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices);
+    }
+
+    /// test blossom conflicts with vertex
     #[test]
     fn primal_module_serial_basic_5() {  // cargo test primal_module_serial_basic_5 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_5.json");
         let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
-        primal_module_serial_basic_standard_syndrome(visualize_filename, syndrome_vertices);
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices);
     }
 
+    /// test cascaded blossom
     #[test]
     fn primal_module_serial_basic_6() {  // cargo test primal_module_serial_basic_6 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_6.json");
         let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87];
-        primal_module_serial_basic_standard_syndrome(visualize_filename, syndrome_vertices);
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices);
+    }
+
+    /// test two alternating trees conflict with each other
+    #[test]
+    fn primal_module_serial_basic_7() {  // cargo test primal_module_serial_basic_7 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_7.json");
+        let syndrome_vertices = vec![37, 61, 63, 66, 68, 44];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices);
+    }
+
+    /// test an alternating tree touches a virtual boundary
+    #[test]
+    fn primal_module_serial_basic_8() {  // cargo test primal_module_serial_basic_8 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_8.json");
+        let syndrome_vertices = vec![61, 64, 67];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices);
+    }
+
+    /// test a matched node (with virtual boundary) conflicts with an alternating tree
+    #[test]
+    fn primal_module_serial_basic_9() {  // cargo test primal_module_serial_basic_9 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_9.json");
+        let syndrome_vertices = vec![60, 63, 66, 30];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices);
     }
 
 }
