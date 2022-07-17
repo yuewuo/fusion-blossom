@@ -59,6 +59,7 @@ const App = {
             selected_vertex_neighbor_edges: ref([]),
             selected_vertex_attributes: ref(""),
             selected_edge: ref(null),
+            selected_edge_attributes: ref(""),
         }
     },
     async mounted() {
@@ -152,6 +153,8 @@ const App = {
     methods: {
         show_snapshot(snapshot_idx) {
             try {
+                window.fusion_data = fusion_data
+                window.snapshot_idx = snapshot_idx
                 gui3d.show_snapshot(snapshot_idx, fusion_data)
                 primal.show_snapshot(snapshot_idx, fusion_data)
             } catch (e) {
@@ -169,9 +172,12 @@ const App = {
                 let vertex = this.snapshot.vertices[vertex_index]
                 this.selected_vertex_attributes = ""
                 if (vertex.s == 1) {
-                    this.selected_vertex_attributes = "(syndrome)"
+                    this.selected_vertex_attributes += "(syndrome) "
                 } else if (vertex.v == 1) {
-                    this.selected_vertex_attributes = "(virtual)"
+                    this.selected_vertex_attributes += "(virtual) "
+                }
+                if (vertex.p != null) {
+                    this.selected_vertex_attributes += `(node ${vertex.p}) `
                 }
                 console.assert(!(vertex.s == 1 && vertex.v == 1), "a vertex cannot be both syndrome and virtual")
                 // fetch edge list
@@ -225,6 +231,10 @@ const App = {
                     translated_left_grown,
                     translated_right_grown,
                     translated_unexplored,
+                }
+                this.selected_edge_attributes = ""
+                if (edge.ld != null || edge.rd != null) {
+                    this.selected_edge_attributes += `(node l: ${edge.ld}, r: ${edge.rd}) `
                 }
             }
         },

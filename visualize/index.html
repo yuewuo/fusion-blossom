@@ -111,6 +111,7 @@ h3 {
 <script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
 <script src="./node_modules/d3/dist/d3.js"></script>
 <script src="./node_modules/hull.js/dist/hull.js"></script>
+<script src="./cmd.js"></script>
 
 
 <div class="control-bar" id="app">
@@ -227,7 +228,7 @@ h3 {
         </q-card>
         <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'edge'">
             <q-card-section class="bg-teal text-white">
-                <div class="text-h6">Edge {{ current_selected.edge_index }}</div>
+                <div class="text-h6">Edge {{ current_selected.edge_index }} {{ selected_edge_attributes }}</div>
             </q-card-section>
             <q-separator inset></q-separator>
             <q-card-section>

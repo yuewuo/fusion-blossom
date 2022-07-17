@@ -461,7 +461,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].clone()); }
                             for i in 0 .. parent_touching_index { match_sequence.push(nodes_circle[i].clone()); }
                         } else if parent_touching_index > child_touching_index {
-                            if parent_touching_index - child_touching_index % 2 == 0 {  // [... c <----- p ...]
+                            if (parent_touching_index - child_touching_index) % 2 == 0 {  // [... c <----- p ...]
                                 for i in (child_touching_index .. parent_touching_index+1).rev() { tree_sequence.push(nodes_circle[i].clone()); }
                                 for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].clone()); }
                                 for i in 0 .. child_touching_index { match_sequence.push(nodes_circle[i].clone()); }
@@ -471,7 +471,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 for i in child_touching_index+1 .. parent_touching_index { match_sequence.push(nodes_circle[i].clone()); }
                             }
                         } else {  // parent_touching_index < child_touching_index
-                            if child_touching_index - parent_touching_index % 2 == 0 {  // [... p -----> c ...]
+                            if (child_touching_index - parent_touching_index) % 2 == 0 {  // [... p -----> c ...]
                                 for i in parent_touching_index .. child_touching_index+1 { tree_sequence.push(nodes_circle[i].clone()); }
                                 for i in child_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].clone()); }
                                 for i in 0 .. parent_touching_index { match_sequence.push(nodes_circle[i].clone()); }
@@ -842,12 +842,12 @@ impl PrimalModuleSerial {
 
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use super::super::example::*;
     use super::super::dual_module_serial::*;
 
-    fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    pub fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);

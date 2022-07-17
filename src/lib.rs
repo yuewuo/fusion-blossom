@@ -11,7 +11,6 @@ extern crate urlencoding;
 
 pub mod blossom_v;
 pub mod util;
-// pub mod fusion_single_thread;
 pub mod complete_graph;
 pub mod union_find;
 pub mod visualize;

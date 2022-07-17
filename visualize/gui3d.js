@@ -465,7 +465,7 @@ export async function refresh_snapshot_data() {
                 for (let [is_left, edge_index] of dual_node.b) {
                     let cached_position = edge_caches[edge_index].position
                     const edge = snapshot.edges[edge_index]
-                    if (edge.ld == edge.rd) {
+                    if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
                         continue  // do not draw this edge, this is an internal edge
                     }
                     if (is_left) {
