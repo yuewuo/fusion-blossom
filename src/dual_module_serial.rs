@@ -329,10 +329,6 @@ impl DualModuleImpl for DualModuleSerial {
             for circle_dual_node_ptr in nodes_circle.iter() {
                 let circle_dual_node_internal_ptr = self.get_dual_node_internal_ptr(&circle_dual_node_ptr);
                 let circle_dual_node_internal = circle_dual_node_internal_ptr.read_recursive();
-            }
-            for circle_dual_node_ptr in nodes_circle.iter() {
-                let circle_dual_node_internal_ptr = self.get_dual_node_internal_ptr(&circle_dual_node_ptr);
-                let circle_dual_node_internal = circle_dual_node_internal_ptr.read_recursive();
                 for (is_left, edge_ptr) in circle_dual_node_internal.boundary.iter() {
                     let mut edge = edge_ptr.write(active_timestamp);
                     assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
@@ -403,11 +399,10 @@ impl DualModuleImpl for DualModuleSerial {
                                 DualNodeGrowState::Shrink => {
                                     // special case: if peer is a syndrome vertex and it's dual variable is already 0, 
                                     // then we need to determine if some other growing nodes are conflicting with me
-                                    if matches!(peer_dual_node.class, DualNodeClass::SyndromeVertex{ .. }) && peer_dual_node_internal.dual_variable == 0 {
+                                    if remaining_length == 0 && matches!(peer_dual_node.class, DualNodeClass::SyndromeVertex{ .. }) && peer_dual_node_internal.dual_variable == 0 {
                                         for (peer_is_left, peer_edge_ptr) in peer_dual_node_internal.boundary.iter() {
                                             let peer_edge = peer_edge_ptr.read_recursive(active_timestamp);
-                                            let peer_remaining_length = peer_edge.weight - peer_edge.left_growth - peer_edge.right_growth;
-                                            if peer_remaining_length == 0 {
+                                            if peer_edge.left_growth + peer_edge.right_growth == peer_edge.weight {
                                                 let peer_is_left = *peer_is_left;
                                                 let far_peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if peer_is_left {
                                                     peer_edge.right_dual_node.as_ref().map(|ptr| ptr.clone())
@@ -1383,4 +1378,11 @@ mod tests {
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 23);
     }
 
+    #[test]
+    fn dual_module_debug_2() {  // cargo test dual_module_debug_2 -- --nocapture
+        let visualize_filename = format!("dual_module_debug_2.json");
+        let syndrome_vertices = vec![5, 12, 16, 19, 21, 38, 42, 43, 49, 56, 61, 67, 72, 73, 74, 75, 76, 88, 89, 92, 93, 99, 105, 112, 117, 120, 124, 129];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 22);
+    }
+    
 }

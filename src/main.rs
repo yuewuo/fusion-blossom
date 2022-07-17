@@ -43,16 +43,16 @@ pub fn main() {
                     let d_vec = [3, 7, 11, 15, 19];
                     // let p_vec = [0.1];
                     // let d_vec = [11];
+                    let total_rounds = 10000;
                     let max_half_weight: Weight = 500;
                     for p in p_vec {
                         for d in d_vec {
                             // codes.push((format!("repetition {d} {p}"), Box::new(CodeCapacityRepetitionCode::new(d, p, max_half_weight))));
-                            codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
-                            // codes.push((format!("phenomenological {d} {p}"), Box::new(PhenomenologicalPlanarCode::new(d, d, p, max_half_weight))));
+                            // codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
+                            codes.push((format!("phenomenological {d} {p}"), Box::new(PhenomenologicalPlanarCode::new(d, d, p, max_half_weight))));
                             // codes.push((format!("circuit-level {d} {p}"), Box::new(CircuitLevelPlanarCode::new(d, d, p, max_half_weight))));
                         }
                     }
-                    let total_rounds = 100;
                     if enable_visualizer {  // print visualizer file path only once
                         print_visualize_link(&static_visualize_data_filename());
                     }
@@ -66,7 +66,7 @@ pub fn main() {
                         // create primal module
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
                         primal_module.debug_resolve_only_one = true;  // to enable debug mode
-                        for round in 7..total_rounds {
+                        for round in 0..total_rounds {
                             dual_module.clear();
                             primal_module.clear();
                             pb.set(round);
@@ -79,6 +79,7 @@ pub fn main() {
                             }
                             // try to work on a simple syndrome
                             code.set_syndrome(&syndrome_vertices);
+                            // println!("syndrome_vertices: {syndrome_vertices:?}");
                             let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
                             // interface.debug_print_actions = true;
                             primal_module.load(&interface);  // load syndrome and connect to the dual module interface

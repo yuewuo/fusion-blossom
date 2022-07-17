@@ -170,13 +170,19 @@ impl PartialEq for DualNodePtr {
 impl Eq for DualNodePtr { }
 
 impl Ord for DualNodePtr {
-    /// compare pointer address, just to have a consistent order between pointers
+    // a consistent compare (during a single program)
     fn cmp(&self, other: &Self) -> Ordering {
-        let ptr1 = Arc::as_ptr(self.ptr());
-        let ptr2 = Arc::as_ptr(other.ptr());
-        // https://doc.rust-lang.org/reference/types/pointer.html
-        // "When comparing raw pointers they are compared by their address, rather than by what they point to."
-        ptr1.cmp(&ptr2)
+        if false {  // faster way: compare pointer address, just to have a consistent order between pointers
+            let ptr1 = Arc::as_ptr(self.ptr());
+            let ptr2 = Arc::as_ptr(other.ptr());
+            // https://doc.rust-lang.org/reference/types/pointer.html
+            // "When comparing raw pointers they are compared by their address, rather than by what they point to."
+            ptr1.cmp(&ptr2)
+        } else {
+            let node1 = self.read_recursive();
+            let node2 = other.read_recursive();
+            node1.index.cmp(&node2.index)
+        }
     }
 }
 
