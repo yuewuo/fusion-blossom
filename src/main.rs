@@ -8,6 +8,8 @@ use fusion_blossom::dual_module_serial;
 use fusion_blossom::primal_module_serial;
 use fusion_blossom::dual_module::*;
 use fusion_blossom::primal_module::*;
+use fusion_blossom::complete_graph;
+use fusion_blossom::blossom_v;
 use pbr::ProgressBar;
 
 
@@ -37,22 +39,35 @@ pub fn main() {
         Some(("test", matches)) => {
             match matches.subcommand() {
                 Some(("serial", matches)) => {
+                    if cfg!(not(feature = "blossom_v")) {
+                        panic!("need blossom V library, see README.md")
+                    }
                     let enable_visualizer = matches.is_present("enable_visualizer");
                     let mut codes = Vec::<(String, Box<dyn ExampleCode>)>::new();
-                    let p_vec = [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499];
-                    let d_vec = [3, 7, 11, 15, 19];
-                    // let p_vec = [0.1];
-                    // let d_vec = [11];
                     let total_rounds = 10000;
                     let max_half_weight: Weight = 500;
-                    for p in p_vec {
-                        for d in d_vec {
-                            // codes.push((format!("repetition {d} {p}"), Box::new(CodeCapacityRepetitionCode::new(d, p, max_half_weight))));
-                            // codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
-                            codes.push((format!("phenomenological {d} {p}"), Box::new(PhenomenologicalPlanarCode::new(d, d, p, max_half_weight))));
-                            // codes.push((format!("circuit-level {d} {p}"), Box::new(CircuitLevelPlanarCode::new(d, d, p, max_half_weight))));
+                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    //     for d in [3, 7, 11, 15, 19] {
+                    //         codes.push((format!("repetition {d} {p}"), Box::new(CodeCapacityRepetitionCode::new(d, p, max_half_weight))));
+                    //     }
+                    // }
+                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    for p in [0.03, 0.1, 0.3, 0.499] {
+                        // for d in [3, 7, 11, 15, 19] {
+                        for d in [19] {
+                            codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
                         }
                     }
+                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    //     for d in [3, 7, 11, 15, 19] {
+                    //         codes.push((format!("phenomenological {d} {p}"), Box::new(PhenomenologicalPlanarCode::new(d, d, p, max_half_weight))));
+                    //     }
+                    // }
+                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    //     for d in [3, 7, 11, 15, 19] {
+                    //         codes.push((format!("circuit-level {d} {p}"), Box::new(CircuitLevelPlanarCode::new(d, d, p, max_half_weight))));
+                    //     }
+                    // }
                     if enable_visualizer {  // print visualizer file path only once
                         print_visualize_link(&static_visualize_data_filename());
                     }
@@ -66,6 +81,8 @@ pub fn main() {
                         // create primal module
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
                         primal_module.debug_resolve_only_one = true;  // to enable debug mode
+                        // create blossom V decoder
+                        let mut complete_graph = complete_graph::CompleteGraph::new(vertex_num, &weighted_edges);
                         for round in 0..total_rounds {
                             dual_module.clear();
                             primal_module.clear();
@@ -98,7 +115,67 @@ pub fn main() {
                                 }
                                 group_max_update_length = dual_module.compute_maximum_update_length();
                             }
-                            // assert_eq!(interface.sum_dual_variables, final_dual * 2 * half_weight, "unexpected final dual variable sum");
+                            // use blossom V to compute ground truth
+                            let mut mapping_to_syndrome_nodes: Vec<usize> = (0..vertex_num).map(|_| usize::MAX).collect();
+                            for (i, &syndrome_node) in syndrome_vertices.iter().enumerate() {
+                                mapping_to_syndrome_nodes[syndrome_node] = i;
+                            }
+                            let legacy_vertex_num = syndrome_vertices.len() * 2;
+                            let mut legacy_weighted_edges = Vec::<(usize, usize, u32)>::new();
+                            let mut boundaries = Vec::<Option<(usize, Weight)>>::new();
+                            for i in 0..syndrome_vertices.len() {
+                                let complete_graph_edges = complete_graph.all_edges(syndrome_vertices[i]);
+                                let mut boundary: Option<(usize, Weight)> = None;
+                                for (&peer, &(_, weight)) in complete_graph_edges.iter() {
+                                    if code.is_virtual(peer) {
+                                        if boundary.is_none() || weight < boundary.as_ref().unwrap().1 {
+                                            boundary = Some((peer, weight));
+                                        }
+                                    }
+                                }
+                                match boundary {
+                                    Some((_, weight)) => {
+                                        // connect this real vertex to it's corresponding virtual vertex
+                                        legacy_weighted_edges.push((i, i + syndrome_vertices.len(), weight as u32));
+                                    }, None => { }
+                                }
+                                boundaries.push(boundary);  // save for later resolve legacy matchings
+                                for (&peer, &(_, weight)) in complete_graph_edges.iter() {
+                                    if code.is_syndrome(peer) {
+                                        let j = mapping_to_syndrome_nodes[peer];
+                                        if i < j {  // remove duplicated edges
+                                            legacy_weighted_edges.push((i, j, weight as u32));
+                                            // println!{"edge {} {} {} ", i, j, weight};
+                                        }
+                                    }
+                                }
+                                for j in (i+1)..syndrome_vertices.len() {
+                                    // virtual boundaries are always fully connected with weight 0
+                                    legacy_weighted_edges.push((i + syndrome_vertices.len(), j + syndrome_vertices.len(), 0));
+                                }
+                            }
+                            let blossom_matchings = blossom_v::safe_minimum_weight_perfect_matching(legacy_vertex_num, &legacy_weighted_edges);
+                            let mut blossom_mwpm_result = Vec::new();
+                            for i in 0..syndrome_vertices.len() {
+                                let j = blossom_matchings[i];
+                                if j < syndrome_vertices.len() {  // match to a real node
+                                    blossom_mwpm_result.push(syndrome_vertices[j]);
+                                } else {
+                                    assert_eq!(j, i + syndrome_vertices.len(), "if not matched to another real node, it must match to it's corresponding virtual node");
+                                    blossom_mwpm_result.push(boundaries[i].as_ref().expect("boundary must exist if match to virtual node").0);
+                                }
+                            }
+                            let mut blossom_total_weight = 0;
+                            for i in 0..syndrome_vertices.len() {
+                                let a = syndrome_vertices[i];
+                                let b = blossom_mwpm_result[i];
+                                if !code.is_syndrome(b) || a < b {
+                                    let (_path, weight) = complete_graph.get_path(a, b);
+                                    blossom_total_weight += weight;
+                                }
+                            }
+                            // compare with ground truth from the blossom V algorithm
+                            assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
                         }
                         pb.finish();
                         println!("");

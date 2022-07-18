@@ -216,6 +216,16 @@ pub trait ExampleCode {
         self.get_syndrome()
     }
 
+    fn is_virtual(&self, vertex_idx: usize) -> bool {
+        let (vertices, _edges) = self.immutable_vertices_edges();
+        vertices[vertex_idx].is_virtual
+    }
+
+    fn is_syndrome(&self, vertex_idx: usize) -> bool {
+        let (vertices, _edges) = self.immutable_vertices_edges();
+        vertices[vertex_idx].is_syndrome
+    }
+
 }
 
 impl<T> FusionVisualizer for T where T: ExampleCode {
