@@ -4,7 +4,7 @@
 //!
 
 use super::util::*;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use crate::derivative::Derivative;
 use crate::parking_lot::RwLock;
 use core::cmp::Ordering;
@@ -18,7 +18,7 @@ use std::collections::HashSet;
 #[derivative(Debug)]
 pub enum DualNodeClass {
     Blossom {
-        nodes_circle: Vec<DualNodePtr>,
+        nodes_circle: Vec<DualNodeWeak>,
     },
     SyndromeVertex {
         syndrome_index: VertexIndex,
@@ -53,13 +53,13 @@ pub enum MaxUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
     /// conflicting growth
-    Conflicting(DualNodePtr, DualNodePtr),
+    Conflicting(DualNodeWeak, DualNodeWeak),
     /// conflicting growth because of touching virtual node
-    TouchingVirtual(DualNodePtr, VertexIndex),
+    TouchingVirtual(DualNodeWeak, VertexIndex),
     /// blossom hitting 0 dual variable while shrinking
-    BlossomNeedExpand(DualNodePtr),
+    BlossomNeedExpand(DualNodeWeak),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module
-    VertexShrinkStop(DualNodePtr),
+    VertexShrinkStop(DualNodeWeak),
 }
 
 #[derive(Derivative, Clone)]
@@ -144,11 +144,15 @@ pub struct DualNode {
     /// whether it grows, stays or shrinks
     pub grow_state: DualNodeGrowState,
     /// parent blossom: when parent exists, grow_state should be [`DualNodeGrowState::Stay`]
-    pub parent_blossom: Option<DualNodePtr>,
+    pub parent_blossom: Option<DualNodeWeak>,
 }
 
 /// the shared pointer of [`DualNode`]
 pub struct DualNodePtr { ptr: Arc<RwLock<DualNode>>, }
+pub struct DualNodeWeak { ptr: Weak<RwLock<DualNode>>, }
+
+impl DualNodePtr { pub fn downgrade(&self) -> DualNodeWeak { DualNodeWeak { ptr: Arc::downgrade(&self.ptr) } } }
+impl DualNodeWeak { pub fn upgrade_force(&self) -> DualNodePtr { DualNodePtr { ptr: self.ptr.upgrade().unwrap() } } }
 
 impl Clone for DualNodePtr {
     fn clone(&self) -> Self {
@@ -168,6 +172,24 @@ impl PartialEq for DualNodePtr {
 }
 
 impl Eq for DualNodePtr { }
+
+impl Clone for DualNodeWeak {
+    fn clone(&self) -> Self {
+       Self { ptr: self.ptr.clone() }
+    }
+}
+
+impl std::fmt::Debug for DualNodeWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
+}
+
+impl PartialEq for DualNodeWeak {
+    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+}
+
+impl Eq for DualNodeWeak { }
 
 impl Ord for DualNodePtr {
     // a consistent compare (during a single program)
@@ -299,7 +321,8 @@ impl FusionVisualizer for DualModuleInterface {
                 let dual_node = dual_node_ptr.read_recursive();
                 dual_nodes.push(json!({
                     if abbrev { "o" } else { "blossom" }: match &dual_node.class {
-                        DualNodeClass::Blossom { nodes_circle } => Some(nodes_circle.iter().map(|node_ptr| node_ptr.read_recursive().index).collect::<Vec<NodeIndex>>()),
+                        DualNodeClass::Blossom { nodes_circle } => Some(nodes_circle.iter().map(|node_ptr|
+                            node_ptr.upgrade_force().read_recursive().index).collect::<Vec<NodeIndex>>()),
                         _ => None,
                     },
                     if abbrev { "s" } else { "syndrome_vertex" }: match &dual_node.class {
@@ -316,7 +339,7 @@ impl FusionVisualizer for DualModuleInterface {
                         DualNodeGrowState::Shrink => -1,
                         DualNodeGrowState::Stay => 0,
                     },
-                    if abbrev { "p" } else { "parent_blossom" }: dual_node.parent_blossom.as_ref().map(|ptr| ptr.read_recursive().index),
+                    if abbrev { "p" } else { "parent_blossom" }: dual_node.parent_blossom.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
                 }));
             } else {
                 dual_nodes.push(json!(null));
@@ -400,7 +423,7 @@ impl DualModuleInterface {
             self.set_grow_state(node_ptr, DualNodeGrowState::Stay, dual_module_impl);
             // then update parent
             let mut node = node_ptr.write();
-            node.parent_blossom = Some(blossom_node_ptr.clone());
+            node.parent_blossom = Some(blossom_node_ptr.downgrade());
         }
         if self.debug_print_actions {
             eprintln!("[create blossom] {:?} -> {}", nodes_circle, self.nodes.len());
@@ -409,7 +432,7 @@ impl DualModuleInterface {
             let mut node = blossom_node_ptr.write();
             node.index = self.nodes.len();
             node.class = DualNodeClass::Blossom {
-                nodes_circle: nodes_circle,
+                nodes_circle: nodes_circle.iter().map(|ptr| ptr.downgrade()).collect(),
             };
             self.nodes.push(Some(blossom_node_ptr.clone()));
         }
@@ -441,16 +464,18 @@ impl DualModuleInterface {
         self.nodes[node_idx] = None;  // remove this blossom from root
         match &node.class {
             DualNodeClass::Blossom { nodes_circle } => {
-                for node_ptr in nodes_circle.iter() {
+                for node_weak in nodes_circle.iter() {
+                    let node_ptr = node_weak.upgrade_force();
                     let mut node = node_ptr.write();
-                    assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &blossom_node_ptr, "internal error: parent blossom must be this blossom");
+                    assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &blossom_node_ptr.downgrade()
+                        , "internal error: parent blossom must be this blossom");
                     assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
                     node.parent_blossom = None;
                     drop(node);
                     {  // safest way: to avoid sub-optimal result being found, set all nodes to growing state
                         // WARNING: expanding a blossom like this way MAY CAUSE DEADLOCK!
                         // think about this extreme case: after a blossom is expanded, they may gradually form a new blossom and needs expanding again!
-                        self.set_grow_state(node_ptr, DualNodeGrowState::Grow, dual_module_impl);
+                        self.set_grow_state(&node_ptr, DualNodeGrowState::Grow, dual_module_impl);
                         // the solution is to provide two entry points, the two children of this blossom that directly connect to the two + node in the alternating tree
                         // only in that way it's guaranteed to make some progress without re-constructing this blossom
                         // It's the primal module's responsibility to avoid this happening, using the dual module's API: [``]
@@ -500,10 +525,11 @@ impl DualModuleInterface {
                     if dual_node.internal.is_none() { return Err(format!("the dual node {} is not connected to an concrete implementation of dual module", dual_node.index)) }
                     match &dual_node.class {
                         DualNodeClass::Blossom { nodes_circle } => {
-                            for circle_node_ptr in nodes_circle.iter() {
-                                if circle_node_ptr == dual_node_ptr { return Err(format!("a blossom should not contain itself")) }
+                            for circle_node_weak in nodes_circle.iter() {
+                                let circle_node_ptr = circle_node_weak.upgrade_force();
+                                if &circle_node_ptr == dual_node_ptr { return Err(format!("a blossom should not contain itself")) }
                                 let circle_node = circle_node_ptr.read_recursive();
-                                if circle_node.parent_blossom.as_ref() != Some(&dual_node_ptr) {
+                                if circle_node.parent_blossom.as_ref() != Some(&dual_node_ptr.downgrade()) {
                                     return Err(format!("blossom {} contains {} but child's parent pointer = {:?} is not pointing back"
                                         , dual_node.index, circle_node.index, circle_node.parent_blossom))
                                 }
@@ -513,7 +539,7 @@ impl DualModuleInterface {
                                     return Err(format!("child's index {} is not in the interface", circle_node.index))
                                 }
                                 let tracked_circle_node_ptr = self.nodes[circle_node.index].as_ref().unwrap();
-                                if tracked_circle_node_ptr != circle_node_ptr {
+                                if tracked_circle_node_ptr != &circle_node_ptr {
                                     return Err(format!("the tracked ptr of child {} is not what's being pointed", circle_node.index))
                                 }
                             }
@@ -524,15 +550,17 @@ impl DualModuleInterface {
                         },
                     }
                     match &dual_node.parent_blossom {
-                        Some(parent_blossom_ptr) => {
+                        Some(parent_blossom_weak) => {
                             if dual_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", dual_node.index)) }
+                            let parent_blossom_ptr = parent_blossom_weak.upgrade_force();
                             let parent_blossom = parent_blossom_ptr.read_recursive();
                             // check if child is actually inside this blossom
                             match &parent_blossom.class {
                                 DualNodeClass::Blossom { nodes_circle } => {
                                     let mut found_match_count = 0;
-                                    for node_ptr in nodes_circle.iter() {
-                                        if node_ptr == dual_node_ptr {
+                                    for node_weak in nodes_circle.iter() {
+                                        let node_ptr = node_weak.upgrade_force();
+                                        if &node_ptr == dual_node_ptr {
                                             found_match_count += 1;
                                         }
                                     }
@@ -546,7 +574,7 @@ impl DualModuleInterface {
                                 return Err(format!("parent blossom's index {} is not in the interface", parent_blossom.index))
                             }
                             let tracked_parent_blossom_ptr = self.nodes[parent_blossom.index].as_ref().unwrap();
-                            if tracked_parent_blossom_ptr != parent_blossom_ptr {
+                            if tracked_parent_blossom_ptr != &parent_blossom_ptr {
                                 return Err(format!("the tracked ptr of parent blossom {} is not what's being pointed", parent_blossom.index))
                             }
                         }, _ => { }
@@ -574,14 +602,14 @@ impl Ord for MaxUpdateLength {
         match (matches!(self, MaxUpdateLength::VertexShrinkStop( .. )), matches!(other, MaxUpdateLength::VertexShrinkStop( .. ))) {
             (true, false) => { return Ordering::Less },  // less priority
             (false, true) => { return Ordering::Greater },  // greater priority
-            (true, true) => { return self.get_vertex_shrink_stop().unwrap().cmp(other.get_vertex_shrink_stop().unwrap()) },  // don't care, just compare pointer
+            (true, true) => { return self.get_vertex_shrink_stop().unwrap().cmp(&other.get_vertex_shrink_stop().unwrap()) },  // don't care, just compare pointer
             _ => { }
         }
         // then, blossom expanding has the low priority, because it's infrequent and expensive
         match (matches!(self, MaxUpdateLength::BlossomNeedExpand( .. )), matches!(other, MaxUpdateLength::BlossomNeedExpand( .. ))) {
             (true, false) => { return Ordering::Less },  // less priority
             (false, true) => { return Ordering::Greater },  // greater priority
-            (true, true) => { return self.get_blossom_need_expand().unwrap().cmp(other.get_blossom_need_expand().unwrap()) },  // don't care, just compare pointer
+            (true, true) => { return self.get_blossom_need_expand().unwrap().cmp(&other.get_blossom_need_expand().unwrap()) },  // don't care, just compare pointer
             _ => { }
         }
         // We'll prefer match nodes internally instead of to boundary, because there might be less path connecting to boundary
@@ -592,14 +620,14 @@ impl Ord for MaxUpdateLength {
             (true, true) => {
                 let (a, c) = self.get_touching_virtual().unwrap();
                 let (b, d) = other.get_touching_virtual().unwrap();
-                return a.cmp(b).reverse().then(c.cmp(&d).reverse())
+                return a.cmp(&b).reverse().then(c.cmp(&d).reverse())
             },  // don't care, just compare pointer
             _ => { }
         }
         // last, both of them MUST be MaxUpdateLength::Conflicting
         let (a, c) = self.get_conflicting().unwrap();
         let (b, d) = other.get_conflicting().unwrap();
-        a.cmp(b).reverse().then(c.cmp(&d).reverse())
+        a.cmp(&b).reverse().then(c.cmp(&d).reverse())
     }
 }
 
@@ -615,10 +643,10 @@ impl MaxUpdateLength {
     #[allow(dead_code)]
     pub fn is_conflicting(&self, a: &DualNodePtr, b: &DualNodePtr) -> bool {
         if let MaxUpdateLength::Conflicting(n1, n2) = self {
-            if n1 == a && n2 == b {
+            if n1 == &a.downgrade() && n2 == &b.downgrade() {
                 return true
             }
-            if n1 == b && n2 == a {
+            if n1 == &b.downgrade() && n2 == &a.downgrade() {
                 return true
             }
         }
@@ -638,9 +666,9 @@ impl MaxUpdateLength {
     /// helper function that get values out of the enum
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn get_conflicting(&self) -> Option<(&DualNodePtr, &DualNodePtr)> {
+    pub fn get_conflicting(&self) -> Option<(DualNodePtr, DualNodePtr)> {
         match self {
-            Self::Conflicting(a, b) => { Some((a, b)) },
+            Self::Conflicting(a, b) => { Some((a.upgrade_force(), b.upgrade_force())) },
             _ => { None },
         }
     }
@@ -648,9 +676,9 @@ impl MaxUpdateLength {
     /// helper function that get values out of the enum
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn get_touching_virtual(&self) -> Option<(&DualNodePtr, VertexIndex)> {
+    pub fn get_touching_virtual(&self) -> Option<(DualNodePtr, VertexIndex)> {
         match self {
-            Self::TouchingVirtual(a, b) => { Some((a, *b)) },
+            Self::TouchingVirtual(a, b) => { Some((a.upgrade_force(), *b)) },
             _ => { None },
         }
     }
@@ -658,9 +686,9 @@ impl MaxUpdateLength {
     /// helper function that get values out of the enum
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn get_blossom_need_expand(&self) -> Option<&DualNodePtr> {
+    pub fn get_blossom_need_expand(&self) -> Option<DualNodePtr> {
         match self {
-            Self::BlossomNeedExpand(a) => { Some(a) },
+            Self::BlossomNeedExpand(a) => { Some(a.upgrade_force()) },
             _ => { None },
         }
     }
@@ -668,9 +696,9 @@ impl MaxUpdateLength {
     /// helper function that get values out of the enum
     #[allow(dead_code)]
     #[inline(always)]
-    pub fn get_vertex_shrink_stop(&self) -> Option<&DualNodePtr> {
+    pub fn get_vertex_shrink_stop(&self) -> Option<DualNodePtr> {
         match self {
-            Self::VertexShrinkStop(a) => { Some(a) },
+            Self::VertexShrinkStop(a) => { Some(a.upgrade_force()) },
             _ => { None },
         }
     }
