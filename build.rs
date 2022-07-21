@@ -33,12 +33,14 @@ fn main() {
         build.flag("-Wno-unused-parameter")
             .flag("-Wno-unused-variable")
             .flag("-Wno-reorder-ctor")
+            .flag("-Wno-reorder")
             .compile("blossomV");
 
         println!("cargo:rerun-if-changed=./blossomV/blossomV.cpp");
+        println!("cargo:rerun-if-changed=./blossomV/PerfectMatching.h");
     
         if target_os != Ok("macos".to_string()) {  // exclude from macOS
-            println!("cargo:rustc-link-lib=static=stdc++");  // have to add this to compile c++ (new, delete operators)
+            // println!("cargo:rustc-link-lib=static=stdc++");  // have to add this to compile c++ (new, delete operators)
         }
 
         println!("cargo:rustc-link-lib=static=blossomV");

@@ -567,6 +567,42 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         }
     }
 
+    fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &mut DualModuleInterface, _dual_module: &mut D) -> PerfectMatching {
+        let mut perfect_matching = PerfectMatching::new();
+        for i in 0..self.nodes.len() {
+            let primal_node_internal_ptr = self.nodes[i].clone();
+            match primal_node_internal_ptr {
+                Some(primal_node_internal_ptr) => {
+                    let primal_node_internal = primal_node_internal_ptr.read_recursive();
+                    assert!(primal_node_internal.tree_node.is_none(), "cannot compute perfect matching with active alternating tree");
+                    let origin_ptr = primal_node_internal.origin.upgrade_force();
+                    let interface_node = origin_ptr.read_recursive();
+                    if interface_node.parent_blossom.is_some() {
+                        assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
+                        continue  // do not handle this blossom at this level
+                    }
+                    if let Some(match_target) = primal_node_internal.temporary_match.as_ref() {
+                        match match_target {
+                            MatchTarget::Peer(peer_internal_weak) => {
+                                let peer_internal_ptr = peer_internal_weak.upgrade_force();
+                                let peer_internal = peer_internal_ptr.read_recursive();
+                                if primal_node_internal.index < peer_internal.index {  // to avoid duplicate matched pairs
+                                    perfect_matching.peer_matchings.push((primal_node_internal.origin.upgrade_force(), peer_internal.origin.upgrade_force()));
+                                }
+                            },
+                            MatchTarget::VirtualVertex(virtual_vertex) => {
+                                perfect_matching.virtual_matchings.push((primal_node_internal.origin.upgrade_force(), *virtual_vertex));
+                            },
+                        }
+                    } else {
+                        panic!("cannot compute final matching with unmatched outer node {:?}", primal_node_internal_ptr);
+                    }
+                }, None => { }
+            }
+        }
+        perfect_matching
+    }
+
 }
 
 impl FusionVisualizer for PrimalModuleSerial {
@@ -885,14 +921,21 @@ pub mod tests {
     use super::*;
     use super::super::example::*;
     use super::super::dual_module_serial::*;
+    use super::super::*;
 
-    pub fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+            -> (DualModuleInterface, PrimalModuleSerial, DualModuleSerial) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        let mut visualizer = match visualize_filename.as_ref() {
+            Some(visualize_filename) => {
+                let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(&visualize_filename);
+                Some(visualizer)
+            }, None => None
+        };
         // create dual module
         let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
         let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
@@ -904,22 +947,28 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        visualizer.as_mut().map(|v| v.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap());
         // grow until end
         let mut group_max_update_length = dual_module.compute_maximum_update_length();
         while !group_max_update_length.is_empty() {
             println!("group_max_update_length: {:?}", group_max_update_length);
             if let Some(length) = group_max_update_length.get_none_zero_growth() {
                 interface.grow(length, &mut dual_module);
-                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
+                visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
             } else {
                 let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
+                visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
             }
             group_max_update_length = dual_module.compute_maximum_update_length();
         }
         assert_eq!(interface.sum_dual_variables, final_dual * 2 * half_weight, "unexpected final dual variable sum");
+        (interface, primal_module, dual_module)
+    }
+
+    pub fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+            -> (DualModuleInterface, PrimalModuleSerial, DualModuleSerial) {
+        primal_module_serial_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
     }
 
     /// test a simple blossom
@@ -1004,8 +1053,16 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        // create dual module
         let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        // blossom V ground truth
+        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
+        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let mut blossom_total_weight = 0;
+        for detail in blossom_details.iter() {
+            println!("    {detail:?}");
+            blossom_total_weight += detail.weight;
+        }
+        // create dual module
         let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
@@ -1022,17 +1079,35 @@ pub mod tests {
             println!("group_max_update_length: {:?}", group_max_update_length);
             if let Some(length) = group_max_update_length.get_none_zero_growth() {
                 interface.grow(length, &mut dual_module);
-                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
+                // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                // let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
+                // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
             group_max_update_length = dual_module.compute_maximum_update_length();
         }
-        assert_eq!(interface.sum_dual_variables, 12284, "unexpected final dual variable sum");
+        // let fusion_mwpm_result = primal_module.final_matching(&mut interface, &mut dual_module);
+        // let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        // let mut fusion_total_weight = 0;
+        // for detail in fusion_details.iter() {
+        //     println!("    {detail:?}");
+        //     fusion_total_weight += detail.weight;
+        // }
+        // assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+    }
+
+    #[test]
+    fn primal_module_serial_perfect_matching_1() {  // cargo test primal_module_serial_perfect_matching_1 -- --nocapture
+        let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
+        // let visualize_filename = format!("primal_module_serial_perfect_matching_1.json");
+        // let (mut interface, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 6);
+        let (mut interface, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, syndrome_vertices, 6);
+        let intermediate_matching = primal_module.intermediate_matching(&mut interface, &mut dual_module);
+        println!("intermediate_matching: {intermediate_matching:?}");
+        let final_matching = primal_module.final_matching(&mut interface, &mut dual_module);
+        println!("final_matching: {final_matching:?}");
     }
 
 }
-
-

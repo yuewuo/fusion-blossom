@@ -179,6 +179,9 @@ const App = {
                 if (vertex.p != null) {
                     this.selected_vertex_attributes += `(node ${vertex.p}) `
                 }
+                if (vertex.pg != null) {
+                    this.selected_vertex_attributes += `(grandson ${vertex.pg}) `
+                }
                 console.assert(!(vertex.s == 1 && vertex.v == 1), "a vertex cannot be both syndrome and virtual")
                 // fetch edge list
                 let neighbor_edges = []
@@ -235,6 +238,9 @@ const App = {
                 this.selected_edge_attributes = ""
                 if (edge.ld != null || edge.rd != null) {
                     this.selected_edge_attributes += `(node l: ${edge.ld}, r: ${edge.rd}) `
+                }
+                if (edge.lgd != null || edge.rgd != null) {
+                    this.selected_edge_attributes += `(grandson l: ${edge.lgd}, r: ${edge.rgd}) `
                 }
             }
         },

@@ -200,6 +200,8 @@ pub struct Vertex {
     pub edges: Vec<EdgeWeak>,
     /// propagated dual node
     pub propagated_dual_node: Option<DualNodeInternalWeak>,
+    /// propagated grandson node: must be a syndrome node
+    pub propagated_grandson_dual_node: Option<DualNodeInternalWeak>,
     /// for fast clear
     pub timestamp: FastClearTimestamp,
 }
@@ -223,8 +225,12 @@ pub struct Edge {
     pub right_growth: Weight,
     /// left active tree node (if applicable)
     pub left_dual_node: Option<DualNodeInternalWeak>,
+    /// left grandson node: must be a syndrome node
+    pub left_grandson_dual_node: Option<DualNodeInternalWeak>,
     /// right active tree node (if applicable)
     pub right_dual_node: Option<DualNodeInternalWeak>,
+    /// left grandson node: must be a syndrome node
+    pub right_grandson_dual_node: Option<DualNodeInternalWeak>,
     /// for fast clear
     pub timestamp: FastClearTimestamp,
 }
@@ -241,6 +247,7 @@ impl DualModuleImpl for DualModuleSerial {
             is_syndrome: false,
             edges: Vec::new(),
             propagated_dual_node: None,
+            propagated_grandson_dual_node: None,
             timestamp: active_timestamp,
         })).collect();
         // set virtual vertices
@@ -264,7 +271,9 @@ impl DualModuleImpl for DualModuleSerial {
                 left_growth: 0,
                 right_growth: 0,
                 left_dual_node: None,
+                left_grandson_dual_node: None,
                 right_dual_node: None,
+                right_grandson_dual_node: None,
                 timestamp: 0,
             });
             for (a, b) in [(i, j), (j, i)] {
@@ -346,6 +355,7 @@ impl DualModuleImpl for DualModuleSerial {
                     vertex_ptr.dynamic_clear(active_timestamp);
                     let mut vertex = vertex_ptr.write(active_timestamp);
                     vertex.propagated_dual_node = Some(node_internal_ptr.downgrade());
+                    vertex.propagated_grandson_dual_node = Some(node_internal_ptr.downgrade());
                     vertex.is_syndrome = true;
                     for edge_weak in vertex.edges.iter() {
                         let edge_ptr = edge_weak.upgrade_force();
@@ -355,8 +365,10 @@ impl DualModuleImpl for DualModuleSerial {
                         assert!(if is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
                         if is_left {
                             edge.left_dual_node = Some(node_internal_ptr.downgrade());
+                            edge.left_grandson_dual_node = Some(node_internal_ptr.downgrade());
                         } else {
                             edge.right_dual_node = Some(node_internal_ptr.downgrade());
+                            edge.right_grandson_dual_node = Some(node_internal_ptr.downgrade());
                         }
                         boundary.push((is_left, edge_weak.clone()));
                     }
@@ -438,6 +450,7 @@ impl DualModuleImpl for DualModuleSerial {
                 let (_, overgrown) = &dual_node_internal.overgrown_stack[last_index];
                 max_length_abs = std::cmp::min(max_length_abs, *overgrown);
             }
+            max_length_abs = std::cmp::min(max_length_abs, dual_node_internal.dual_variable);
         }
         for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
             let edge_ptr = edge_weak.upgrade_force();
@@ -718,6 +731,9 @@ impl DualModuleImpl for DualModuleSerial {
                         let edge_ptr = edge_weak.upgrade_force();
                         let is_left = *is_left;
                         let edge = edge_ptr.read_recursive(active_timestamp);
+                        if edge.left_growth + edge.right_growth < edge.weight {
+                            continue  // this edge is not fully grown, skip
+                        }
                         let peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if is_left {
                             edge.right_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
                         } else {
@@ -739,6 +755,74 @@ impl DualModuleImpl for DualModuleSerial {
         unreachable!("cannot find a touching child between {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
     }
 
+    fn peek_touching_grandson(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr {
+        let active_timestamp = self.active_timestamp;
+        self.prepare_dual_node_growth(dual_node_ptr, true);  // prepare the other as growing so that they tightly touch at some edge
+        let blossom_internal_ptr = self.get_dual_node_internal_ptr(&blossom_ptr);
+        let blossom_internal = blossom_internal_ptr.read_recursive();
+        for (is_left, edge_weak) in blossom_internal.boundary.iter() {
+            let edge_ptr = edge_weak.upgrade_force();
+            let is_left = *is_left;
+            let edge = edge_ptr.read_recursive(active_timestamp);
+            if edge.left_growth + edge.right_growth < edge.weight {
+                continue  // this edge is not fully grown, skip
+            }
+            let peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if is_left {
+                edge.right_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
+            } else {
+                edge.left_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
+            };
+            match peer_dual_node_internal_ptr {
+                Some(peer_dual_node_internal_ptr) => {
+                    let peer_dual_node_internal = peer_dual_node_internal_ptr.read_recursive();
+                    let peer_dual_node_ptr = peer_dual_node_internal.origin.upgrade_force();
+                    if &peer_dual_node_ptr == dual_node_ptr {
+                        let grandson_dual_node_weak = if is_left {
+                            edge.left_grandson_dual_node.as_ref().unwrap().clone()
+                        } else {
+                            edge.right_grandson_dual_node.as_ref().unwrap().clone()
+                        };
+                        let grandson_dual_node_ptr = grandson_dual_node_weak.upgrade_force();
+                        let grandson_dual_node = grandson_dual_node_ptr.read_recursive();
+                        return grandson_dual_node.origin.upgrade_force()
+                    }
+                }, _ => { }
+            }
+        }
+        unreachable!("cannot find a touching grandson between node {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
+    }
+
+    fn peek_touching_grandson_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr {
+        let active_timestamp = self.active_timestamp;
+        // don't need to prepare growth: it doesn't matter for virtual vertex
+        let blossom_internal_ptr = self.get_dual_node_internal_ptr(&blossom_ptr);
+        let blossom_internal = blossom_internal_ptr.read_recursive();
+        for (is_left, edge_weak) in blossom_internal.boundary.iter() {
+            let edge_ptr = edge_weak.upgrade_force();
+            let is_left = *is_left;
+            let edge = edge_ptr.read_recursive(active_timestamp);
+            if edge.left_growth + edge.right_growth < edge.weight {
+                continue  // this edge is not fully grown, skip
+            }
+            let peer_vertex_index = if is_left {
+                edge.right.upgrade_force().read_recursive(active_timestamp).vertex_index
+            } else {
+                edge.left.upgrade_force().read_recursive(active_timestamp).vertex_index
+            };
+            if peer_vertex_index == virtual_vertex {
+                let grandson_dual_node_weak = if is_left {
+                    edge.left_grandson_dual_node.as_ref().unwrap().clone()
+                } else {
+                    edge.right_grandson_dual_node.as_ref().unwrap().clone()
+                };
+                let grandson_dual_node_ptr = grandson_dual_node_weak.upgrade_force();
+                let grandson_dual_node = grandson_dual_node_ptr.read_recursive();
+                return grandson_dual_node.origin.upgrade_force()
+            }
+        }
+        unreachable!("cannot find a touching grandson between virtual vertex {:?} and blossom {:?}", virtual_vertex, blossom_ptr);
+    }
+
 }
 
 /*
@@ -751,7 +835,9 @@ impl FastClear for Edge {
         self.left_growth = 0;
         self.right_growth = 0;
         self.left_dual_node = None;
+        self.left_grandson_dual_node = None;
         self.right_dual_node = None;
+        self.right_grandson_dual_node = None;
     }
 
     fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
@@ -764,6 +850,7 @@ impl FastClear for Vertex {
     fn hard_clear(&mut self) {
         self.is_syndrome = false;
         self.propagated_dual_node = None;
+        self.propagated_grandson_dual_node = None;
     }
 
     fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
@@ -802,17 +889,6 @@ impl DualModuleSerial {
 Implementing visualization functions
 */
 
-// pub struct DualNodeInternal {
-//     /// the pointer to the origin [`DualNode`]
-//     pub origin: DualNodePtr,
-//     /// local index, to find myself in [`DualModuleSerial::nodes`]
-//     index: NodeIndex,
-//     /// dual variable of this node
-//     pub dual_variable: Weight,
-//     /// edges on the boundary of this node, (`is_left`, `edge`)
-//     pub boundary: Vec<(bool, EdgePtr)>,
-// }
-
 impl FusionVisualizer for DualModuleSerial {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let active_timestamp = self.active_timestamp;
@@ -824,6 +900,7 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
                 if abbrev { "p" } else { "propagated_dual_node" }: vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
+                if abbrev { "pg" } else { "propagated_grandson_dual_node" }: vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
             }));
         }
         let mut edges = Vec::<serde_json::Value>::new();
@@ -837,7 +914,9 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
                 if abbrev { "ld" } else { "left_dual_node" }: edge.left_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
+                if abbrev { "lgd" } else { "left_grandson_dual_node" }: edge.left_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
                 if abbrev { "rd" } else { "right_dual_node" }: edge.right_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
+                if abbrev { "rgd" } else { "right_grandson_dual_node" }: edge.right_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
             }));
         }
         let mut dual_nodes = Vec::<serde_json::Value>::new();
@@ -879,7 +958,7 @@ impl DualModuleSerial {
     pub fn prepare_dual_node_growth(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool) {
         let active_timestamp = self.active_timestamp;
         let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
-        let mut propagating_vertices = Vec::<VertexPtr>::new();
+        let mut propagating_vertices = Vec::<(VertexPtr, Option<DualNodeInternalWeak>)>::new();
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
         if is_grow {  // gracefully update the boundary to ease growing
             let dual_node_internal = dual_node_internal_ptr.read_recursive();
@@ -906,14 +985,19 @@ impl DualModuleSerial {
                         updated_boundary.push((is_left, edge_weak.clone()));
                     } else {
                         assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
-                        propagating_vertices.push(peer_vertex_ptr.clone());
+                        assert!(peer_vertex.propagated_grandson_dual_node.is_none(), "growing into another propagated vertex forbidden");
+                        propagating_vertices.push((peer_vertex_ptr.clone(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
                         // this edge is dropped, so we need to set both end of this edge to this dual node
                         drop(edge);  // unlock read
                         let mut edge = edge_ptr.write(active_timestamp);
                         if is_left {
                             edge.right_dual_node = Some(dual_node_internal_ptr.downgrade());
+                            debug_assert!(edge.left_grandson_dual_node.is_some());
+                            edge.right_grandson_dual_node = edge.left_grandson_dual_node.clone();
                         } else {
                             edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
+                            debug_assert!(edge.right_grandson_dual_node.is_some());
+                            edge.left_grandson_dual_node = edge.right_grandson_dual_node.clone();
                         }
                     }
                 } else {  // keep other edges
@@ -922,10 +1006,11 @@ impl DualModuleSerial {
             }
             drop(dual_node_internal);  // unlock
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for vertex_ptr in propagating_vertices.iter() {
+            for (vertex_ptr, grandson_dual_node) in propagating_vertices.into_iter() {
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_none() {
                     vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
+                    vertex.propagated_grandson_dual_node = grandson_dual_node.clone();
                     let mut count_newly_propagated_edge = 0;
                     for edge_weak in vertex.edges.iter() {
                         let edge_ptr = edge_weak.upgrade_force();
@@ -946,8 +1031,10 @@ impl DualModuleSerial {
                             let mut edge = edge_ptr.write(active_timestamp);
                             if is_left {
                                 edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
+                                edge.left_grandson_dual_node = grandson_dual_node.clone();
                             } else {
                                 edge.right_dual_node = Some(dual_node_internal_ptr.downgrade());
+                                edge.right_grandson_dual_node = grandson_dual_node.clone();
                             };
                         }
                     }
@@ -970,19 +1057,22 @@ impl DualModuleSerial {
                         let mut vertex = vertex_ptr.write(active_timestamp);
                         debug_assert!(vertex.propagated_dual_node == Some(dual_node_internal_ptr.downgrade()), "overgrown vertex must be propagated by the original dual node");
                         vertex.propagated_dual_node = None;
+                        vertex.propagated_grandson_dual_node = None;
                         for edge_weak in vertex.edges.iter() {
                             let edge_ptr = edge_weak.upgrade_force();
                             let mut edge = edge_ptr.write(active_timestamp);
                             let is_left = vertex_ptr.downgrade() == edge.left;
                             debug_assert!(if is_left {
-                                edge.left_dual_node == Some(dual_node_internal_ptr.downgrade())
+                                edge.left_dual_node == Some(dual_node_internal_ptr.downgrade()) && edge.left_grandson_dual_node.is_some()
                             } else {
-                                edge.right_dual_node == Some(dual_node_internal_ptr.downgrade())
+                                edge.right_dual_node == Some(dual_node_internal_ptr.downgrade()) && edge.right_grandson_dual_node.is_some()
                             }, "overgrown vertices must be surrounded by the same propagated dual node");
                             if is_left {
                                 edge.left_dual_node = None;
+                                edge.left_grandson_dual_node = None;
                             } else {
                                 edge.right_dual_node = None;
+                                edge.right_grandson_dual_node = None;
                             }
                             updated_boundary.push((!is_left, edge_weak.clone()));  // boundary has the opposite end
                         }
@@ -1014,17 +1104,18 @@ impl DualModuleSerial {
                         updated_boundary.push((is_left, edge_weak.clone()));
                     } else {
                         assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
-                        propagating_vertices.push(this_vertex_ptr.clone());
+                        propagating_vertices.push((this_vertex_ptr.clone(), None));
                     }
                 } else {  // keep other edges
                     updated_boundary.push((is_left, edge_weak.clone()));
                 }
             }
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for vertex_ptr in propagating_vertices.iter() {
+            for (vertex_ptr, _) in propagating_vertices.into_iter() {
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_some() {
                     vertex.propagated_dual_node = None;
+                    vertex.propagated_grandson_dual_node = None;
                     for edge_weak in vertex.edges.iter() {
                         let edge_ptr = edge_weak.upgrade_force();
                         let (is_left, newly_propagated_edge) = {
@@ -1049,17 +1140,21 @@ impl DualModuleSerial {
                                 assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
                                 assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
                                 edge.left_dual_node = None;
+                                edge.left_grandson_dual_node = None;
                             } else {
                                 assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
                                 assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
                                 edge.right_dual_node = None;
+                                edge.right_grandson_dual_node = None;
                             };
                         } else {
                             let mut edge = edge_ptr.write(active_timestamp);
                             if is_left {
                                 edge.left_dual_node = None;
+                                edge.left_grandson_dual_node = None;
                             } else {
                                 edge.right_dual_node = None;
+                                edge.right_grandson_dual_node = None;
                             }
                         }
                     }
@@ -1453,6 +1548,38 @@ mod tests {
         let touching_child_ptr_2 = dual_module.peek_touching_child(&dual_node_blossom, &dual_node_112_ptr);
         println!("touching_child_ptr_2: {touching_child_ptr_2:?}");
         assert_eq!(touching_child_ptr_2, dual_node_76_ptr);
+    }
+
+    #[test]
+    fn dual_module_grow_iterative_1() {  // cargo test dual_module_grow_iterative_1 -- --nocapture
+        let visualize_filename = format!("dual_module_grow_iterative_1.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // try to work on a simple syndrome
+        code.vertices[39].is_syndrome = true;
+        code.vertices[65].is_syndrome = true;
+        code.vertices[87].is_syndrome = true;
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        // create dual nodes and grow them by half length
+        interface.grow_iterative(4 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        assert_eq!(interface.sum_dual_variables, 3 * 4 * half_weight);
+        let dual_node_39_ptr = interface.nodes[0].as_ref().unwrap().clone();
+        let dual_node_65_ptr = interface.nodes[1].as_ref().unwrap().clone();
+        let dual_node_87_ptr = interface.nodes[2].as_ref().unwrap().clone();
+        interface.set_grow_state(&dual_node_39_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.set_grow_state(&dual_node_65_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.set_grow_state(&dual_node_87_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface.grow_iterative(4 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("shrink"), vec![&interface, &dual_module]).unwrap();
+        assert_eq!(interface.sum_dual_variables, 0);
     }
 
     #[test]

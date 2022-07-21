@@ -107,7 +107,8 @@ h3 {
 </head>
 <body>
 <!-- <script src="https://unpkg.com/vue@3.2.33/dist/vue.global.js"></script> -->
-<script src="https://unpkg.com/vue@3.2.33/dist/vue.global.prod.js"></script>
+<!-- <script src="https://unpkg.com/vue@3.2.33/dist/vue.global.prod.js"></script> -->
+<script src="./node_modules/vue/dist/vue.global.prod.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
 <script src="./node_modules/d3/dist/d3.js"></script>
 <script src="./node_modules/hull.js/dist/hull.js"></script>
@@ -270,10 +271,11 @@ h3 {
     </q-scroll-area>
 </div>
 
+<!-- "three": "https://unpkg.com/three@0.139.2/build/three.module.js" -->
 <script type="importmap">
 {
     "imports": {
-        "three": "https://unpkg.com/three@0.139.2/build/three.module.js"
+        "three": "./node_modules/three/build/three.module.js"
     }
 }
 </script>

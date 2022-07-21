@@ -279,7 +279,8 @@ pub trait DualModuleImpl {
         self.add_dual_node(dual_node_ptr)
     }
 
-    /// remove a blossom, note that this dual node ptr is already expanded from the root: normally you only need to remove this blossom
+    /// remove a blossom, note that this dual node ptr is already expanded from the root: normally you only need to remove this blossom;
+    /// when force flag is set, remove blossom even if its dual variable is not 0: this action cannot be undone
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr);
 
     /// update grow state
@@ -308,6 +309,12 @@ pub trait DualModuleImpl {
 
     /// peek the child node inside a blossom who's touching with an external node
     fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
+
+    /// peek the original syndrome vertex inside this blossom that is nearest to another node
+    fn peek_touching_grandson(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
+
+    /// peek the original syndrome vertex inside this blossom that is nearest to this virtual boundary
+    fn peek_touching_grandson_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr;
 
 }
 
@@ -512,6 +519,17 @@ impl DualModuleInterface {
     pub fn grow(&mut self, length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
         dual_module_impl.grow(length);
         self.sum_dual_variables += length * self.sum_grow_speed;
+    }
+
+    /// grow  a specific length globally but iteratively: will try to keep growing that much
+    pub fn grow_iterative(&mut self, mut length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
+        while length > 0 {
+            let max_update_length = dual_module_impl.compute_maximum_update_length();
+            let safe_growth = max_update_length.get_none_zero_growth().expect(format!("iterative grow failed because of conflicts {max_update_length:?}").as_str());
+            let growth = std::cmp::min(length, safe_growth);
+            self.grow(growth, dual_module_impl);
+            length -= growth;
+        }
     }
 
     /// do a sanity check of if all the nodes are in consistent state
