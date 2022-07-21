@@ -53,9 +53,9 @@ pub enum MaxUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
     /// conflicting growth
-    Conflicting(DualNodeWeak, DualNodeWeak),
+    Conflicting((DualNodeWeak, DualNodeWeak), (DualNodeWeak, DualNodeWeak)),  // (node_1, grandson_1), (node_2, grandson_2)
     /// conflicting growth because of touching virtual node
-    TouchingVirtual(DualNodeWeak, VertexIndex),
+    TouchingVirtual((DualNodeWeak, DualNodeWeak), VertexIndex),  // (node, grandson), virtual_vertex
     /// blossom hitting 0 dual variable while shrinking
     BlossomNeedExpand(DualNodeWeak),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module
@@ -328,8 +328,11 @@ pub trait DualModuleImpl {
     /// peek the child node inside a blossom who's touching with an external node
     fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
 
-    /// peek the original syndrome vertex inside this blossom that is nearest to this virtual boundary
-    fn peek_touching_child_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr;
+    /// peek any descendant inside this blossom that is nearest to this external node
+    fn peek_touching_descendant(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
+
+    /// peek any descendant inside this blossom that is nearest to this virtual boundary
+    fn peek_touching_descendant_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr;
 
 }
 
@@ -686,7 +689,7 @@ impl MaxUpdateLength {
     /// useful function to assert expected case
     #[allow(dead_code)]
     pub fn is_conflicting(&self, a: &DualNodePtr, b: &DualNodePtr) -> bool {
-        if let MaxUpdateLength::Conflicting(n1, n2) = self {
+        if let MaxUpdateLength::Conflicting((n1, _), (n2, _)) = self {
             if n1 == &a.downgrade() && n2 == &b.downgrade() {
                 return true
             }
@@ -712,7 +715,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_conflicting(&self) -> Option<(DualNodePtr, DualNodePtr)> {
         match self {
-            Self::Conflicting(a, b) => { Some((a.upgrade_force(), b.upgrade_force())) },
+            Self::Conflicting((a, _), (b, _)) => { Some((a.upgrade_force(), b.upgrade_force())) },
             _ => { None },
         }
     }
@@ -722,7 +725,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_touching_virtual(&self) -> Option<(DualNodePtr, VertexIndex)> {
         match self {
-            Self::TouchingVirtual(a, b) => { Some((a.upgrade_force(), *b)) },
+            Self::TouchingVirtual((a, _), b) => { Some((a.upgrade_force(), *b)) },
             _ => { None },
         }
     }

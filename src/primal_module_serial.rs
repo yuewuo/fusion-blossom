@@ -169,7 +169,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                 break
             }
             match conflict {
-                MaxUpdateLength::Conflicting(node_ptr_1, node_ptr_2) => {
+                MaxUpdateLength::Conflicting((node_ptr_1, _), (node_ptr_2, _)) => {
                     assert!(node_ptr_1 != node_ptr_2, "one cannot conflict with itself, double check to avoid deadlock");
                     // always use outer node in case it's already wrapped into a blossom
                     let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1.upgrade_force()));
@@ -409,7 +409,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     }
                     unreachable!()
                 },
-                MaxUpdateLength::TouchingVirtual(node_ptr, virtual_vertex_index) => {
+                MaxUpdateLength::TouchingVirtual((node_ptr, _), virtual_vertex_index) => {
                     let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr.upgrade_force()));
                     let mut primal_node_internal = primal_node_internal_ptr.write();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;

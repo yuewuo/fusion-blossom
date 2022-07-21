@@ -499,7 +499,20 @@ impl DualModuleImpl for DualModuleSerial {
                                                             let far_peer_dual_node = far_peer_dual_node_ptr.read_recursive();
                                                             match far_peer_dual_node.grow_state {
                                                                 DualNodeGrowState::Grow => {
-                                                                    return MaxUpdateLength::Conflicting(far_peer_dual_node_ptr.downgrade(), dual_node_ptr.downgrade());
+                                                                    let far_peer_grandson_ptr = if peer_is_left {
+                                                                        peer_edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                                                    } else {
+                                                                        peer_edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                                                    };
+                                                                    let grandson_ptr = if is_left {
+                                                                        edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                                                    } else {
+                                                                        edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                                                    };
+                                                                    return MaxUpdateLength::Conflicting(
+                                                                        (far_peer_dual_node_ptr.downgrade(), far_peer_grandson_ptr), 
+                                                                        (dual_node_ptr.downgrade(), grandson_ptr)
+                                                                    );
                                                                 },
                                                                 _ => { }
                                                             }
@@ -515,7 +528,20 @@ impl DualModuleImpl for DualModuleSerial {
                                 DualNodeGrowState::Stay => { remaining_length }
                             };
                             if local_max_length_abs == 0 {
-                                return MaxUpdateLength::Conflicting(peer_dual_node_ptr.downgrade(), dual_node_ptr.downgrade());
+                                let peer_grandson_ptr = if is_left {
+                                    edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                } else {
+                                    edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                };
+                                let grandson_ptr = if is_left {
+                                    edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                } else {
+                                    edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                };
+                                return MaxUpdateLength::Conflicting(
+                                    (peer_dual_node_ptr.downgrade(), peer_grandson_ptr), 
+                                    (dual_node_ptr.downgrade(), grandson_ptr)
+                                );
                             }
                             max_length_abs = std::cmp::min(max_length_abs, local_max_length_abs);
                         }
@@ -531,7 +557,12 @@ impl DualModuleImpl for DualModuleSerial {
                             };
                             let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
                             if peer_vertex.is_virtual {
-                                return MaxUpdateLength::TouchingVirtual(dual_node_ptr.downgrade(), peer_vertex.vertex_index);
+                                let grandson_ptr = if is_left {
+                                    edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                } else {
+                                    edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
+                                };
+                                return MaxUpdateLength::TouchingVirtual((dual_node_ptr.downgrade(), grandson_ptr), peer_vertex.vertex_index);
                             } else {
                                 println!("edge: {edge_ptr:?}, peer_vertex_ptr: {peer_vertex_ptr:?}");
                                 unreachable!("this edge should've been removed from boundary because it's already fully grown, and it's peer vertex is not virtual")
@@ -750,37 +781,12 @@ impl DualModuleImpl for DualModuleSerial {
         unreachable!("cannot find a touching child between node {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
     }
 
-    fn peek_touching_child_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr {
-        let active_timestamp = self.active_timestamp;
-        // it doesn't matter whether prepare growth or not if 
-        let blossom = blossom_ptr.read_recursive();
-        match &blossom.class {
-            DualNodeClass::Blossom { nodes_circle } => {
-                for child_node_weak in nodes_circle.iter() {
-                    let child_node_ptr = child_node_weak.upgrade_force();
-                    let child_node_internal_ptr = self.get_dual_node_internal_ptr(&child_node_ptr);
-                    let child_node_internal = child_node_internal_ptr.read_recursive();
-                    // iterate over the boundary of dual node to check which is touching
-                    for (is_left, edge_weak) in child_node_internal.boundary.iter() {
-                        let edge_ptr = edge_weak.upgrade_force();
-                        let is_left = *is_left;
-                        let edge = edge_ptr.read_recursive(active_timestamp);
-                        if edge.left_growth + edge.right_growth < edge.weight {
-                            continue  // this edge is not fully grown, skip
-                        }
-                        let peer_vertex_index = if is_left {
-                            edge.right.upgrade_force().read_recursive(active_timestamp).vertex_index
-                        } else {
-                            edge.left.upgrade_force().read_recursive(active_timestamp).vertex_index
-                        };
-                        if peer_vertex_index == virtual_vertex {
-                            return child_node_ptr.clone()
-                        }
-                    }
-                }
-            }, _ => { panic!("{blossom_ptr:?} is not a blossom"); }
-        }
-        unreachable!("cannot find a touching child between virtual vertex {:?} and blossom {:?}", virtual_vertex, blossom_ptr);
+    fn peek_touching_descendant(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr {
+        unimplemented!()
+    }
+
+    fn peek_touching_descendant_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr {
+        unimplemented!()
     }
 
 }
@@ -843,6 +849,65 @@ impl DualModuleSerial {
         self.active_timestamp += 1;  // implicitly clear all edges growth
     }
 
+    fn sanity_check_grandson(&self, propagated_dual_node_weak: &DualNodeInternalWeak, propagated_grandson_dual_node_weak: &DualNodeInternalWeak) -> Result<(), String> {
+        let propagated_dual_node_ptr = propagated_dual_node_weak.upgrade_force();
+        let propagated_grandson_dual_node_ptr = propagated_grandson_dual_node_weak.upgrade_force();
+        let propagated_dual_node = propagated_dual_node_ptr.read_recursive();
+        let propagated_grandson_dual_node = propagated_grandson_dual_node_ptr.read_recursive();
+        let propagated_node_ptr = propagated_dual_node.origin.upgrade_force();
+        let propagated_node = propagated_node_ptr.read_recursive();
+        let propagated_grandson_ptr = propagated_grandson_dual_node.origin.upgrade_force();
+        let propagated_grandson = propagated_grandson_ptr.read_recursive();
+        if matches!(propagated_grandson.class, DualNodeClass::SyndromeVertex{..}) {
+            if matches!(propagated_node.class, DualNodeClass::SyndromeVertex{..}) {
+                if propagated_dual_node_ptr != propagated_grandson_dual_node_ptr {
+                    return Err(format!("syndrome node {:?} must have grandson equal to itself {:?}", propagated_dual_node_ptr, propagated_grandson_dual_node_ptr))
+                }
+            } else {
+                // test if grandson is a real grandson
+                drop(propagated_grandson);
+                let mut descendant_ptr = propagated_grandson_ptr;
+                loop {
+                    let descendant = descendant_ptr.read_recursive();
+                    if let Some(descendant_parent_ptr) = descendant.parent_blossom.as_ref() {
+                        let descendant_parent_ptr = descendant_parent_ptr.upgrade_force();
+                        if descendant_parent_ptr == propagated_node_ptr {
+                            return Ok(())
+                        }
+                        drop(descendant);
+                        descendant_ptr = descendant_parent_ptr;
+                    } else {
+                        return Err(format!("grandson check failed"));
+                    }
+                }
+            }
+        } else {
+            return Err(format!("grandson must be a vertex"))
+        }
+        Ok(())
+    }
+
+    /// do a sanity check of if all the nodes are in consistent state
+    pub fn sanity_check(&self) -> Result<(), String> {
+        let active_timestamp = self.active_timestamp;
+        for vertex_ptr in self.vertices.iter() {
+            vertex_ptr.dynamic_clear(active_timestamp);
+            let vertex = vertex_ptr.read_recursive(active_timestamp);
+            if let Some(propagated_grandson_dual_node) = vertex.propagated_grandson_dual_node.as_ref() {
+                if let Some(propagated_dual_node) = vertex.propagated_dual_node.as_ref() {
+                    self.sanity_check_grandson(propagated_dual_node, propagated_grandson_dual_node)?;
+                } else {
+                    return Err(format!("vertex {} has propagated grandson dual node {:?} but missing propagated dual node"
+                        , vertex.vertex_index, vertex.propagated_grandson_dual_node))
+                }
+            }
+            if vertex.propagated_dual_node.is_some() && vertex.propagated_grandson_dual_node.is_none() {
+                return Err(format!("vertex {} has propagated dual node {:?} but missing grandson", vertex.vertex_index, vertex.propagated_dual_node))
+            }
+        }
+        Ok(())
+    }
+
 }
 
 /*
@@ -851,6 +916,8 @@ Implementing visualization functions
 
 impl FusionVisualizer for DualModuleSerial {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        // do the sanity check first before taking snapshot
+        self.sanity_check().unwrap();
         let active_timestamp = self.active_timestamp;
         let mut vertices = Vec::<serde_json::Value>::new();
         for vertex_ptr in self.vertices.iter() {
@@ -1341,8 +1408,8 @@ mod tests {
         visualizer.snapshot_combined(format!("grow blossom"), vec![&interface, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.downgrade(), 23)
-            || group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.downgrade(), 39)
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
+            || group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
         interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
@@ -1435,8 +1502,8 @@ mod tests {
         interface.grow(2 * half_weight, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.downgrade(), 23)
-            || group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::TouchingVirtual(dual_node_blossom.downgrade(), 39)
+        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
+            || group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
         interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
