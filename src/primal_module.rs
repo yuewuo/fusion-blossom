@@ -41,39 +41,41 @@ pub trait PrimalModuleImpl {
     /// break down the blossoms to find the final matching; this function will take more time on the dual module
     fn final_matching<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D) -> PerfectMatching {
         let mut perfect_matching = PerfectMatching::new();
-        let intermediate_perfect_matching = self.intermediate_matching(interface, dual_module);
-        // handle peer matchings
-        for (dual_node_ptr_1, dual_node_ptr_2) in intermediate_perfect_matching.peer_matchings.iter() {
-            let interface_node_1 = dual_node_ptr_1.read_recursive();
-            let interface_node_2 = dual_node_ptr_2.read_recursive();
-            let is_blossom_1 = matches!(interface_node_1.class, DualNodeClass::Blossom{ .. });
-            let is_blossom_2 = matches!(interface_node_2.class, DualNodeClass::Blossom{ .. });
-            drop(interface_node_1);  // unlock
-            drop(interface_node_2);  // unlock
-            let grandson_1 = if is_blossom_1 {
-                let grandson_1 = dual_module.peek_touching_grandson(dual_node_ptr_1, dual_node_ptr_2);
-                perfect_matching.peer_matchings.extend(self.expand_blossom(dual_node_ptr_1, &grandson_1));
-                grandson_1
-            } else { dual_node_ptr_1.clone() };
-            let grandson_2 = if is_blossom_2 {
-                let grandson_2 = dual_module.peek_touching_grandson(dual_node_ptr_2, dual_node_ptr_1);
-                perfect_matching.peer_matchings.extend(self.expand_blossom(dual_node_ptr_2, &grandson_2));
-                grandson_2
-            } else { dual_node_ptr_2.clone() };
-            perfect_matching.peer_matchings.push((grandson_1, grandson_2));
-        }
-        // handle virtual matchings
-        for (dual_node_ptr, virtual_vertex) in intermediate_perfect_matching.virtual_matchings.iter() {
-            let interface_node = dual_node_ptr.read_recursive();
-            let is_blossom = matches!(interface_node.class, DualNodeClass::Blossom{ .. });
-            drop(interface_node);  // unlock
-            let grandson = if is_blossom {
-                let grandson = dual_module.peek_touching_grandson_virtual(dual_node_ptr, *virtual_vertex);
-                perfect_matching.peer_matchings.extend(self.expand_blossom(dual_node_ptr, &grandson));
-                grandson
-            } else { dual_node_ptr.clone() };
-            perfect_matching.virtual_matchings.push((grandson, *virtual_vertex));
-        }
+        // let intermediate_perfect_matching = self.intermediate_matching(interface, dual_module);
+        // // handle peer matchings
+        // for (dual_node_ptr_1, dual_node_ptr_2) in intermediate_perfect_matching.peer_matchings.iter() {
+        //     let interface_node_1 = dual_node_ptr_1.read_recursive();
+        //     let interface_node_2 = dual_node_ptr_2.read_recursive();
+        //     let is_blossom_1 = matches!(interface_node_1.class, DualNodeClass::Blossom{ .. });
+        //     let dual_variable_1 = interface_node_1.get_dual_variable(interface);
+        //     let is_blossom_2 = matches!(interface_node_2.class, DualNodeClass::Blossom{ .. });
+        //     let dual_variable_2 = interface_node_2.get_dual_variable(interface);
+        //     drop(interface_node_1);  // unlock
+        //     drop(interface_node_2);  // unlock
+        //     let grandson_1 = if is_blossom_1 {
+        //         let grandson_1 = dual_module.peek_touching_grandson(dual_node_ptr_1, dual_node_ptr_2);
+        //         perfect_matching.peer_matchings.extend(self.expand_blossom(dual_node_ptr_1, &grandson_1));
+        //         grandson_1
+        //     } else { dual_node_ptr_1.clone() };
+        //     let grandson_2 = if is_blossom_2 {
+        //         let grandson_2 = dual_module.peek_touching_grandson(dual_node_ptr_2, dual_node_ptr_1);
+        //         perfect_matching.peer_matchings.extend(self.expand_blossom(dual_node_ptr_2, &grandson_2));
+        //         grandson_2
+        //     } else { dual_node_ptr_2.clone() };
+        //     perfect_matching.peer_matchings.push((grandson_1, grandson_2));
+        // }
+        // // handle virtual matchings
+        // for (dual_node_ptr, virtual_vertex) in intermediate_perfect_matching.virtual_matchings.iter() {
+        //     let interface_node = dual_node_ptr.read_recursive();
+        //     let is_blossom = matches!(interface_node.class, DualNodeClass::Blossom{ .. });
+        //     drop(interface_node);  // unlock
+        //     let grandson = if is_blossom {
+        //         let grandson = dual_module.peek_touching_grandson_virtual(dual_node_ptr, *virtual_vertex);
+        //         perfect_matching.peer_matchings.extend(self.expand_blossom(dual_node_ptr, &grandson));
+        //         grandson
+        //     } else { dual_node_ptr.clone() };
+        //     perfect_matching.virtual_matchings.push((grandson, *virtual_vertex));
+        // }
         perfect_matching
     }
 

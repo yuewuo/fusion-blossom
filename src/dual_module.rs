@@ -145,6 +145,22 @@ pub struct DualNode {
     pub grow_state: DualNodeGrowState,
     /// parent blossom: when parent exists, grow_state should be [`DualNodeGrowState::Stay`]
     pub parent_blossom: Option<DualNodeWeak>,
+    /// information used to compute dual variable of this node: (last dual variable, last global progress)
+    dual_variable_cache: (Weight, Weight),
+}
+
+impl DualNode {
+
+    /// get the current dual variable of a node
+    pub fn get_dual_variable(&self, interface: &DualModuleInterface) -> Weight {
+        let (last_dual_variable, last_global_progress) = self.dual_variable_cache;
+        match self.grow_state {
+            DualNodeGrowState::Grow => last_dual_variable + (interface.dual_variable_global_progress - last_global_progress),
+            DualNodeGrowState::Stay => last_dual_variable,
+            DualNodeGrowState::Shrink => last_dual_variable - (interface.dual_variable_global_progress - last_global_progress),
+        }
+    }
+
 }
 
 /// the shared pointer of [`DualNode`]
@@ -245,6 +261,8 @@ pub struct DualModuleInterface {
     pub sum_dual_variables: Weight,
     /// debug mode: only resolve one conflict each time
     pub debug_print_actions: bool,
+    /// information used to compute dual variable of this node: (last dual variable, last global progress)
+    dual_variable_global_progress: Weight,
 }
 
 /// common trait that must be implemented for each implementation of dual module
@@ -310,11 +328,8 @@ pub trait DualModuleImpl {
     /// peek the child node inside a blossom who's touching with an external node
     fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
 
-    /// peek the original syndrome vertex inside this blossom that is nearest to another node
-    fn peek_touching_grandson(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
-
     /// peek the original syndrome vertex inside this blossom that is nearest to this virtual boundary
-    fn peek_touching_grandson_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr;
+    fn peek_touching_child_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr;
 
 }
 
@@ -371,6 +386,7 @@ impl DualModuleInterface {
             sum_grow_speed: 0,
             sum_dual_variables: 0,
             debug_print_actions: false,
+            dual_variable_global_progress: 0,
         };
         dual_module_impl.clear();
         for vertex_idx in syndrome.iter() {
@@ -390,6 +406,7 @@ impl DualModuleInterface {
             },
             grow_state: DualNodeGrowState::Grow,
             parent_blossom: None,
+            dual_variable_cache: (0, 0),
         });
         self.nodes.push(Some(node_ptr.clone()));
         dual_module_impl.add_syndrome_node(&node_ptr);
@@ -418,6 +435,7 @@ impl DualModuleInterface {
             },
             grow_state: DualNodeGrowState::Grow,
             parent_blossom: None,
+            dual_variable_cache: (0, self.dual_variable_global_progress),
         });
         for (i, node_ptr) in nodes_circle.iter().enumerate() {
             debug_assert!(self.check_ptr_belonging(node_ptr), "this ptr doesn't belong to this interface");
@@ -498,8 +516,8 @@ impl DualModuleInterface {
         if self.debug_print_actions {
             eprintln!("[set grow state] {:?} {:?}", dual_node_ptr, grow_state);
         }
-        {  // update sum_grow_speed
-            let node = dual_node_ptr.read_recursive();
+        {  // update sum_grow_speed and dual variable cache
+            let mut node = dual_node_ptr.write();
             match &node.grow_state {
                 DualNodeGrowState::Grow => { self.sum_grow_speed -= 1; },
                 DualNodeGrowState::Shrink => { self.sum_grow_speed += 1; },
@@ -510,6 +528,8 @@ impl DualModuleInterface {
                 DualNodeGrowState::Shrink => { self.sum_grow_speed -= 1; },
                 DualNodeGrowState::Stay => { },
             }
+            let current_dual_variable = node.get_dual_variable(self);
+            node.dual_variable_cache = (current_dual_variable, self.dual_variable_global_progress);  // update the cache
         }
         dual_node_ptr.set_grow_state(grow_state);
         dual_module_impl.set_grow_state(&dual_node_ptr, grow_state);
@@ -519,6 +539,7 @@ impl DualModuleInterface {
     pub fn grow(&mut self, length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
         dual_module_impl.grow(length);
         self.sum_dual_variables += length * self.sum_grow_speed;
+        self.dual_variable_global_progress += length;
     }
 
     /// grow  a specific length globally but iteratively: will try to keep growing that much
@@ -535,10 +556,12 @@ impl DualModuleInterface {
     /// do a sanity check of if all the nodes are in consistent state
     pub fn sanity_check(&self) -> Result<(), String> {
         let mut visited_syndrome = HashSet::with_capacity(self.nodes.len() * 2);
+        let mut sum_individual_dual_variable = 0;
         for (index, dual_node_ptr) in self.nodes.iter().enumerate() {
             match dual_node_ptr {
                 Some(dual_node_ptr) => {
                     let dual_node = dual_node_ptr.read_recursive();
+                    sum_individual_dual_variable += dual_node.get_dual_variable(self);
                     if dual_node.index != index { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
                     if dual_node.internal.is_none() { return Err(format!("the dual node {} is not connected to an concrete implementation of dual module", dual_node.index)) }
                     match &dual_node.class {
@@ -599,6 +622,9 @@ impl DualModuleInterface {
                     }
                 }, _ => { }
             }
+        }
+        if sum_individual_dual_variable != self.sum_dual_variables {
+            return Err(format!("internal error: the sum of dual variables is {} but individual sum is {}", self.sum_dual_variables, sum_individual_dual_variable))
         }
         Ok(())
     }

@@ -708,11 +708,6 @@ impl DualModuleImpl for DualModuleSerial {
     fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr {
         let active_timestamp = self.active_timestamp;
         debug_assert!({
-            let dual_node = dual_node_ptr.read_recursive();
-            let blossom = blossom_ptr.read_recursive();
-            dual_node.grow_state == DualNodeGrowState::Grow && blossom.grow_state == DualNodeGrowState::Shrink
-        }, "only asking shrinking blossom and growing node is permitted");
-        debug_assert!({
             let blossom_internal_ptr = self.get_dual_node_internal_ptr(&blossom_ptr);
             let blossom_internal = blossom_internal_ptr.read_recursive();
             blossom_internal.dual_variable == 0
@@ -752,75 +747,40 @@ impl DualModuleImpl for DualModuleSerial {
                 }
             }, _ => { panic!("{blossom_ptr:?} is not a blossom"); }
         }
-        unreachable!("cannot find a touching child between {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
+        unreachable!("cannot find a touching child between node {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
     }
 
-    fn peek_touching_grandson(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr {
+    fn peek_touching_child_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr {
         let active_timestamp = self.active_timestamp;
-        self.prepare_dual_node_growth(dual_node_ptr, true);  // prepare the other as growing so that they tightly touch at some edge
-        let blossom_internal_ptr = self.get_dual_node_internal_ptr(&blossom_ptr);
-        let blossom_internal = blossom_internal_ptr.read_recursive();
-        for (is_left, edge_weak) in blossom_internal.boundary.iter() {
-            let edge_ptr = edge_weak.upgrade_force();
-            let is_left = *is_left;
-            let edge = edge_ptr.read_recursive(active_timestamp);
-            if edge.left_growth + edge.right_growth < edge.weight {
-                continue  // this edge is not fully grown, skip
-            }
-            let peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if is_left {
-                edge.right_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
-            } else {
-                edge.left_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
-            };
-            match peer_dual_node_internal_ptr {
-                Some(peer_dual_node_internal_ptr) => {
-                    let peer_dual_node_internal = peer_dual_node_internal_ptr.read_recursive();
-                    let peer_dual_node_ptr = peer_dual_node_internal.origin.upgrade_force();
-                    if &peer_dual_node_ptr == dual_node_ptr {
-                        let grandson_dual_node_weak = if is_left {
-                            edge.left_grandson_dual_node.as_ref().unwrap().clone()
+        // it doesn't matter whether prepare growth or not if 
+        let blossom = blossom_ptr.read_recursive();
+        match &blossom.class {
+            DualNodeClass::Blossom { nodes_circle } => {
+                for child_node_weak in nodes_circle.iter() {
+                    let child_node_ptr = child_node_weak.upgrade_force();
+                    let child_node_internal_ptr = self.get_dual_node_internal_ptr(&child_node_ptr);
+                    let child_node_internal = child_node_internal_ptr.read_recursive();
+                    // iterate over the boundary of dual node to check which is touching
+                    for (is_left, edge_weak) in child_node_internal.boundary.iter() {
+                        let edge_ptr = edge_weak.upgrade_force();
+                        let is_left = *is_left;
+                        let edge = edge_ptr.read_recursive(active_timestamp);
+                        if edge.left_growth + edge.right_growth < edge.weight {
+                            continue  // this edge is not fully grown, skip
+                        }
+                        let peer_vertex_index = if is_left {
+                            edge.right.upgrade_force().read_recursive(active_timestamp).vertex_index
                         } else {
-                            edge.right_grandson_dual_node.as_ref().unwrap().clone()
+                            edge.left.upgrade_force().read_recursive(active_timestamp).vertex_index
                         };
-                        let grandson_dual_node_ptr = grandson_dual_node_weak.upgrade_force();
-                        let grandson_dual_node = grandson_dual_node_ptr.read_recursive();
-                        return grandson_dual_node.origin.upgrade_force()
+                        if peer_vertex_index == virtual_vertex {
+                            return child_node_ptr.clone()
+                        }
                     }
-                }, _ => { }
-            }
+                }
+            }, _ => { panic!("{blossom_ptr:?} is not a blossom"); }
         }
-        unreachable!("cannot find a touching grandson between node {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
-    }
-
-    fn peek_touching_grandson_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr {
-        let active_timestamp = self.active_timestamp;
-        // don't need to prepare growth: it doesn't matter for virtual vertex
-        let blossom_internal_ptr = self.get_dual_node_internal_ptr(&blossom_ptr);
-        let blossom_internal = blossom_internal_ptr.read_recursive();
-        for (is_left, edge_weak) in blossom_internal.boundary.iter() {
-            let edge_ptr = edge_weak.upgrade_force();
-            let is_left = *is_left;
-            let edge = edge_ptr.read_recursive(active_timestamp);
-            if edge.left_growth + edge.right_growth < edge.weight {
-                continue  // this edge is not fully grown, skip
-            }
-            let peer_vertex_index = if is_left {
-                edge.right.upgrade_force().read_recursive(active_timestamp).vertex_index
-            } else {
-                edge.left.upgrade_force().read_recursive(active_timestamp).vertex_index
-            };
-            if peer_vertex_index == virtual_vertex {
-                let grandson_dual_node_weak = if is_left {
-                    edge.left_grandson_dual_node.as_ref().unwrap().clone()
-                } else {
-                    edge.right_grandson_dual_node.as_ref().unwrap().clone()
-                };
-                let grandson_dual_node_ptr = grandson_dual_node_weak.upgrade_force();
-                let grandson_dual_node = grandson_dual_node_ptr.read_recursive();
-                return grandson_dual_node.origin.upgrade_force()
-            }
-        }
-        unreachable!("cannot find a touching grandson between virtual vertex {:?} and blossom {:?}", virtual_vertex, blossom_ptr);
+        unreachable!("cannot find a touching child between virtual vertex {:?} and blossom {:?}", virtual_vertex, blossom_ptr);
     }
 
 }
