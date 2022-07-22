@@ -878,7 +878,8 @@ impl PrimalModuleSerial {
             self.match_subtree(child_ptr.upgrade_force(), interface, dual_module);
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
-            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap().0.upgrade_force();
+            let parent_node_internal_weak = tree_node.parent.as_ref().unwrap().0.clone();
+            let parent_node_internal_ptr = parent_node_internal_weak.upgrade_force();
             let grandparent_node_internal_ptr = {  // must unlock parent
                 let mut parent_node_internal = parent_node_internal_ptr.write();
                 let parent_tree_node = parent_node_internal.tree_node.as_ref().unwrap();
@@ -891,7 +892,8 @@ impl PrimalModuleSerial {
             let grandparent_touching_ptr = {
                 let grandparent_node_internal = grandparent_node_internal_ptr.read_recursive();
                 let grandparent_tree_node = grandparent_node_internal.tree_node.as_ref().unwrap();
-                grandparent_tree_node.children[0].1.clone()
+                let idx = grandparent_tree_node.children.iter().position(|(ptr, _)| ptr == &parent_node_internal_weak).expect("should find child");
+                grandparent_tree_node.children[idx].1.clone()
             };
             self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface, dual_module);
         }
@@ -1309,6 +1311,65 @@ pub mod tests {
                 // let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
+            }
+            group_max_update_length = dual_module.compute_maximum_update_length();
+            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
+            current_viz_id += 1;
+        }
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let mut fusion_total_weight = 0;
+        for detail in fusion_details.iter() {
+            println!("    {detail:?}");
+            fusion_total_weight += detail.weight;
+        }
+        assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+    }
+
+    /// debug a case where it disagree with blossom V library, mine reports 9000, blossom V reports 7000
+    #[test]
+    fn primal_module_debug_4() {  // cargo test primal_module_debug_4 -- --nocapture
+        let visualize_filename = format!("primal_module_debug_4.json");
+        let syndrome_vertices = vec![1, 3, 6, 8, 9, 11, 13];
+        let max_half_weight = 500;
+        let mut code = CodeCapacityRepetitionCode::new(15, 0.499, max_half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        // blossom V ground truth
+        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
+        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let mut blossom_total_weight = 0;
+        for detail in blossom_details.iter() {
+            println!("    {detail:?}");
+            blossom_total_weight += detail.weight;
+        }
+        // create dual module
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        // try to work on a simple syndrome
+        code.set_syndrome(&syndrome_vertices);
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let mut current_viz_id = 1;
+        // grow until end
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        while !group_max_update_length.is_empty() {
+            println!("group_max_update_length: {:?}", group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                interface.grow(length, &mut dual_module);
+                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
+            } else {
+                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
             group_max_update_length = dual_module.compute_maximum_update_length();
             println!("------------------------- current_viz_id: {current_viz_id} -------------------------");

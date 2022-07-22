@@ -121,8 +121,16 @@ pub fn main() {
                                     blossom_total_weight += detail.weight;
                                 }
                                 // if blossom_total_weight > 0 { println!("w {} {}", interface.sum_dual_variables, blossom_total_weight); }
-                                // compare with ground truth from the blossom V algorithm
                                 assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+                                // also construct the perfect matching from fusion blossom to compare them
+                                let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+                                let fusion_details = fusion_blossom::detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+                                let mut fusion_total_weight = 0;
+                                for detail in fusion_details.iter() {
+                                    fusion_total_weight += detail.weight;
+                                }
+                                // compare with ground truth from the blossom V algorithm
+                                assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
                             }
                         }
                         pb.finish();
