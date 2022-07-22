@@ -646,8 +646,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         }
     }
 
-    fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &mut DualModuleInterface, _dual_module: &mut D) -> PerfectMatching {
-        let mut perfect_matching = PerfectMatching::new();
+    fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &mut DualModuleInterface, _dual_module: &mut D) -> IntermediateMatching {
+        let mut immediate_matching = IntermediateMatching::new();
         for i in 0..self.nodes.len() {
             let primal_node_internal_ptr = self.nodes[i].clone();
             match primal_node_internal_ptr {
@@ -660,17 +660,24 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
                         continue  // do not handle this blossom at this level
                     }
-                    if let Some((match_target, _)) = primal_node_internal.temporary_match.as_ref() {
+                    if let Some((match_target, match_touching_ptr)) = primal_node_internal.temporary_match.as_ref() {
                         match match_target {
                             MatchTarget::Peer(peer_internal_weak) => {
                                 let peer_internal_ptr = peer_internal_weak.upgrade_force();
                                 let peer_internal = peer_internal_ptr.read_recursive();
                                 if primal_node_internal.index < peer_internal.index {  // to avoid duplicate matched pairs
-                                    perfect_matching.peer_matchings.push((primal_node_internal.origin.upgrade_force(), peer_internal.origin.upgrade_force()));
+                                    let peer_touching_ptr = peer_internal.temporary_match.as_ref().unwrap().1.clone();
+                                    immediate_matching.peer_matchings.push((
+                                        (primal_node_internal.origin.upgrade_force(), match_touching_ptr.clone()), 
+                                        (peer_internal.origin.upgrade_force(), peer_touching_ptr)
+                                    ));
                                 }
                             },
                             MatchTarget::VirtualVertex(virtual_vertex) => {
-                                perfect_matching.virtual_matchings.push((primal_node_internal.origin.upgrade_force(), *virtual_vertex));
+                                immediate_matching.virtual_matchings.push((
+                                    (primal_node_internal.origin.upgrade_force(), match_touching_ptr.clone())
+                                    , *virtual_vertex
+                                ));
                             },
                         }
                     } else {
@@ -679,7 +686,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                 }, None => { }
             }
         }
-        perfect_matching
+        immediate_matching
     }
 
 }
@@ -1157,6 +1164,7 @@ pub mod tests {
         let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
         // blossom V ground truth
         let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
+        println!("blossom_mwpm_result: {blossom_mwpm_result:?}");
         let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
@@ -1188,14 +1196,15 @@ pub mod tests {
             }
             group_max_update_length = dual_module.compute_maximum_update_length();
         }
-        // let fusion_mwpm_result = primal_module.final_matching(&mut interface, &mut dual_module);
-        // let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
-        // let mut fusion_total_weight = 0;
-        // for detail in fusion_details.iter() {
-        //     println!("    {detail:?}");
-        //     fusion_total_weight += detail.weight;
-        // }
-        // assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let mut fusion_total_weight = 0;
+        for detail in fusion_details.iter() {
+            println!("    {detail:?}");
+            fusion_total_weight += detail.weight;
+        }
+        assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
@@ -1247,14 +1256,14 @@ pub mod tests {
             current_viz_id += 1;
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // let fusion_mwpm_result = primal_module.final_matching(&mut interface, &mut dual_module);
-        // let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
-        // let mut fusion_total_weight = 0;
-        // for detail in fusion_details.iter() {
-        //     println!("    {detail:?}");
-        //     fusion_total_weight += detail.weight;
-        // }
-        // assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let mut fusion_total_weight = 0;
+        for detail in fusion_details.iter() {
+            println!("    {detail:?}");
+            fusion_total_weight += detail.weight;
+        }
+        assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
@@ -1306,27 +1315,25 @@ pub mod tests {
             current_viz_id += 1;
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // let fusion_mwpm_result = primal_module.final_matching(&mut interface, &mut dual_module);
-        // let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
-        // let mut fusion_total_weight = 0;
-        // for detail in fusion_details.iter() {
-        //     println!("    {detail:?}");
-        //     fusion_total_weight += detail.weight;
-        // }
-        // assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let mut fusion_total_weight = 0;
+        for detail in fusion_details.iter() {
+            println!("    {detail:?}");
+            fusion_total_weight += detail.weight;
+        }
+        assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
     #[test]
     fn primal_module_serial_perfect_matching_1() {  // cargo test primal_module_serial_perfect_matching_1 -- --nocapture
         let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
-        // let visualize_filename = format!("primal_module_serial_perfect_matching_1.json");
-        // let (mut interface, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 6);
         let (mut interface, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, syndrome_vertices, 6);
         let intermediate_matching = primal_module.intermediate_matching(&mut interface, &mut dual_module);
         println!("intermediate_matching: {intermediate_matching:?}");
-        // let final_matching = primal_module.final_matching(&mut interface, &mut dual_module);
-        // println!("final_matching: {final_matching:?}");
+        let perfect_matching = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        println!("perfect_matching: {perfect_matching:?}");
     }
 
 }

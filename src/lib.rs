@@ -120,7 +120,7 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, vertex_num: usiz
             mwpm_result.push(syndrome_vertices[j]);
         } else {
             assert_eq!(j, i + syndrome_num, "if not matched to another real vertex, it must match to it's corresponding virtual vertex");
-            mwpm_result.push(boundaries[i].as_ref().expect("boundary must existi f match to virtual vertex").0);
+            mwpm_result.push(boundaries[i].as_ref().expect("boundary must exist if match to virtual vertex").0);
         }
     }
     mwpm_result
