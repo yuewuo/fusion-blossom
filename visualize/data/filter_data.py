@@ -1,8 +1,8 @@
 import sys, json, copy
 
 def main(data):
-    filter_beautify_primal_data(data)
-    # filter_beautify_dual_data(data)
+    # filter_beautify_primal_data(data)
+    filter_beautify_dual_data(data)
 
 def filter_beautify_primal_data(data):
     for (idx, (name, snapshot)) in enumerate(data["snapshots"]):
