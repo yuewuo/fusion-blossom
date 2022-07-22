@@ -736,59 +736,6 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
-    fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr {
-        let active_timestamp = self.active_timestamp;
-        debug_assert!({
-            let blossom_internal_ptr = self.get_dual_node_internal_ptr(&blossom_ptr);
-            let blossom_internal = blossom_internal_ptr.read_recursive();
-            blossom_internal.dual_variable == 0
-        }, "only asking blossom with 0 dual variable is valid");
-        self.prepare_dual_node_growth(blossom_ptr, false);  // must first prepare shrink ones
-        self.prepare_dual_node_growth(dual_node_ptr, true);
-        let blossom = blossom_ptr.read_recursive();
-        match &blossom.class {
-            DualNodeClass::Blossom { nodes_circle, .. } => {
-                for child_node_weak in nodes_circle.iter() {
-                    let child_node_ptr = child_node_weak.upgrade_force();
-                    let child_node_internal_ptr = self.get_dual_node_internal_ptr(&child_node_ptr);
-                    let child_node_internal = child_node_internal_ptr.read_recursive();
-                    // iterate over the boundary of dual node to check which is touching
-                    for (is_left, edge_weak) in child_node_internal.boundary.iter() {
-                        let edge_ptr = edge_weak.upgrade_force();
-                        let is_left = *is_left;
-                        let edge = edge_ptr.read_recursive(active_timestamp);
-                        if edge.left_growth + edge.right_growth < edge.weight {
-                            continue  // this edge is not fully grown, skip
-                        }
-                        let peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if is_left {
-                            edge.right_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
-                        } else {
-                            edge.left_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
-                        };
-                        match peer_dual_node_internal_ptr {
-                            Some(peer_dual_node_internal_ptr) => {
-                                let peer_dual_node_internal = peer_dual_node_internal_ptr.read_recursive();
-                                let peer_dual_node_ptr = peer_dual_node_internal.origin.upgrade_force();
-                                if &peer_dual_node_ptr == dual_node_ptr {
-                                    return child_node_ptr.clone()
-                                }
-                            }, _ => { }
-                        }
-                    }
-                }
-            }, _ => { panic!("{blossom_ptr:?} is not a blossom"); }
-        }
-        unreachable!("cannot find a touching child between node {:?} and blossom {:?}", dual_node_ptr, blossom_ptr);
-    }
-
-    fn peek_touching_descendant(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr {
-        unimplemented!()
-    }
-
-    fn peek_touching_descendant_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr {
-        unimplemented!()
-    }
-
 }
 
 /*
@@ -1533,48 +1480,6 @@ mod tests {
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
         interface.grow(2 * half_weight, &mut dual_module);
         assert_eq!(interface.sum_dual_variables, 2 * half_weight);
-    }
-
-    #[test]
-    fn dual_module_peek_touching_child_1() {  // cargo test dual_module_peek_touching_child_1 -- --nocapture
-        let visualize_filename = format!("dual_module_peek_touching_child_1.json");
-        let half_weight = 500;
-        let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
-        // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
-        // try to work on a simple syndrome
-        code.vertices[16].is_syndrome = true;
-        code.vertices[52].is_syndrome = true;
-        code.vertices[65].is_syndrome = true;
-        code.vertices[76].is_syndrome = true;
-        code.vertices[112].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
-        // create dual nodes and grow them by half length
-        let dual_node_16_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_52_ptr = interface.nodes[1].as_ref().unwrap().clone();
-        let dual_node_65_ptr = interface.nodes[2].as_ref().unwrap().clone();
-        let dual_node_76_ptr = interface.nodes[3].as_ref().unwrap().clone();
-        let dual_node_112_ptr = interface.nodes[4].as_ref().unwrap().clone();
-        interface.grow(2 * half_weight, &mut dual_module);
-        let nodes_circle = vec![dual_node_52_ptr.clone(), dual_node_65_ptr.clone(), dual_node_76_ptr.clone()];
-        interface.set_grow_state(&dual_node_65_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        let dual_node_blossom = interface.create_blossom(nodes_circle, vec![], &mut dual_module);
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
-        interface.grow(2 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("prepared"), vec![&interface, &dual_module]).unwrap();
-        // test API
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
-        let touching_child_ptr_1 = dual_module.peek_touching_child(&dual_node_blossom, &dual_node_16_ptr);
-        println!("touching_child_ptr_1: {touching_child_ptr_1:?}");
-        assert_eq!(touching_child_ptr_1, dual_node_52_ptr);
-        let touching_child_ptr_2 = dual_module.peek_touching_child(&dual_node_blossom, &dual_node_112_ptr);
-        println!("touching_child_ptr_2: {touching_child_ptr_2:?}");
-        assert_eq!(touching_child_ptr_2, dual_node_76_ptr);
     }
 
     #[test]

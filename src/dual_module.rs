@@ -256,6 +256,22 @@ impl DualNodePtr {
         }
     }
 
+    /// get the parent blossom before the most parent one, useful when expanding a blossom
+    pub fn get_secondary_ancestor_blossom(&self) -> DualNodePtr {
+        let mut secondary_ancestor = self.clone();
+        let mut ancestor = self.read_recursive().parent_blossom.as_ref().expect("secondary ancestor does not exist").upgrade_force();
+        loop {
+            let dual_node = ancestor.read_recursive();
+            let new_ancestor = match &dual_node.parent_blossom {
+                Some(weak) => weak.upgrade_force(),
+                None => { return secondary_ancestor; },
+            };
+            drop(dual_node);
+            secondary_ancestor = ancestor.clone();
+            ancestor = new_ancestor;
+        }
+    } 
+
 }
 
 /// a sharable array of dual nodes, supporting dynamic partitioning;
@@ -334,15 +350,6 @@ pub trait DualModuleImpl {
     /// grow a specific length globally, length must be positive.
     /// note that reversing the process is possible, but not recommended: to do that, reverse the state of each dual node, Grow->Shrink, Shrink->Grow
     fn grow(&mut self, length: Weight);
-
-    /// peek the child node inside a blossom who's touching with an external node
-    fn peek_touching_child(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
-
-    /// peek any descendant inside this blossom that is nearest to this external node
-    fn peek_touching_descendant(&mut self, blossom_ptr: &DualNodePtr, dual_node_ptr: &DualNodePtr) -> DualNodePtr;
-
-    /// peek any descendant inside this blossom that is nearest to this virtual boundary
-    fn peek_touching_descendant_virtual(&mut self, blossom_ptr: &DualNodePtr, virtual_vertex: VertexIndex) -> DualNodePtr;
 
 }
 

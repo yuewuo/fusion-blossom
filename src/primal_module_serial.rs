@@ -517,7 +517,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                     assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
                     let (parent_ptr, parent_touching_ptr, parent_touching_child_ptr) = {  // remove it from it's parent's tree
-                        let parent_weak = &tree_node.parent.as_ref().unwrap().0;
+                        let (parent_weak, parent_touching_child_ptr) = &tree_node.parent.as_ref().unwrap();
                         let parent_ptr = parent_weak.upgrade_force();
                         let mut parent = parent_ptr.write();
                         let parent_tree_node = parent.tree_node.as_mut().unwrap();
@@ -525,24 +525,22 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         let parent_touching_ptr = parent_tree_node.children[idx].1.clone();
                         parent_tree_node.children.remove(idx);
                         parent_tree_node.children.retain(|ptr| ptr.0 != primal_node_internal_ptr.downgrade());
-                        // find which blossom-child is touching the parent
-                        let parent_touching_child_ptr = dual_module.peek_touching_child(&node_ptr, &parent.origin.upgrade_force());
-                        (parent_ptr.clone(), parent_touching_ptr, parent_touching_child_ptr)
+                        (parent_ptr.clone(), parent_touching_ptr, parent_touching_child_ptr.upgrade_force().get_secondary_ancestor_blossom().downgrade())
                     };
                     let (child_ptr, child_touching_ptr, child_touching_child_ptr) = {  // make children independent trees
                         debug_assert!(tree_node.children.len() == 1, "a - node must have exactly ONE child");
                         let child_weak = &tree_node.children[0].0;
+                        let child_touching_child_ptr = tree_node.children[0].1.upgrade_force().get_secondary_ancestor_blossom().downgrade();
                         let child_ptr = child_weak.upgrade_force();
                         let child = child_ptr.read_recursive();
                         let child_tree_node = child.tree_node.as_ref().unwrap();
                         // find which blossom-child is touching this child
-                        let child_touching_child_ptr = dual_module.peek_touching_child(&node_ptr, &child.origin.upgrade_force());
                         (child_ptr.clone(), child_tree_node.parent.as_ref().unwrap().1.clone(), child_touching_child_ptr)
                     };
                     interface.expand_blossom(node_ptr, dual_module);
                     // now we need to re-connect all the expanded nodes, by analyzing the relationship of nodes_circle, parent_touching_ptr and child_touching_ptr
-                    let parent_touching_index = nodes_circle.iter().position(|ptr| ptr == &parent_touching_child_ptr.downgrade()).expect("touching node should be in the blossom circle");
-                    let child_touching_index = nodes_circle.iter().position(|ptr| ptr == &child_touching_child_ptr.downgrade()).expect("touching node should be in the blossom circle");
+                    let parent_touching_index = nodes_circle.iter().position(|ptr| ptr == &parent_touching_child_ptr).expect("touching node should be in the blossom circle");
+                    let child_touching_index = nodes_circle.iter().position(|ptr| ptr == &child_touching_child_ptr).expect("touching node should be in the blossom circle");
                     let mut is_tree_sequence_ascending = true;
                     let (match_sequence, tree_sequence) = {  // tree sequence is from parent to child
                         let mut match_sequence = Vec::new();
@@ -600,14 +598,24 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             } else { true }
                         }, "tree sequence orientation must be consistent");
                         let current_parent_ptr = if idx == 0 { parent_ptr.clone() } else { self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[idx - 1]].upgrade_force()) };
+                        let current_parent_touching_ptr = if idx == 0 {
+                            tree_node.parent.as_ref().unwrap().1.clone()
+                        } else {
+                            if is_tree_sequence_ascending { touching_children[*current_i].0.clone() } else { touching_children[*current_i].1.clone() }
+                        };
                         let current_child_ptr = if idx == tree_sequence.len() - 1 { child_ptr.clone() }
                             else { self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[idx + 1]].upgrade_force()) };
+                        let current_child_touching_ptr = if idx == tree_sequence.len() - 1 {
+                            tree_node.children[0].1.clone()
+                        } else {
+                            if is_tree_sequence_ascending { touching_children[*current_i].1.clone() } else { touching_children[*current_i].0.clone() }
+                        };
                         let current_ptr = self.get_primal_node_internal_ptr(&nodes_circle[*current_i].upgrade_force());
                         let mut current = current_ptr.write();
                         current.tree_node = Some(AlternatingTreeNode {
                             root: tree_node.root.clone(),
-                            parent: Some((current_parent_ptr.downgrade(), if is_tree_sequence_ascending { touching_children[*current_i].0.clone() } else { touching_children[*current_i].1.clone() })),
-                            children: vec![(current_child_ptr.downgrade(), if is_tree_sequence_ascending { touching_children[*current_i].1.clone() } else { touching_children[*current_i].0.clone() })],
+                            parent: Some((current_parent_ptr.downgrade(), current_parent_touching_ptr)),
+                            children: vec![(current_child_ptr.downgrade(), current_child_touching_ptr)],
                             depth: tree_node.depth + idx,
                         });
                         interface.set_grow_state(&current.origin.upgrade_force(), if idx % 2 == 0 { DualNodeGrowState::Shrink } else { DualNodeGrowState::Grow }, dual_module);
@@ -1178,6 +1186,65 @@ pub mod tests {
             }
             group_max_update_length = dual_module.compute_maximum_update_length();
         }
+        // let fusion_mwpm_result = primal_module.final_matching(&mut interface, &mut dual_module);
+        // let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        // let mut fusion_total_weight = 0;
+        // for detail in fusion_details.iter() {
+        //     println!("    {detail:?}");
+        //     fusion_total_weight += detail.weight;
+        // }
+        // assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+    }
+
+    /// debug a case where it disagree with blossom V library, mine reports 33000, blossom V reports 34000
+    #[test]
+    fn primal_module_debug_2() {  // cargo test primal_module_debug_2 -- --nocapture
+        let visualize_filename = format!("primal_module_debug_2.json");
+        let syndrome_vertices = vec![7, 8, 10, 22, 23, 24, 25, 37, 38, 39, 40, 42, 43, 69, 57, 59, 60, 72, 76, 93, 109, 121, 123, 125, 135, 136, 137, 138, 139, 140, 141, 150, 151, 153, 154, 155, 166, 171, 172, 181, 183, 184, 188, 200, 204, 219, 233];
+        let max_half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(15, 0.3, max_half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        // blossom V ground truth
+        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
+        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let mut blossom_total_weight = 0;
+        for detail in blossom_details.iter() {
+            println!("    {detail:?}");
+            blossom_total_weight += detail.weight;
+        }
+        // create dual module
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        // try to work on a simple syndrome
+        code.set_syndrome(&syndrome_vertices);
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let mut current_viz_id = 1;
+        // grow until end
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        while !group_max_update_length.is_empty() {
+            println!("group_max_update_length: {:?}", group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                interface.grow(length, &mut dual_module);
+                // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
+            } else {
+                // let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+                // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
+            }
+            group_max_update_length = dual_module.compute_maximum_update_length();
+            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
+            current_viz_id += 1;
+        }
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         // let fusion_mwpm_result = primal_module.final_matching(&mut interface, &mut dual_module);
         // let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
         // let mut fusion_total_weight = 0;

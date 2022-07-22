@@ -71,31 +71,32 @@ pub trait PrimalModuleImpl {
     fn expand_peer_matching<D: DualModuleImpl>(&mut self, dual_node_ptr_1: &DualNodePtr, dual_node_ptr_2: &DualNodePtr, interface: &mut DualModuleInterface, dual_module: &mut D)
             -> Vec<(DualNodePtr, DualNodePtr)> {
         let mut peer_matchings = vec![];
-        let interface_node_1 = dual_node_ptr_1.read_recursive();
-        let interface_node_2 = dual_node_ptr_2.read_recursive();
-        let is_blossom_1 = matches!(interface_node_1.class, DualNodeClass::Blossom{ .. });
-        let dual_variable_1 = interface_node_1.get_dual_variable(interface);
-        let is_blossom_2 = matches!(interface_node_2.class, DualNodeClass::Blossom{ .. });
-        let dual_variable_2 = interface_node_2.get_dual_variable(interface);
-        drop(interface_node_1);  // unlock
-        drop(interface_node_2);  // unlock
-        let (descendant_1, is_blossom_descendant_1) = if is_blossom_1 {
-            let descendant = dual_module.peek_touching_descendant(dual_node_ptr_1, dual_node_ptr_2);
-            peer_matchings.extend(self.expand_blossom(dual_node_ptr_1, &descendant));
-            let is_blossom_descendant = matches!(descendant.read_recursive().class, DualNodeClass::Blossom{ .. });
-            (descendant, is_blossom_descendant)
-        } else { (dual_node_ptr_1.clone(), false) };
-        let (descendant_2, is_blossom_descendant_2) = if is_blossom_2 {
-            let descendant = dual_module.peek_touching_descendant(dual_node_ptr_2, dual_node_ptr_1);
-            peer_matchings.extend(self.expand_blossom(dual_node_ptr_2, &descendant));
-            let is_blossom_descendant = matches!(descendant.read_recursive().class, DualNodeClass::Blossom{ .. });
-            (descendant, is_blossom_descendant)
-        } else { (dual_node_ptr_2.clone(), false) };
-        if !is_blossom_descendant_1 && !is_blossom_descendant_2 {
-            peer_matchings.push((descendant_1, descendant_2));
-        } else {
-            peer_matchings.extend(self.expand_peer_matching(&descendant_1, &descendant_2, interface, dual_module))
-        }
+        unimplemented!();
+        // let interface_node_1 = dual_node_ptr_1.read_recursive();
+        // let interface_node_2 = dual_node_ptr_2.read_recursive();
+        // let is_blossom_1 = matches!(interface_node_1.class, DualNodeClass::Blossom{ .. });
+        // let dual_variable_1 = interface_node_1.get_dual_variable(interface);
+        // let is_blossom_2 = matches!(interface_node_2.class, DualNodeClass::Blossom{ .. });
+        // let dual_variable_2 = interface_node_2.get_dual_variable(interface);
+        // drop(interface_node_1);  // unlock
+        // drop(interface_node_2);  // unlock
+        // let (descendant_1, is_blossom_descendant_1) = if is_blossom_1 {
+        //     let descendant = dual_module.peek_touching_descendant(dual_node_ptr_1, dual_node_ptr_2);
+        //     peer_matchings.extend(self.expand_blossom(dual_node_ptr_1, &descendant));
+        //     let is_blossom_descendant = matches!(descendant.read_recursive().class, DualNodeClass::Blossom{ .. });
+        //     (descendant, is_blossom_descendant)
+        // } else { (dual_node_ptr_1.clone(), false) };
+        // let (descendant_2, is_blossom_descendant_2) = if is_blossom_2 {
+        //     let descendant = dual_module.peek_touching_descendant(dual_node_ptr_2, dual_node_ptr_1);
+        //     peer_matchings.extend(self.expand_blossom(dual_node_ptr_2, &descendant));
+        //     let is_blossom_descendant = matches!(descendant.read_recursive().class, DualNodeClass::Blossom{ .. });
+        //     (descendant, is_blossom_descendant)
+        // } else { (dual_node_ptr_2.clone(), false) };
+        // if !is_blossom_descendant_1 && !is_blossom_descendant_2 {
+        //     peer_matchings.push((descendant_1, descendant_2));
+        // } else {
+        //     peer_matchings.extend(self.expand_peer_matching(&descendant_1, &descendant_2, interface, dual_module))
+        // }
         peer_matchings
     }
 
