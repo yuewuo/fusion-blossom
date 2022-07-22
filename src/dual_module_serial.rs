@@ -27,15 +27,21 @@ pub struct DualModuleSerial {
     pub active_timestamp: FastClearTimestamp,
     /// bias of vertex index, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
     pub vertex_index_bias: usize,
-
-    // TODO: maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained
+    /// maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained;
+    /// note that this list may contain deleted node as well as duplicate nodes
+    pub active_list: Vec<DualNodeInternalWeak>,
+    /// helps to deduplicate [`DualModuleSerial::active_list`]
+    current_cycle: usize,
 }
 
 pub struct DualNodeInternalPtr { ptr: Arc<RwLock<DualNodeInternal>>, }
 pub struct DualNodeInternalWeak { ptr: Weak<RwLock<DualNodeInternal>>, }
 
 impl DualNodeInternalPtr { pub fn downgrade(&self) -> DualNodeInternalWeak { DualNodeInternalWeak { ptr: Arc::downgrade(&self.ptr) } } }
-impl DualNodeInternalWeak { pub fn upgrade_force(&self) -> DualNodeInternalPtr { DualNodeInternalPtr { ptr: self.ptr.upgrade().unwrap() } } }
+impl DualNodeInternalWeak {
+    pub fn upgrade_force(&self) -> DualNodeInternalPtr { DualNodeInternalPtr { ptr: self.ptr.upgrade().unwrap() } }
+    pub fn upgrade(&self) -> Option<DualNodeInternalPtr> { self.ptr.upgrade().map(|x| DualNodeInternalPtr { ptr: x }) }
+}
 
 impl Clone for DualNodeInternalPtr {
     fn clone(&self) -> Self {
@@ -92,6 +98,8 @@ pub struct DualNodeInternal {
     /// over-grown vertices on the boundary of this node, this is to solve a bug where all surrounding edges are fully grown
     /// so all edges are deleted from the boundary... this will lose track of the real boundary when shrinking back
     pub overgrown_stack: Vec<(VertexWeak, Weight)>,
+    /// helps to prevent duplicate visit in a single cycle
+    last_visit_cycle: usize,
 }
 
 pub struct VertexPtr { ptr: Arc<RwLock<Vertex>> }
@@ -297,10 +305,12 @@ impl DualModuleImpl for DualModuleSerial {
         }
         Self {
             vertices: vertices,
-            nodes: Vec::new(),
+            nodes: vec![],
             edges: edges,
             active_timestamp: 0,
             vertex_index_bias: 0,
+            active_list: vec![],
+            current_cycle: 0,
         }
     }
 
@@ -308,6 +318,7 @@ impl DualModuleImpl for DualModuleSerial {
     fn clear(&mut self) {
         self.clear_graph();
         self.nodes.clear();
+        self.active_list.clear();
     }
 
     /// add a new dual node from dual module root
@@ -321,6 +332,7 @@ impl DualModuleImpl for DualModuleSerial {
             dual_variable: 0,
             boundary: Vec::new(),
             overgrown_stack: Vec::new(),
+            last_visit_cycle: 0,
         });
         {
             let boundary = &mut node_internal_ptr.write().boundary;
@@ -376,6 +388,7 @@ impl DualModuleImpl for DualModuleSerial {
             }
         }
         node.internal = Some(self.nodes.len());
+        self.active_list.push(node_internal_ptr.downgrade());
         self.nodes.push(Some(node_internal_ptr));
     }
 
@@ -423,8 +436,12 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
-    fn set_grow_state(&mut self, _dual_node_ptr: &DualNodePtr, _grow_state: DualNodeGrowState) {
-        // do nothing, we don't record grow state here
+    fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
+        let dual_node = dual_node_ptr.read_recursive();
+        if dual_node.grow_state == DualNodeGrowState::Stay && grow_state != DualNodeGrowState::Stay {
+            let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+            self.active_list.push(dual_node_internal_ptr.downgrade())
+        }
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
@@ -589,16 +606,13 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
+        self.renew_active_list();
         // first prepare all nodes for individual grow or shrink; Stay nodes will be prepared to shrink in order to minimize effect on others
-        for i in 0..self.nodes.len() {
+        for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                match self.nodes[i].as_ref() {
-                    Some(internal_dual_node_ptr) => {
-                        let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                        dual_node_internal.origin.upgrade_force()
-                    },
-                    _ => { continue }
-                }
+                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
+                let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                dual_node_internal.origin.upgrade_force()
             };
             let dual_node = dual_node_ptr.read_recursive();
             match dual_node.grow_state {
@@ -607,15 +621,11 @@ impl DualModuleImpl for DualModuleSerial {
                 DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
             };
         }
-        for i in 0..self.nodes.len() {
+        for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                match self.nodes[i].as_ref() {
-                    Some(internal_dual_node_ptr) => {
-                        let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                        dual_node_internal.origin.upgrade_force()
-                    },
-                    _ => { continue }
-                }
+                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
+                let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                dual_node_internal.origin.upgrade_force()
             };
             let dual_node = dual_node_ptr.read_recursive();
             match dual_node.grow_state {
@@ -625,15 +635,11 @@ impl DualModuleImpl for DualModuleSerial {
             };
         }
         let mut group_max_update_length = GroupMaxUpdateLength::new();
-        for i in 0..self.nodes.len() {
+        for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                match self.nodes[i].as_ref() {
-                    Some(internal_dual_node_ptr) => {
-                        let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                        dual_node_internal.origin.upgrade_force()
-                    },
-                    _ => { continue }
-                }
+                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
+                let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                dual_node_internal.origin.upgrade_force()
             };
             let dual_node = dual_node_ptr.read_recursive();
             let is_grow = match dual_node.grow_state {
@@ -708,13 +714,13 @@ impl DualModuleImpl for DualModuleSerial {
 
     fn grow(&mut self, length: Weight) {
         assert!(length > 0, "only positive growth is supported");
+        self.renew_active_list();
         // first handle shrinks and then grow, to make sure they don't conflict
-        for i in 0..self.nodes.len() {
+        for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                if let Some(node) = self.nodes[i].as_ref() {
-                    let dual_node_internal = node.read_recursive();
-                    dual_node_internal.origin.upgrade_force()
-                } else { continue }
+                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
+                let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                dual_node_internal.origin.upgrade_force()
             };
             let dual_node = dual_node_ptr.read_recursive();
             if matches!(dual_node.grow_state, DualNodeGrowState::Shrink) {
@@ -722,12 +728,11 @@ impl DualModuleImpl for DualModuleSerial {
             }
         }
         // then grow those needed
-        for i in 0..self.nodes.len() {
+        for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                if let Some(node) = self.nodes[i].as_ref() {
-                    let dual_node_internal = node.read_recursive();
-                    dual_node_internal.origin.upgrade_force()
-                } else { continue }
+                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
+                let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                dual_node_internal.origin.upgrade_force()
             };
             let dual_node = dual_node_ptr.read_recursive();
             if matches!(dual_node.grow_state, DualNodeGrowState::Grow) {
@@ -794,6 +799,51 @@ impl DualModuleSerial {
             self.hard_clear_graph();
         }
         self.active_timestamp += 1;  // implicitly clear all edges growth
+    }
+
+    /// increment the global cycle so that each node in the active list can be accessed exactly once
+    fn renew_active_list(&mut self) {
+        if self.current_cycle == usize::MAX {
+            for i in 0..self.nodes.len() {
+                let internal_dual_node_ptr = {
+                    match self.nodes[i].as_ref() {
+                        Some(internal_dual_node_ptr) => {
+                            internal_dual_node_ptr.clone()
+                        },
+                        _ => { continue }
+                    }
+                };
+                let mut internal_dual_node = internal_dual_node_ptr.write();
+                internal_dual_node.last_visit_cycle = 0;
+            }
+            self.current_cycle = 0;
+        }
+        self.current_cycle += 1;
+        // renew the active_list
+        let mut updated_active_list = Vec::with_capacity(self.active_list.len());
+        for i in 0..self.active_list.len() {
+            let (dual_node_ptr, internal_dual_node_ptr) = {
+                match self.active_list[i].upgrade() {
+                    Some(internal_dual_node_ptr) => {
+                        let mut dual_node_internal = internal_dual_node_ptr.write();
+                        if self.nodes[dual_node_internal.index].is_none() { continue }  // removed
+                        if dual_node_internal.last_visit_cycle == self.current_cycle { continue }  // visited
+                        dual_node_internal.last_visit_cycle = self.current_cycle;  // mark as visited
+                        (dual_node_internal.origin.upgrade_force(), internal_dual_node_ptr.clone())
+                    },
+                    _ => { continue }
+                }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            match dual_node.grow_state {
+                DualNodeGrowState::Grow | DualNodeGrowState::Shrink => {
+                    updated_active_list.push(internal_dual_node_ptr.downgrade());
+                }, DualNodeGrowState::Stay => {
+
+                },  // no longer in the active list
+            };
+        }
+        self.active_list = updated_active_list;
     }
 
     fn sanity_check_grandson(&self, propagated_dual_node_weak: &DualNodeInternalWeak, propagated_grandson_dual_node_weak: &DualNodeInternalWeak) -> Result<(), String> {

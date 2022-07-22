@@ -563,8 +563,8 @@ impl DualModuleInterface {
             let current_dual_variable = node.get_dual_variable(self);
             node.dual_variable_cache = (current_dual_variable, self.dual_variable_global_progress);  // update the cache
         }
+        dual_module_impl.set_grow_state(&dual_node_ptr, grow_state);  // call this before dual node actually sets; to give history information
         dual_node_ptr.set_grow_state(grow_state);
-        dual_module_impl.set_grow_state(&dual_node_ptr, grow_state);
     }
 
     /// grow the dual module and update [`DualModuleInterface::sum_`]
