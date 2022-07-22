@@ -71,10 +71,10 @@ impl PartialEq for PrimalNodeInternalWeak {
 pub struct AlternatingTreeNode {
     /// the root of an alternating tree
     pub root: PrimalNodeInternalWeak,
-    /// the parent in the alternating tree, note that root doesn't have a parent
-    pub parent: Option<PrimalNodeInternalWeak>,
-    /// the children in the alternating tree, note that odd depth can only have exactly one children
-    pub children: Vec<PrimalNodeInternalWeak>,
+    /// the parent in the alternating tree, note that root doesn't have a parent; together with a child of blossom that touches parent, used to create blossom and expand perfect matching
+    pub parent: Option<(PrimalNodeInternalWeak, DualNodeWeak)>,
+    /// the children in the alternating tree, note that odd depth can only have exactly one children; together with a child of blossom that touches each child node in the tree, used to create blossom and expand perfect matching
+    pub children: Vec<(PrimalNodeInternalWeak, DualNodeWeak)>,
     /// the depth in the alternating tree, root has 0 depth
     pub depth: usize,
 }
@@ -96,8 +96,8 @@ pub struct PrimalNodeInternal {
     index: NodeIndex,
     /// alternating tree information if applicable
     pub tree_node: Option<AlternatingTreeNode>,
-    /// temporary match with another node
-    pub temporary_match: Option<MatchTarget>,
+    /// temporary match with another node, (target, touching_grandson)
+    pub temporary_match: Option<(MatchTarget, DualNodeWeak)>,
 }
 
 impl PrimalNodeInternal {
@@ -119,7 +119,7 @@ impl PrimalNodeInternal {
         let tree_node = self.tree_node.as_mut().unwrap();
         tree_node.depth = depth;
         tree_node.root = root.downgrade();
-        for child_weak in tree_node.children.iter() {
+        for (child_weak, _) in tree_node.children.iter() {
             let child_ptr = child_weak.upgrade_force();
             let mut child = child_ptr.write();
             child.change_sub_tree_root(depth + 1, root.clone());
@@ -169,7 +169,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                 break
             }
             match conflict {
-                MaxUpdateLength::Conflicting((node_ptr_1, _), (node_ptr_2, _)) => {
+                MaxUpdateLength::Conflicting((node_ptr_1, touching_ptr_1), (node_ptr_2, touching_ptr_2)) => {
                     assert!(node_ptr_1 != node_ptr_2, "one cannot conflict with itself, double check to avoid deadlock");
                     // always use outer node in case it's already wrapped into a blossom
                     let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1.upgrade_force()));
@@ -185,8 +185,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let (free_1, free_2) = (primal_node_internal_1.is_free(), primal_node_internal_2.is_free());
                     if free_1 && free_2 {
                         // simply match them temporarily
-                        primal_node_internal_1.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()));
-                        primal_node_internal_2.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()));
+                        primal_node_internal_1.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()), touching_ptr_1));
+                        primal_node_internal_2.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()), touching_ptr_2));
                         // update dual module interface
                         interface.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         interface.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
@@ -194,13 +194,13 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     }
                     // second probable case: single node touches a temporary matched pair and become an alternating tree
                     if (free_1 && primal_node_internal_2.temporary_match.is_some()) || (free_2 && primal_node_internal_1.temporary_match.is_some()) {
-                        let (free_node_internal_ptr, mut free_node_internal, matched_node_internal_ptr, mut matched_node_internal) = if free_1 {
-                            (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
+                        let (free_node_internal_ptr, free_touching_ptr, mut free_node_internal, matched_node_internal_ptr, matched_touching_ptr, mut matched_node_internal) = if free_1 {
+                            (primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2)
                         } else {
-                            (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
+                            (primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1)
                         };
                         // creating an alternating tree: free node becomes the root, matched node becomes child
-                        let match_target: MatchTarget = matched_node_internal.temporary_match.as_ref().unwrap().clone();
+                        let (match_target, matched_touching_grandson) = matched_node_internal.temporary_match.as_ref().unwrap().clone();
                         match &match_target {
                             MatchTarget::Peer(leaf_node_internal_weak) => {
                                 let leaf_node_internal_ptr = leaf_node_internal_weak.upgrade_force();
@@ -208,19 +208,19 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 free_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: free_node_internal_ptr.downgrade(),
                                     parent: None,
-                                    children: vec![matched_node_internal_ptr.downgrade()],
+                                    children: vec![(matched_node_internal_ptr.downgrade(), free_touching_ptr)],
                                     depth: 0,
                                 });
                                 matched_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: free_node_internal_ptr.downgrade(),
-                                    parent: Some(free_node_internal_ptr.downgrade()),
-                                    children: vec![leaf_node_internal_weak.clone()],
+                                    parent: Some((free_node_internal_ptr.downgrade(), matched_touching_ptr)),
+                                    children: vec![(leaf_node_internal_weak.clone(), matched_touching_grandson)],
                                     depth: 1,
                                 });
                                 matched_node_internal.temporary_match = None;
                                 leaf_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: free_node_internal_ptr.downgrade(),
-                                    parent: Some(matched_node_internal_ptr.downgrade()),
+                                    parent: Some((matched_node_internal_ptr.downgrade(), leaf_node_internal.temporary_match.as_ref().unwrap().1.clone())),
                                     children: vec![],
                                     depth: 2,
                                 });
@@ -233,8 +233,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             },
                             MatchTarget::VirtualVertex(_) => {
                                 // virtual boundary doesn't have to be matched, so in this case simply match these two nodes together
-                                free_node_internal.temporary_match = Some(MatchTarget::Peer(matched_node_internal_ptr.downgrade()));
-                                matched_node_internal.temporary_match = Some(MatchTarget::Peer(free_node_internal_ptr.downgrade()));
+                                free_node_internal.temporary_match = Some((MatchTarget::Peer(matched_node_internal_ptr.downgrade()), free_touching_ptr));
+                                matched_node_internal.temporary_match = Some((MatchTarget::Peer(free_node_internal_ptr.downgrade()), matched_touching_ptr));
                                 // update dual module interface
                                 interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                                 interface.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
@@ -244,47 +244,47 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     }
                     // third probable case: tree touches single vertex
                     if (free_1 && primal_node_internal_2.tree_node.is_some()) || (primal_node_internal_1.tree_node.is_some() && free_2) {
-                        let (tree_node_internal_ptr, tree_node_internal, free_node_internal_ptr, mut free_node_internal) = 
+                        let (tree_node_internal_ptr, tree_touching_ptr, tree_node_internal, free_node_internal_ptr, free_touching_ptr, mut free_node_internal) = 
                             if primal_node_internal_1.tree_node.is_some() {
-                                (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
+                                (primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2)
                             } else {
-                                (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
+                                (primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1)
                             };
-                        free_node_internal.temporary_match = Some(MatchTarget::Peer(tree_node_internal_ptr.downgrade()));
+                        free_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), free_touching_ptr));
                         interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         drop(tree_node_internal);  // unlock
-                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, interface, dual_module);
+                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr, interface, dual_module);
                         continue
                     }
                     // fourth probable case: tree touches matched pair
                     if (primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.temporary_match.is_some())
                             || (primal_node_internal_1.temporary_match.is_some() && primal_node_internal_2.tree_node.is_some()) {
-                        let (tree_node_internal_ptr, mut tree_node_internal, matched_node_internal_ptr, mut matched_node_internal) = 
+                        let (tree_node_internal_ptr, tree_touching_ptr, mut tree_node_internal, matched_node_internal_ptr, matched_touching_ptr, mut matched_node_internal) = 
                             if primal_node_internal_1.tree_node.is_some() {
-                                (primal_node_internal_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), primal_node_internal_2)
+                                (primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1, primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2)
                             } else {
-                                (primal_node_internal_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), primal_node_internal_1)
+                                (primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1)
                             };
-                        let match_target: MatchTarget = matched_node_internal.temporary_match.as_ref().unwrap().clone();
+                        let match_target = matched_node_internal.temporary_match.as_ref().unwrap().0.clone();
                         match &match_target {
                             MatchTarget::Peer(leaf_node_internal_weak) => {
                                 let leaf_node_internal_ptr = leaf_node_internal_weak.upgrade_force();
                                 let tree_node = tree_node_internal.tree_node.as_mut().unwrap();
                                 assert!(tree_node.depth % 2 == 0, "conflicting one must be + node");
                                 // simply add this matched pair to the children
-                                tree_node.children.push(matched_node_internal_ptr.downgrade());
+                                tree_node.children.push((matched_node_internal_ptr.downgrade(), tree_touching_ptr));
                                 // link children to parent
                                 matched_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: tree_node.root.clone(),
-                                    parent: Some(tree_node_internal_ptr.downgrade()),
-                                    children: vec![leaf_node_internal_weak.clone()],
+                                    parent: Some((tree_node_internal_ptr.downgrade(), matched_touching_ptr)),
+                                    children: vec![(leaf_node_internal_weak.clone(), matched_node_internal.temporary_match.as_ref().unwrap().1.clone())],
                                     depth: tree_node.depth + 1,
                                 });
                                 matched_node_internal.temporary_match = None;
                                 let mut leaf_node_internal = leaf_node_internal_ptr.write();
                                 leaf_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: tree_node.root.clone(),
-                                    parent: Some(matched_node_internal_ptr.downgrade()),
+                                    parent: Some((matched_node_internal_ptr.downgrade(), leaf_node_internal.temporary_match.as_ref().unwrap().1.clone())),
                                     children: vec![],
                                     depth: tree_node.depth + 2,
                                 });
@@ -296,15 +296,15 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             },
                             MatchTarget::VirtualVertex(_) => {
                                 // virtual boundary doesn't have to be matched, so in this case remove it and augment the tree
-                                matched_node_internal.temporary_match = Some(MatchTarget::Peer(tree_node_internal_ptr.downgrade()));
+                                matched_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), matched_touching_ptr));
                                 drop(matched_node_internal);  // unlock
                                 drop(tree_node_internal);  // unlock
-                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, interface, dual_module);
+                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr, interface, dual_module);
                                 continue
                             }
                         }
                     }
-                    // much less probable case: two trees touch
+                    // much less probable case: two trees touch and both are augmented
                     if primal_node_internal_1.tree_node.is_some() && primal_node_internal_2.tree_node.is_some() {
                         let root_1 = primal_node_internal_1.tree_node.as_ref().unwrap().root.clone();
                         let root_2 = primal_node_internal_2.tree_node.as_ref().unwrap().root.clone();
@@ -313,7 +313,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             // drop writer lock to allow reader locks
                             drop(primal_node_internal_1);
                             drop(primal_node_internal_2);
-                            // find LCA of two nodes
+                            // find LCA of two nodes, two paths are from child to parent
                             let (lca_ptr, path_1, path_2) = self.find_lowest_common_ancestor(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone());
                             let nodes_circle = {
                                 let mut nodes_circle: Vec<DualNodePtr> = path_1.iter().map(|ptr| ptr.read_recursive().origin.upgrade_force()).collect();
@@ -321,7 +321,61 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 for i in (0..path_2.len()).rev() { nodes_circle.push(path_2[i].read_recursive().origin.upgrade_force()); }
                                 nodes_circle
                             };
-                            let blossom_node_ptr = interface.create_blossom(nodes_circle, dual_module);
+                            // build `touching_children`
+                            let touching_children = {
+                                let mut touching_children = Vec::<(DualNodeWeak, DualNodeWeak)>::new();
+                                if !path_1.is_empty() {
+                                    for (idx, ptr) in path_1.iter().enumerate() {
+                                        let node = ptr.read_recursive();
+                                        let tree_node = node.tree_node.as_ref().unwrap();
+                                        let left_touching_ptr = if idx == 0 {
+                                            touching_ptr_1.clone()
+                                        } else {
+                                            let last_ptr = path_1[idx-1].downgrade();
+                                            let idx = tree_node.children.iter().position(|(ptr, _)| ptr == &last_ptr).expect("should find child");
+                                            tree_node.children[idx].1.clone()
+                                        };
+                                        let right_touching_ptr = tree_node.parent.as_ref().unwrap().1.clone();
+                                        touching_children.push((left_touching_ptr, right_touching_ptr));
+                                    }
+                                }
+                                { // the lca
+                                    let node = lca_ptr.read_recursive();
+                                    let tree_node = node.tree_node.as_ref().unwrap();
+                                    let left_touching_ptr = if path_1.is_empty() {
+                                        touching_ptr_1.clone()
+                                    } else {
+                                        let left_ptr = path_1[path_1.len() - 1].downgrade();
+                                        let left_idx = tree_node.children.iter().position(|(ptr, _)| ptr == &left_ptr).expect("should find child");
+                                        tree_node.children[left_idx].1.clone()
+                                    };
+                                    let right_touching_ptr = if path_2.is_empty() {
+                                        touching_ptr_2.clone()
+                                    } else {
+                                        let right_ptr = path_2[path_2.len() - 1].downgrade();
+                                        let right_idx = tree_node.children.iter().position(|(ptr, _)| ptr == &right_ptr).expect("should find child");
+                                        tree_node.children[right_idx].1.clone()
+                                    };
+                                    touching_children.push((left_touching_ptr, right_touching_ptr));
+                                }
+                                if !path_2.is_empty() {
+                                    for (idx, ptr) in path_2.iter().enumerate().rev() {
+                                        let node = ptr.read_recursive();
+                                        let tree_node = node.tree_node.as_ref().unwrap();
+                                        let left_touching_ptr = tree_node.parent.as_ref().unwrap().1.clone();
+                                        let right_touching_ptr = if idx == 0 {
+                                            touching_ptr_2.clone()
+                                        } else {
+                                            let last_ptr = path_2[idx-1].downgrade();
+                                            let idx = tree_node.children.iter().position(|(ptr, _)| ptr == &last_ptr).expect("should find child");
+                                            tree_node.children[idx].1.clone()
+                                        };
+                                        touching_children.push((left_touching_ptr, right_touching_ptr));
+                                    }
+                                }
+                                touching_children
+                            };
+                            let blossom_node_ptr = interface.create_blossom(nodes_circle, touching_children, dual_module);
                             let primal_node_internal_blossom_ptr = PrimalNodeInternalPtr::new(PrimalNodeInternal {
                                 origin: blossom_node_ptr.downgrade(),
                                 index: self.nodes.len(),
@@ -333,36 +387,36 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             let mut children = vec![];
                             for path in [&path_1, &path_2] {
                                 if path.len() > 0 {
-                                    let mut last_ptr = path[0].clone();
+                                    let mut last_ptr = path[0].downgrade();
                                     for (height, ptr) in path.iter().enumerate() {
                                         let mut node = ptr.write();
                                         if height == 0 {
                                             let tree_node = node.tree_node.as_ref().unwrap();
-                                            for child_ptr in tree_node.children.iter() {
-                                                children.push(child_ptr.clone());
+                                            for (child_ptr, child_touching_ptr) in tree_node.children.iter() {
+                                                children.push((child_ptr.clone(), child_touching_ptr.clone()));
                                             }
                                         } else {
                                             if height % 2 == 0 {
                                                 let tree_node = node.tree_node.as_ref().unwrap();
-                                                for child_ptr in tree_node.children.iter() {
-                                                    if child_ptr != &last_ptr.downgrade() {  // not in the blossom circle
-                                                        children.push(child_ptr.clone());
+                                                for (child_ptr, child_touching_ptr) in tree_node.children.iter() {
+                                                    if child_ptr != &last_ptr {  // not in the blossom circle
+                                                        children.push((child_ptr.clone(), child_touching_ptr.clone()));
                                                     }
                                                 }
                                             }
                                         }
                                         node.tree_node = None;  // this path is going to be part of the blossom, no longer in the tree
-                                        last_ptr = ptr.clone();
+                                        last_ptr = ptr.downgrade();
                                     }
                                 }
                             }
                             let mut lca = lca_ptr.write();
                             let lca_tree_node = lca.tree_node.as_ref().unwrap();
                             {  // add children of lca_ptr
-                                for child_ptr in lca_tree_node.children.iter() {
+                                for (child_ptr, child_touching_ptr) in lca_tree_node.children.iter() {
                                     if path_1.len() > 0 && &path_1[path_1.len() - 1].downgrade() == child_ptr { continue }
                                     if path_2.len() > 0 && &path_2[path_2.len() - 1].downgrade() == child_ptr { continue }
-                                    children.push(child_ptr.clone());
+                                    children.push((child_ptr.clone(), child_touching_ptr.clone()));
                                 }
                             }
                             if lca_tree_node.parent.is_some() || children.len() > 0 {
@@ -375,21 +429,24 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                     depth: lca_tree_node.depth,
                                 };
                                 if lca_tree_node.parent.is_some() {
-                                    let parent_weak = lca_tree_node.parent.as_ref().unwrap();
+                                    let (parent_weak, _) = lca_tree_node.parent.as_ref().unwrap();
                                     let parent_ptr = parent_weak.upgrade_force();
                                     let mut parent = parent_ptr.write();
                                     let parent_tree_node = parent.tree_node.as_mut().unwrap();
-                                    parent_tree_node.children.retain(|ptr| ptr != &lca_ptr.downgrade());
-                                    parent_tree_node.children.push(primal_node_internal_blossom_ptr.downgrade());
+                                    debug_assert!(parent_tree_node.children.len() == 1, "lca's parent should be a - node with only one child");
+                                    let touching_ptr = parent_tree_node.children[0].1.clone();  // the touching grandson is not changed when forming blossom
+                                    parent_tree_node.children.clear();
+                                    parent_tree_node.children.push((primal_node_internal_blossom_ptr.downgrade(), touching_ptr));
                                 }
                                 if tree_node.children.len() > 0 {
                                     // connect this blossom to the new alternating tree
-                                    for child_weak in tree_node.children.iter() {
+                                    for (child_weak, _) in tree_node.children.iter() {
                                         let child_ptr = child_weak.upgrade_force();
                                         let mut child = child_ptr.write();
                                         let child_tree_node = child.tree_node.as_mut().unwrap();
-                                        assert!(child_tree_node.parent.is_some(), "child should be a '-' node");
-                                        child_tree_node.parent = Some(primal_node_internal_blossom_ptr.downgrade());
+                                        debug_assert!(child_tree_node.parent.is_some(), "child should have a parent");
+                                        let touching_ptr = child_tree_node.parent.as_ref().unwrap().1.clone();  // the touching grandson is not changed when forming blossom
+                                        child_tree_node.parent = Some((primal_node_internal_blossom_ptr.downgrade(), touching_ptr));
                                     }
                                     primal_node_internal_blossom.tree_node = Some(tree_node);
                                     primal_node_internal_blossom.change_sub_tree_root(lca_tree_node.depth, new_tree_root);
@@ -402,14 +459,14 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         } else {
                             drop(primal_node_internal_1);  // unlock
                             drop(primal_node_internal_2);  // unlock
-                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), interface, dual_module);
-                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), interface, dual_module);
+                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1, interface, dual_module);
+                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2, interface, dual_module);
                             continue
                         }
                     }
                     unreachable!()
                 },
-                MaxUpdateLength::TouchingVirtual((node_ptr, _), virtual_vertex_index) => {
+                MaxUpdateLength::TouchingVirtual((node_ptr, touching_ptr), virtual_vertex_index) => {
                     let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr.upgrade_force()));
                     let mut primal_node_internal = primal_node_internal_ptr.write();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
@@ -418,14 +475,14 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     }
                     // this is the most probable case, so put it in the front
                     if primal_node_internal.is_free() {
-                        primal_node_internal.temporary_match = Some(MatchTarget::VirtualVertex(virtual_vertex_index));
+                        primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr));
                         interface.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
                     }
                     // tree touching virtual boundary will just augment the whole tree
                     if primal_node_internal.tree_node.is_some() {
                         drop(primal_node_internal);
-                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, interface, dual_module);
+                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr, interface, dual_module);
                         continue
                     }
                     unreachable!()
@@ -446,10 +503,10 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         continue  // this is no longer a conflict
                     }
                     // copy the nodes circle
-                    let nodes_circle = {
+                    let (nodes_circle, touching_children) = {
                         let blossom = node_ptr.read_recursive();
                         match &blossom.class {
-                            DualNodeClass::Blossom{ nodes_circle } => nodes_circle.clone(),
+                            DualNodeClass::Blossom{ nodes_circle, touching_children } => (nodes_circle.clone(), touching_children.clone()),
                             _ => unreachable!("the expanding node is not a blossom")
                         }
                     };
@@ -459,84 +516,98 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     assert!(primal_node_internal.tree_node.is_some(), "expanding blossom must belong to an alternating tree");
                     let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                     assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
-                    let (parent_ptr, parent_touching_ptr) = {  // remove it from it's parent's tree
-                        let parent_weak = tree_node.parent.as_ref().unwrap();
+                    let (parent_ptr, parent_touching_ptr, parent_touching_child_ptr) = {  // remove it from it's parent's tree
+                        let parent_weak = &tree_node.parent.as_ref().unwrap().0;
                         let parent_ptr = parent_weak.upgrade_force();
                         let mut parent = parent_ptr.write();
                         let parent_tree_node = parent.tree_node.as_mut().unwrap();
-                        parent_tree_node.children.retain(|ptr| ptr != &primal_node_internal_ptr.downgrade());
+                        let idx = parent_tree_node.children.iter().position(|ptr| ptr.0 == primal_node_internal_ptr.downgrade()).expect("should find");
+                        let parent_touching_ptr = parent_tree_node.children[idx].1.clone();
+                        parent_tree_node.children.remove(idx);
+                        parent_tree_node.children.retain(|ptr| ptr.0 != primal_node_internal_ptr.downgrade());
                         // find which blossom-child is touching the parent
-                        let parent_touching_ptr = dual_module.peek_touching_child(&node_ptr, &parent.origin.upgrade_force());
-                        (parent_ptr.clone(), parent_touching_ptr)
+                        let parent_touching_child_ptr = dual_module.peek_touching_child(&node_ptr, &parent.origin.upgrade_force());
+                        (parent_ptr.clone(), parent_touching_ptr, parent_touching_child_ptr)
                     };
-                    let (child_ptr, child_touching_ptr) = {  // make children independent trees
-                        assert_eq!(tree_node.children.len(), 1, "a - node must have exactly ONE child");
-                        let child_weak = &tree_node.children[0];
+                    let (child_ptr, child_touching_ptr, child_touching_child_ptr) = {  // make children independent trees
+                        debug_assert!(tree_node.children.len() == 1, "a - node must have exactly ONE child");
+                        let child_weak = &tree_node.children[0].0;
                         let child_ptr = child_weak.upgrade_force();
                         let child = child_ptr.read_recursive();
+                        let child_tree_node = child.tree_node.as_ref().unwrap();
                         // find which blossom-child is touching this child
-                        let child_touching_ptr = dual_module.peek_touching_child(&node_ptr, &child.origin.upgrade_force());
-                        (child_ptr.clone(), child_touching_ptr)
+                        let child_touching_child_ptr = dual_module.peek_touching_child(&node_ptr, &child.origin.upgrade_force());
+                        (child_ptr.clone(), child_tree_node.parent.as_ref().unwrap().1.clone(), child_touching_child_ptr)
                     };
                     interface.expand_blossom(node_ptr, dual_module);
                     // now we need to re-connect all the expanded nodes, by analyzing the relationship of nodes_circle, parent_touching_ptr and child_touching_ptr
-                    let parent_touching_index = nodes_circle.iter().position(|ptr| ptr == &parent_touching_ptr.downgrade()).expect("touching node should be in the blossom circle");
-                    let child_touching_index = nodes_circle.iter().position(|ptr| ptr == &child_touching_ptr.downgrade()).expect("touching node should be in the blossom circle");
+                    let parent_touching_index = nodes_circle.iter().position(|ptr| ptr == &parent_touching_child_ptr.downgrade()).expect("touching node should be in the blossom circle");
+                    let child_touching_index = nodes_circle.iter().position(|ptr| ptr == &child_touching_child_ptr.downgrade()).expect("touching node should be in the blossom circle");
+                    let mut is_tree_sequence_ascending = true;
                     let (match_sequence, tree_sequence) = {  // tree sequence is from parent to child
                         let mut match_sequence = Vec::new();
                         let mut tree_sequence = Vec::new();
                         if parent_touching_index == child_touching_index {
-                            tree_sequence.push(nodes_circle[parent_touching_index].upgrade_force());
-                            for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].upgrade_force()); }
-                            for i in 0 .. parent_touching_index { match_sequence.push(nodes_circle[i].upgrade_force()); }
+                            tree_sequence.push(parent_touching_index);
+                            for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(i); }
+                            for i in 0 .. parent_touching_index { match_sequence.push(i); }
                         } else if parent_touching_index > child_touching_index {
                             if (parent_touching_index - child_touching_index) % 2 == 0 {  // [... c <----- p ...]
-                                for i in (child_touching_index .. parent_touching_index+1).rev() { tree_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in 0 .. child_touching_index { match_sequence.push(nodes_circle[i].upgrade_force()); }
+                                for i in (child_touching_index .. parent_touching_index+1).rev() { tree_sequence.push(i); }
+                                is_tree_sequence_ascending = false;
+                                for i in parent_touching_index+1 .. nodes_circle.len() { match_sequence.push(i); }
+                                for i in 0 .. child_touching_index { match_sequence.push(i); }
                             } else {  // [--> c ...... p ---]
-                                for i in parent_touching_index .. nodes_circle.len() { tree_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in 0 .. child_touching_index+1 { tree_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in child_touching_index+1 .. parent_touching_index { match_sequence.push(nodes_circle[i].upgrade_force()); }
+                                for i in parent_touching_index .. nodes_circle.len() { tree_sequence.push(i); }
+                                for i in 0 .. child_touching_index+1 { tree_sequence.push(i); }
+                                for i in child_touching_index+1 .. parent_touching_index { match_sequence.push(i); }
                             }
                         } else {  // parent_touching_index < child_touching_index
                             if (child_touching_index - parent_touching_index) % 2 == 0 {  // [... p -----> c ...]
-                                for i in parent_touching_index .. child_touching_index+1 { tree_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in child_touching_index+1 .. nodes_circle.len() { match_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in 0 .. parent_touching_index { match_sequence.push(nodes_circle[i].upgrade_force()); }
+                                for i in parent_touching_index .. child_touching_index+1 { tree_sequence.push(i); }
+                                for i in child_touching_index+1 .. nodes_circle.len() { match_sequence.push(i); }
+                                for i in 0 .. parent_touching_index { match_sequence.push(i); }
                             } else {  // [--- p ...... c <--]
-                                for i in (0 .. parent_touching_index+1).rev() { tree_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in (child_touching_index .. nodes_circle.len()).rev() { tree_sequence.push(nodes_circle[i].upgrade_force()); }
-                                for i in parent_touching_index+1 .. child_touching_index { match_sequence.push(nodes_circle[i].upgrade_force()); }
+                                for i in (0 .. parent_touching_index+1).rev() { tree_sequence.push(i); }
+                                for i in (child_touching_index .. nodes_circle.len()).rev() { tree_sequence.push(i); }
+                                is_tree_sequence_ascending = false;
+                                for i in parent_touching_index+1 .. child_touching_index { match_sequence.push(i); }
                             }
                         }
-                        // println!("match_sequence: {match_sequence:?}");
-                        // println!("tree_sequence: {tree_sequence:?}");
                         (match_sequence, tree_sequence)
                     };
                     debug_assert!(match_sequence.len() % 2 == 0 && tree_sequence.len() % 2 == 1, "parity of sequence wrong");
                     // match the nodes in the match sequence
                     for i in (0..match_sequence.len()).step_by(2) {
-                        let primal_node_internal_ptr_1 = self.get_primal_node_internal_ptr(&match_sequence[i]);
-                        let primal_node_internal_ptr_2 = self.get_primal_node_internal_ptr(&match_sequence[i+1]);
+                        let primal_node_internal_ptr_1 = self.get_primal_node_internal_ptr(&nodes_circle[match_sequence[i]].upgrade_force());
+                        let primal_node_internal_ptr_2 = self.get_primal_node_internal_ptr(&nodes_circle[match_sequence[i+1]].upgrade_force());
+                        debug_assert!((match_sequence[i] + 1) % nodes_circle.len() == match_sequence[i+1], "match sequence should be ascending");
+                        let touching_ptr_1 = touching_children[match_sequence[i]].1.clone();  // assuming ascending match sequence
+                        let touching_ptr_2 = touching_children[match_sequence[i+1]].0.clone();  // assuming ascending match sequence
                         let mut primal_node_internal_1 = primal_node_internal_ptr_1.write();
                         let mut primal_node_internal_2 = primal_node_internal_ptr_2.write();
-                        primal_node_internal_1.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()));
-                        primal_node_internal_2.temporary_match = Some(MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()));
+                        primal_node_internal_1.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()), touching_ptr_1));
+                        primal_node_internal_2.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()), touching_ptr_2));
                         interface.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         interface.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                     }
-                    // connect the nodes in the tree sequence to the alternating tree
-                    for (idx, current_ptr) in tree_sequence.iter().enumerate() {
-                        let current_parent_ptr = if idx == 0 { parent_ptr.clone() } else { self.get_primal_node_internal_ptr(&tree_sequence[idx - 1]) };
+                    // connect the nodes in the tree sequence to the alternating tree, note that the tree sequence is from parent to child
+                    for (idx, current_i) in tree_sequence.iter().enumerate() {
+                        debug_assert!({
+                            if idx + 1 < tree_sequence.len() {
+                                if is_tree_sequence_ascending { (tree_sequence[idx] + 1) % nodes_circle.len() == tree_sequence[idx+1] }
+                                else { (tree_sequence[idx+1] + 1) % nodes_circle.len() == tree_sequence[idx] }
+                            } else { true }
+                        }, "tree sequence orientation must be consistent");
+                        let current_parent_ptr = if idx == 0 { parent_ptr.clone() } else { self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[idx - 1]].upgrade_force()) };
                         let current_child_ptr = if idx == tree_sequence.len() - 1 { child_ptr.clone() }
-                            else { self.get_primal_node_internal_ptr(&tree_sequence[idx + 1]) };
-                        let current_ptr = self.get_primal_node_internal_ptr(current_ptr);
+                            else { self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[idx + 1]].upgrade_force()) };
+                        let current_ptr = self.get_primal_node_internal_ptr(&nodes_circle[*current_i].upgrade_force());
                         let mut current = current_ptr.write();
                         current.tree_node = Some(AlternatingTreeNode {
                             root: tree_node.root.clone(),
-                            parent: Some(current_parent_ptr.downgrade()),
-                            children: vec![current_child_ptr.downgrade()],
+                            parent: Some((current_parent_ptr.downgrade(), if is_tree_sequence_ascending { touching_children[*current_i].0.clone() } else { touching_children[*current_i].1.clone() })),
+                            children: vec![(current_child_ptr.downgrade(), if is_tree_sequence_ascending { touching_children[*current_i].1.clone() } else { touching_children[*current_i].0.clone() })],
                             depth: tree_node.depth + idx,
                         });
                         interface.set_grow_state(&current.origin.upgrade_force(), if idx % 2 == 0 { DualNodeGrowState::Shrink } else { DualNodeGrowState::Grow }, dual_module);
@@ -544,14 +615,14 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     {  // connect parent
                         let mut parent = parent_ptr.write();
                         let parent_tree_node = parent.tree_node.as_mut().unwrap();
-                        let child_ptr = self.get_primal_node_internal_ptr(&tree_sequence[0]);
-                        parent_tree_node.children.push(child_ptr.downgrade());
+                        let child_ptr = self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[0]].upgrade_force());
+                        parent_tree_node.children.push((child_ptr.downgrade(), parent_touching_ptr));
                     }
                     {  // connect child and fix the depth information of the child
                         let mut child = child_ptr.write();
                         let child_tree_node = child.tree_node.as_mut().unwrap();
-                        let parent_ptr = self.get_primal_node_internal_ptr(&tree_sequence[tree_sequence.len()-1]);
-                        child_tree_node.parent = Some(parent_ptr.downgrade());
+                        let parent_ptr = self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[tree_sequence.len()-1]].upgrade_force());
+                        child_tree_node.parent = Some((parent_ptr.downgrade(), child_touching_ptr));
                         child.change_sub_tree_root(tree_node.depth + tree_sequence.len(), tree_node.root.upgrade_force());
                     }
                 },
@@ -581,7 +652,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
                         continue  // do not handle this blossom at this level
                     }
-                    if let Some(match_target) = primal_node_internal.temporary_match.as_ref() {
+                    if let Some((match_target, _)) = primal_node_internal.temporary_match.as_ref() {
                         match match_target {
                             MatchTarget::Peer(peer_internal_weak) => {
                                 let peer_internal_ptr = peer_internal_weak.upgrade_force();
@@ -614,20 +685,28 @@ impl FusionVisualizer for PrimalModuleSerial {
             if let Some(primal_node_ptr) = &primal_node_ptr {
                 let primal_node = primal_node_ptr.read_recursive();
                 primal_nodes.push(json!({
-                    if abbrev { "m" } else { "temporary_match" }: primal_node.temporary_match.as_ref().map(|match_target| {
+                    if abbrev { "m" } else { "temporary_match" }: primal_node.temporary_match.as_ref().map(|(match_target, touching_ptr)| {
                         match match_target {
                             MatchTarget::Peer(peer_weak) => {
                                 let peer_ptr = peer_weak.upgrade_force();
-                                json!({ if abbrev { "p" } else { "peer" }: peer_ptr.read_recursive().index })
+                                json!({
+                                    if abbrev { "p" } else { "peer" }: peer_ptr.read_recursive().index,
+                                    if abbrev { "t" } else { "touching" }: touching_ptr.upgrade_force().read_recursive().index,
+                                })
                             },
-                            MatchTarget::VirtualVertex(vertex_idx) => json!({ if abbrev { "v" } else { "virtual_vertex" }: vertex_idx }),
+                            MatchTarget::VirtualVertex(vertex_idx) => json!({
+                                if abbrev { "v" } else { "virtual_vertex" }: vertex_idx,
+                                if abbrev { "t" } else { "touching" }: touching_ptr.upgrade_force().read_recursive().index,
+                            }),
                         }
                     }),
                     if abbrev { "t" } else { "tree_node" }: primal_node.tree_node.as_ref().map(|tree_node| {
                         json!({
                             if abbrev { "r" } else { "root" }: tree_node.root.upgrade_force().read_recursive().index,
-                            if abbrev { "p" } else { "parent" }: tree_node.parent.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-                            if abbrev { "c" } else { "children" }: tree_node.children.iter().map(|weak| weak.upgrade_force().read_recursive().index).collect::<Vec<NodeIndex>>(),
+                            if abbrev { "p" } else { "parent" }: tree_node.parent.as_ref().map(|(weak, _)| weak.upgrade_force().read_recursive().index),
+                            if abbrev { "pt" } else { "parent_touching" }: tree_node.parent.as_ref().map(|(_, weak)| weak.upgrade_force().read_recursive().index),
+                            if abbrev { "c" } else { "children" }: tree_node.children.iter().map(|(weak, _)| weak.upgrade_force().read_recursive().index).collect::<Vec<NodeIndex>>(),
+                            if abbrev { "ct" } else { "children_touching" }: tree_node.children.iter().map(|(_, weak)| weak.upgrade_force().read_recursive().index).collect::<Vec<NodeIndex>>(),
                             if abbrev { "d" } else { "depth" }: tree_node.depth,
                         })
                     }),
@@ -685,7 +764,7 @@ impl PrimalModuleSerial {
                 let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                 if tree_node.depth == depth_2 { break }
                 path_1.push(primal_node_internal_ptr_1.clone());
-                primal_node_internal_ptr_1 = tree_node.parent.as_ref().unwrap().upgrade_force();
+                primal_node_internal_ptr_1 = tree_node.parent.as_ref().unwrap().0.upgrade_force();
             }
         } else if depth_2 > depth_1 {
             loop {
@@ -694,7 +773,7 @@ impl PrimalModuleSerial {
                 let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                 if tree_node.depth == depth_1 { break }
                 path_2.push(primal_node_internal_ptr_2.clone());
-                primal_node_internal_ptr_2 = tree_node.parent.as_ref().unwrap().upgrade_force();
+                primal_node_internal_ptr_2 = tree_node.parent.as_ref().unwrap().0.upgrade_force();
             }
         }
         // now primal_node_internal_ptr_1 and primal_node_internal_ptr_2 has the same depth, compare them until they're equal
@@ -710,8 +789,8 @@ impl PrimalModuleSerial {
             let tree_node_2 = primal_node_internal_2.tree_node.as_ref().unwrap();
             path_1.push(primal_node_internal_ptr_1.clone());
             path_2.push(primal_node_internal_ptr_2.clone());
-            primal_node_internal_ptr_1 = tree_node_1.parent.as_ref().unwrap().upgrade_force();
-            primal_node_internal_ptr_2 = tree_node_2.parent.as_ref().unwrap().upgrade_force();
+            primal_node_internal_ptr_1 = tree_node_1.parent.as_ref().unwrap().0.upgrade_force();
+            primal_node_internal_ptr_2 = tree_node_2.parent.as_ref().unwrap().0.upgrade_force();
         }
     }
 
@@ -720,72 +799,84 @@ impl PrimalModuleSerial {
         let mut tree_node_internal = tree_node_internal_ptr.write();
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 1, "only match - node is possible");
-        let child_node_internal_ptr = tree_node.children[0].upgrade_force();
-        tree_node_internal.temporary_match = Some(MatchTarget::Peer(child_node_internal_ptr.downgrade()));
+        let child_node_internal_ptr = tree_node.children[0].0.upgrade_force();
+        tree_node_internal.temporary_match = Some((MatchTarget::Peer(child_node_internal_ptr.downgrade()), tree_node.children[0].1.clone()));
         interface.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         tree_node_internal.tree_node = None;
         let mut child_node_internal = child_node_internal_ptr.write();
-        child_node_internal.temporary_match = Some(MatchTarget::Peer(tree_node_internal_ptr.downgrade()));
-        interface.set_grow_state(&child_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+        let child_touching_ptr = child_node_internal.tree_node.as_ref().unwrap().parent.as_ref().unwrap().1.clone();
+        child_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), child_touching_ptr));
         let child_tree_node = child_node_internal.tree_node.as_ref().unwrap();
-        for grandson_ptr in child_tree_node.children.iter() {
+        interface.set_grow_state(&child_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+        for (grandson_ptr, _) in child_tree_node.children.iter() {
             self.match_subtree(grandson_ptr.upgrade_force(), interface, dual_module);
         }
         child_node_internal.tree_node = None;
     }
 
-    /// for any + node, match it with another node will augment the whole tree, breaking out into several matched pairs
+    /// for any + node, match it with another node will augment the whole tree, breaking out into several matched pairs;
+    /// `tree_grandson_ptr` is the grandson of tree_node_internal_ptr that touches `match_node_internal_ptr`
     pub fn augment_tree_given_matched<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, match_node_internal_ptr: PrimalNodeInternalPtr
-            , interface: &mut DualModuleInterface, dual_module: &mut D) {
+            , tree_touching_ptr: DualNodeWeak, interface: &mut DualModuleInterface, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
-        tree_node_internal.temporary_match = Some(MatchTarget::Peer(match_node_internal_ptr.downgrade()));
+        tree_node_internal.temporary_match = Some((MatchTarget::Peer(match_node_internal_ptr.downgrade()), tree_touching_ptr));
         interface.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
-        for child_ptr in tree_node.children.iter() {
+        for (child_ptr, _) in tree_node.children.iter() {
             if child_ptr != &match_node_internal_ptr.downgrade() {
                 self.match_subtree(child_ptr.upgrade_force(), interface, dual_module);
             }
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
-            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap().upgrade_force();
+            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap().0.upgrade_force();
             let grandparent_node_internal_ptr = {  // must unlock parent
                 let mut parent_node_internal = parent_node_internal_ptr.write();
                 let parent_tree_node = parent_node_internal.tree_node.as_ref().unwrap();
-                let grandparent_node_internal_weak = parent_tree_node.parent.as_ref().unwrap().clone();
+                let grandparent_node_internal_weak = parent_tree_node.parent.as_ref().unwrap().0.clone();
+                parent_node_internal.temporary_match = Some((MatchTarget::Peer(grandparent_node_internal_weak.clone()), parent_tree_node.parent.as_ref().unwrap().1.clone()));
                 parent_node_internal.tree_node = None;
-                parent_node_internal.temporary_match = Some(MatchTarget::Peer(grandparent_node_internal_weak.clone()));
                 interface.set_grow_state(&parent_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                 grandparent_node_internal_weak.upgrade_force()
             };
-            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), interface, dual_module);
+            let grandparent_touching_ptr = {
+                let grandparent_node_internal = grandparent_node_internal_ptr.read_recursive();
+                let grandparent_tree_node = grandparent_node_internal.tree_node.as_ref().unwrap();
+                grandparent_tree_node.children[0].1.clone()
+            };
+            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface, dual_module);
         }
         tree_node_internal.tree_node = None;
     }
 
     /// for any + node, match it with virtual boundary will augment the whole tree, breaking out into several matched pairs
     pub fn augment_tree_given_virtual_vertex<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, virtual_vertex_index: VertexIndex
-            , interface: &mut DualModuleInterface, dual_module: &mut D) {
+            , tree_touching_ptr: DualNodeWeak, interface: &mut DualModuleInterface, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
-        tree_node_internal.temporary_match = Some(MatchTarget::VirtualVertex(virtual_vertex_index));
+        tree_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), tree_touching_ptr));
         interface.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
-        for child_ptr in tree_node.children.iter() {
+        for (child_ptr, _) in tree_node.children.iter() {
             self.match_subtree(child_ptr.upgrade_force(), interface, dual_module);
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
-            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap().upgrade_force();
+            let parent_node_internal_ptr = tree_node.parent.as_ref().unwrap().0.upgrade_force();
             let grandparent_node_internal_ptr = {  // must unlock parent
                 let mut parent_node_internal = parent_node_internal_ptr.write();
                 let parent_tree_node = parent_node_internal.tree_node.as_ref().unwrap();
-                let grandparent_node_internal_weak = parent_tree_node.parent.as_ref().unwrap().clone();
+                let grandparent_node_internal_weak = parent_tree_node.parent.as_ref().unwrap().0.clone();
+                parent_node_internal.temporary_match = Some((MatchTarget::Peer(grandparent_node_internal_weak.clone()), parent_tree_node.parent.as_ref().unwrap().1.clone()));
                 parent_node_internal.tree_node = None;
-                parent_node_internal.temporary_match = Some(MatchTarget::Peer(grandparent_node_internal_weak.clone()));
                 interface.set_grow_state(&parent_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                 grandparent_node_internal_weak.upgrade_force()
             };
-            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), interface, dual_module);
+            let grandparent_touching_ptr = {
+                let grandparent_node_internal = grandparent_node_internal_ptr.read_recursive();
+                let grandparent_tree_node = grandparent_node_internal.tree_node.as_ref().unwrap();
+                grandparent_tree_node.children[0].1.clone()
+            };
+            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface, dual_module);
         }
         tree_node_internal.tree_node = None;
     }
@@ -807,13 +898,13 @@ impl PrimalModuleSerial {
                         if primal_module_internal.tree_node.is_some() { return Err(format!("blossom internal node {index} is still in a tree")) }
                         if primal_module_internal.temporary_match.is_some() { return Err(format!("blossom internal node {index} is still matched")) }
                     }
-                    if let Some(match_target) = primal_module_internal.temporary_match.as_ref() {
+                    if let Some((match_target, _)) = primal_module_internal.temporary_match.as_ref() {
                         if origin_node.grow_state != DualNodeGrowState::Stay { return Err(format!("matched node {index} is not set to Stay")) }
                         match match_target {
                             MatchTarget::Peer(peer_weak) => {
                                 let peer_ptr = peer_weak.upgrade_force();
                                 let peer = peer_ptr.read_recursive();
-                                if let Some(peer_match_target) = peer.temporary_match.as_ref() {
+                                if let Some((peer_match_target, _)) = peer.temporary_match.as_ref() {
                                     if peer_match_target != &MatchTarget::Peer(primal_module_internal_ptr.downgrade()) {
                                         return Err(format!("match peer {} is not matched with {}, instead it's {:?}", peer.index, index, peer_match_target))
                                     }
@@ -826,11 +917,11 @@ impl PrimalModuleSerial {
                     }
                     if let Some(tree_node) = primal_module_internal.tree_node.as_ref() {
                         // first check if every child's parent is myself
-                        for child_weak in tree_node.children.iter() {
+                        for (child_weak, _) in tree_node.children.iter() {
                             let child_ptr = child_weak.upgrade_force();
                             let child = child_ptr.read_recursive();
                             if let Some(child_tree_node) = child.tree_node.as_ref() {
-                                if child_tree_node.parent.as_ref() != Some(&primal_module_internal_ptr.downgrade()) {
+                                if child_tree_node.parent.as_ref().map(|x| &x.0) != Some(&primal_module_internal_ptr.downgrade()) {
                                     return Err(format!("{}'s child {} has a different parent, link broken", index, child.index))
                                 }
                             } else { return Err(format!("{}'s child {} doesn't belong to any tree, link broken", index, child.index)) }
@@ -844,12 +935,12 @@ impl PrimalModuleSerial {
                             }
                         }
                         // then check if I'm my parent's child
-                        if let Some(parent_weak) = tree_node.parent.as_ref() {
+                        if let Some((parent_weak, _)) = tree_node.parent.as_ref() {
                             let parent_ptr = parent_weak.upgrade_force();
                             let parent = parent_ptr.read_recursive();
                             if let Some(parent_tree_node) = parent.tree_node.as_ref() {
                                 let mut found_match_count = 0;
-                                for node_ptr in parent_tree_node.children.iter() {
+                                for (node_ptr, _) in parent_tree_node.children.iter() {
                                     if node_ptr == &primal_module_internal_ptr.downgrade() {
                                         found_match_count += 1;
                                     }
@@ -886,7 +977,7 @@ impl PrimalModuleSerial {
                             }
                             // go to parent
                             if let Some(current_tree_node) = current.tree_node.as_ref() {
-                                if let Some(current_parent_ptr) = current_tree_node.parent.as_ref() {
+                                if let Some((current_parent_ptr, _)) = current_tree_node.parent.as_ref() {
                                     let current_parent_ptr = current_parent_ptr.clone();
                                     drop(current);
                                     current_ptr = current_parent_ptr.upgrade_force();
@@ -1106,8 +1197,8 @@ pub mod tests {
         let (mut interface, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, syndrome_vertices, 6);
         let intermediate_matching = primal_module.intermediate_matching(&mut interface, &mut dual_module);
         println!("intermediate_matching: {intermediate_matching:?}");
-        let final_matching = primal_module.final_matching(&mut interface, &mut dual_module);
-        println!("final_matching: {final_matching:?}");
+        // let final_matching = primal_module.final_matching(&mut interface, &mut dual_module);
+        // println!("final_matching: {final_matching:?}");
     }
 
 }
