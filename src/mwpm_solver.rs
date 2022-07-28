@@ -7,7 +7,7 @@
 use super::util::*;
 use std::sync::Arc;
 use super::dual_module::{DualModuleInterface, DualModuleImpl};
-use super::primal_module::{PrimalModuleImpl};
+use super::primal_module::{PrimalModuleImpl, SubGraphBuilder};
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerial;
 use super::visualize::*;
@@ -34,6 +34,8 @@ pub struct SolverSerial {
     dual_module: DualModuleSerial,
     /// the interface between the primal and dual module
     interface: DualModuleInterface,
+    /// subgraph builder for easier integration with decoder
+    subgraph_builder: SubGraphBuilder,
 }
 
 impl Clone for SolverSerial {
@@ -58,11 +60,13 @@ impl SolverSerial {
         let mut dual_module = DualModuleSerial::new(initializer.vertex_num, &initializer.weighted_edges, &initializer.virtual_vertices);
         let primal_module = PrimalModuleSerial::new(initializer.vertex_num, &initializer.weighted_edges, &initializer.virtual_vertices);
         let interface = DualModuleInterface::new(&vec![], &mut dual_module);  // initialize with empty syndrome
+        let subgraph_builder = SubGraphBuilder::new(initializer.vertex_num, &initializer.weighted_edges, &initializer.virtual_vertices);
         Self {
             initializer: Arc::clone(&initializer),
             primal_module: primal_module,
             dual_module: dual_module,
             interface: interface,
+            subgraph_builder: subgraph_builder,
         }
     }
 
@@ -71,7 +75,7 @@ impl SolverSerial {
         self.primal_module.load(&self.interface);
     }
 
-    pub fn solve(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+    pub fn load_syndrome_and_solve(&mut self, syndrome_vertices: &Vec<usize>) {
         self.load_syndrome(syndrome_vertices);
         // grow until end
         let mut group_max_update_length = self.dual_module.compute_maximum_update_length();
@@ -87,6 +91,18 @@ impl SolverSerial {
             }
             group_max_update_length = self.dual_module.compute_maximum_update_length();
         }
+    }
+
+    /// solve subgraph directly
+    pub fn solve_subgraph(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<EdgeIndex> {
+        self.load_syndrome_and_solve(syndrome_vertices);
+        let perfect_matching = self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module);
+        self.subgraph_builder.load_perfect_matching(&perfect_matching);
+        self.subgraph_builder.get_subgraph()
+    }
+
+    pub fn solve(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+        self.load_syndrome_and_solve(syndrome_vertices);
         self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module).legacy_get_mwpm_result(&syndrome_vertices)
     }
 

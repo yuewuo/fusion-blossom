@@ -6,7 +6,8 @@
 use super::util::*;
 use super::dual_module::*;
 use crate::derivative::Derivative;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use super::complete_graph::*;
 
 
 #[derive(Derivative)]
@@ -172,6 +173,98 @@ impl PerfectMatching {
             } else { panic!("cannot find syndrome vertex {}", syndrome_vertex) }
         }
         mwpm_result
+    }
+
+}
+
+/// build a subgraph based on minimum-weight paths between matched pairs
+#[derive(Debug, Clone)]
+pub struct SubGraphBuilder {
+    /// number of vertices
+    pub vertex_num: usize,
+    /// just record the weighted edges in case we need it
+    weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
+    /// mapping from vertex pair to edge index
+    vertex_pair_edges: HashMap<(VertexIndex, VertexIndex), EdgeIndex>,
+    /// an instance of complete graph to compute minimum-weight path between any pair of vertices
+    pub complete_graph: CompleteGraph,
+    /// current subgraph, assuming edges are not very much
+    pub subgraph: BTreeSet<EdgeIndex>,
+}
+
+impl SubGraphBuilder {
+
+    pub fn new(vertex_num: usize, weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, _virtual_vertices: &Vec<VertexIndex>) -> Self {
+        let mut vertex_pair_edges = HashMap::with_capacity(weighted_edges.len());
+        for (edge_index, (i, j, _)) in weighted_edges.iter().enumerate() {
+            let id = if i < j { (*i, *j) } else { (*j, *i) };
+            vertex_pair_edges.insert(id, edge_index);
+        }
+        Self {
+            vertex_num: vertex_num,
+            weighted_edges: weighted_edges.clone(),
+            vertex_pair_edges: vertex_pair_edges,
+            complete_graph: CompleteGraph::new(vertex_num, weighted_edges),
+            subgraph: BTreeSet::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.subgraph.clear();
+    }
+
+    /// load perfect matching to the subgraph builder
+    pub fn load_perfect_matching(&mut self, perfect_matching: &PerfectMatching) {
+        self.clear();
+        for (ptr_1, ptr_2) in perfect_matching.peer_matchings.iter() {
+            let a_vid = {
+                let node = ptr_1.read_recursive();
+                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+            };
+            let b_vid = {
+                let node = ptr_2.read_recursive();
+                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+            };
+            self.add_matching(a_vid, b_vid);
+        }
+        for (ptr, virtual_vertex) in perfect_matching.virtual_matchings.iter() {
+            let a_vid = {
+                let node = ptr.read_recursive();
+                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+            };
+            self.add_matching(a_vid, *virtual_vertex);
+        }
+    }
+
+    /// add a matching, finding the minimum path and XOR them into the subgraph (if adding the same pair twice, they will cancel each other)
+    pub fn add_matching(&mut self, vertex_1: VertexIndex, vertex_2: VertexIndex) {
+        let (path, _) = self.complete_graph.get_path(vertex_1, vertex_2);
+        let mut a = vertex_1;
+        for (vertex, _) in path.iter() {
+            let b = *vertex;
+            let id = if a < b { (a, b) } else { (b, a) };
+            let edge_index = *self.vertex_pair_edges.get(&id).expect("edge should exist");
+            if self.subgraph.contains(&edge_index) {
+                self.subgraph.remove(&edge_index);
+            } else {
+                self.subgraph.insert(edge_index);
+            }
+            a = b;
+        }
+    }
+
+    /// get the total weight of the subgraph
+    pub fn total_weight(&self) -> Weight {
+        let mut weight = 0;
+        for edge_index in self.subgraph.iter() {
+            weight += self.weighted_edges[*edge_index].2;
+        }
+        weight
+    }
+
+    /// get subgraph as a vec
+    pub fn get_subgraph(&self) -> Vec<EdgeIndex> {
+        self.subgraph.iter().map(|x| *x).collect()
     }
 
 }

@@ -1203,7 +1203,8 @@ pub mod tests {
             group_max_update_length = dual_module.compute_maximum_update_length();
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1211,6 +1212,11 @@ pub mod tests {
             fusion_total_weight += detail.weight;
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        {  // also test subgraph builder
+            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            subgraph_builder.load_perfect_matching(&fusion_mwpm);
+            assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        }
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
@@ -1262,7 +1268,8 @@ pub mod tests {
             current_viz_id += 1;
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1270,6 +1277,11 @@ pub mod tests {
             fusion_total_weight += detail.weight;
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        {  // also test subgraph builder
+            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            subgraph_builder.load_perfect_matching(&fusion_mwpm);
+            assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        }
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
@@ -1321,7 +1333,8 @@ pub mod tests {
             current_viz_id += 1;
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1329,6 +1342,11 @@ pub mod tests {
             fusion_total_weight += detail.weight;
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        {  // also test subgraph builder
+            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            subgraph_builder.load_perfect_matching(&fusion_mwpm);
+            assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        }
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
@@ -1380,7 +1398,8 @@ pub mod tests {
             current_viz_id += 1;
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1388,6 +1407,11 @@ pub mod tests {
             fusion_total_weight += detail.weight;
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        {  // also test subgraph builder
+            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            subgraph_builder.load_perfect_matching(&fusion_mwpm);
+            assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        }
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
@@ -1438,7 +1462,8 @@ pub mod tests {
             current_viz_id += 1;
         }
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1446,6 +1471,11 @@ pub mod tests {
             fusion_total_weight += detail.weight;
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        {  // also test subgraph builder
+            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            subgraph_builder.load_perfect_matching(&fusion_mwpm);
+            assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        }
         assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
     }
 
