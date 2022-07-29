@@ -16,7 +16,7 @@ export async function show_snapshot(snapshot_idx, fusion_data) {
     // if primal nodes or dual nodes are not present, we cannot show it
     const snapshot = fusion_data.snapshots[snapshot_idx][1]
     if (snapshot.dual_nodes == null || snapshot.primal_nodes == null) {
-        console.error("snapshot doesn't have dual and primal nodes, so primal module is disabled")
+        // console.error("snapshot doesn't have dual and primal nodes, so primal module is disabled")
         show_primal.value = false
         return
     }

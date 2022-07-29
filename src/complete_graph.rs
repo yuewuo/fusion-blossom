@@ -1,6 +1,7 @@
 use super::util::*;
 use crate::priority_queue::PriorityQueue;
 use std::collections::BTreeMap;
+use super::dual_module::ErasureModifier;
 
 
 /// build complete graph out of skeleton graph using Dijkstra's algorithm
@@ -12,6 +13,10 @@ pub struct CompleteGraph {
     pub vertices: Vec<CompleteGraphVertex>,
     /// timestamp to invalidate all vertices without iterating them; only invalidating all vertices individually when active_timestamp is usize::MAX
     active_timestamp: FastClearTimestamp,
+    /// remember the edges that's modified by erasures
+    pub erasure_modifier: ErasureModifier,
+    /// original edge weights
+    pub weighted_edges: Vec<(usize, usize, Weight)>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,6 +28,7 @@ pub struct CompleteGraphVertex {
 }
 
 impl CompleteGraph {
+
     /// create complete graph given skeleton graph
     pub fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>) -> Self {
         let mut vertices: Vec<CompleteGraphVertex> = (0..vertex_num).map(|_| CompleteGraphVertex { edges: BTreeMap::new(), timestamp: 0, }).collect();
@@ -34,6 +40,35 @@ impl CompleteGraph {
             vertex_num: vertex_num,
             vertices: vertices,
             active_timestamp: 0,
+            erasure_modifier: ErasureModifier::new(),
+            weighted_edges: weighted_edges.clone(),
+        }
+    }
+
+    /// reset any temporary changes like erasure edges
+    pub fn reset(&mut self) {
+        // recover erasure edges
+        while self.erasure_modifier.has_modified_edges() {
+            let (edge_index, original_weight) = self.erasure_modifier.pop_modified_edge();
+            let (vertex_idx_1, vertex_idx_2, _original_weight) = &self.weighted_edges[edge_index];
+            debug_assert!(original_weight == *_original_weight);
+            let vertex_1 = &mut self.vertices[*vertex_idx_1];
+            assert_eq!(vertex_1.edges.insert(edge_index, original_weight), Some(0), "previous weight should be 0");
+            let vertex_2 = &mut self.vertices[*vertex_idx_2];
+            assert_eq!(vertex_2.edges.insert(edge_index, original_weight), Some(0), "previous weight should be 0");
+        }
+    }
+
+    /// temporarily set some edges to 0 weight, and when it resets, those edges will be reverted back to the original weight
+    pub fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+        assert!(!self.erasure_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
+        for edge_index in erasures.iter() {
+            let (vertex_idx_1, vertex_idx_2, original_weight) = &self.weighted_edges[*edge_index];
+            let vertex_1 = &mut self.vertices[*vertex_idx_1];
+            vertex_1.edges.insert(*edge_index, 0);
+            let vertex_2 = &mut self.vertices[*vertex_idx_2];
+            vertex_2.edges.insert(*edge_index, 0);
+            self.erasure_modifier.push_modified_edge(*edge_index, *original_weight);
         }
     }
 

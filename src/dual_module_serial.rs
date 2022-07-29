@@ -32,6 +32,8 @@ pub struct DualModuleSerial {
     pub active_list: Vec<DualNodeInternalWeak>,
     /// helps to deduplicate [`DualModuleSerial::active_list`]
     current_cycle: usize,
+    /// remember the edges that's modified by erasures
+    pub erasure_modifier: ErasureModifier,
 }
 
 pub struct DualNodeInternalPtr { ptr: Arc<RwLock<DualNodeInternal>>, }
@@ -311,11 +313,19 @@ impl DualModuleImpl for DualModuleSerial {
             vertex_index_bias: 0,
             active_list: vec![],
             current_cycle: 0,
+            erasure_modifier: ErasureModifier::new(),
         }
     }
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
+        // recover erasure edges first
+        while self.erasure_modifier.has_modified_edges() {
+            let (edge_index, original_weight) = self.erasure_modifier.pop_modified_edge();
+            let edge_ptr = &self.edges[edge_index];
+            let mut edge = edge_ptr.write(self.active_timestamp);
+            edge.weight = original_weight;
+        }
         self.clear_graph();
         self.nodes.clear();
         self.active_list.clear();
@@ -741,6 +751,19 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
+    fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+        assert!(!self.erasure_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
+        let active_timestamp = self.active_timestamp;
+        for edge_index in erasures.iter() {
+            let edge_ptr = &self.edges[*edge_index];
+            edge_ptr.dynamic_clear(active_timestamp);  // may visit stale edges
+            let mut edge = edge_ptr.write(active_timestamp);
+            let original_weight = edge.weight;
+            edge.weight = 0;  // an erasure error means this edge is totally uncertain: p=0.5, so new weight = ln((1-p)/p) = 0
+            self.erasure_modifier.push_modified_edge(*edge_index, original_weight);
+        }
+    }
+
 }
 
 /*
@@ -978,12 +1001,13 @@ impl DualModuleSerial {
         dual_node_internal_ptr.clone()
     }
 
-    /// adjust the boundary of each dual node to fit into the need of growing (`length` > 0) or shrinking (`length` < 0)
-    pub fn prepare_dual_node_growth(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool) {
+    /// this is equivalent to [`DualModuleSerial::prepare_dual_node_growth`] when there are no 0 weight edges, but when it encounters zero-weight edges, it will report `true`
+    pub fn prepare_dual_node_growth_single(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool) -> bool {
         let active_timestamp = self.active_timestamp;
         let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
         let mut propagating_vertices = Vec::<(VertexPtr, Option<DualNodeInternalWeak>)>::new();
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+        let mut newly_propagated_edge_has_zero_weight = false;
         if is_grow {  // gracefully update the boundary to ease growing
             let dual_node_internal = dual_node_internal_ptr.read_recursive();
             for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
@@ -1053,6 +1077,9 @@ impl DualModuleSerial {
                             count_newly_propagated_edge += 1;
                             updated_boundary.push((is_left, edge_weak.clone()));
                             let mut edge = edge_ptr.write(active_timestamp);
+                            if edge.weight == 0 {
+                                newly_propagated_edge_has_zero_weight = true;
+                            }
                             if is_left {
                                 edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
                                 edge.left_grandson_dual_node = grandson_dual_node.clone();
@@ -1127,7 +1154,9 @@ impl DualModuleSerial {
                     if this_vertex.is_syndrome {  // never shrink from the syndrome itself
                         updated_boundary.push((is_left, edge_weak.clone()));
                     } else {
-                        assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
+                        if edge.weight > 0 {  // do not check for 0-weight edges
+                            assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
+                        }
                         propagating_vertices.push((this_vertex_ptr.clone(), None));
                     }
                 } else {  // keep other edges
@@ -1160,6 +1189,9 @@ impl DualModuleSerial {
                         if newly_propagated_edge {
                             updated_boundary.push((!is_left, edge_weak.clone()));
                             let mut edge = edge_ptr.write(active_timestamp);
+                            if edge.weight == 0 {
+                                newly_propagated_edge_has_zero_weight = true;
+                            }
                             if is_left {
                                 assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
                                 assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
@@ -1190,6 +1222,15 @@ impl DualModuleSerial {
         std::mem::swap(&mut updated_boundary, &mut dual_node_internal.boundary);
         // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
         assert!(dual_node_internal.boundary.len() > 0, "the boundary of a dual cluster is never empty");
+        newly_propagated_edge_has_zero_weight
+    }
+
+    /// adjust the boundary of each dual node to fit into the need of growing (`length` > 0) or shrinking (`length` < 0)
+    pub fn prepare_dual_node_growth(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool) {
+        let mut need_another = self.prepare_dual_node_growth_single(dual_node_ptr, is_grow);
+        while need_another {  // when there are 0 weight edges, one may need to run multiple iterations to get it prepared in a proper state
+            need_another = self.prepare_dual_node_growth_single(dual_node_ptr, is_grow);
+        }
     }
 
 }
@@ -1576,6 +1617,48 @@ mod tests {
         let visualize_filename = format!("dual_module_debug_2.json");
         let syndrome_vertices = vec![5, 12, 16, 19, 21, 38, 42, 43, 49, 56, 61, 67, 72, 73, 74, 75, 76, 88, 89, 92, 93, 99, 105, 112, 117, 120, 124, 129];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 22);
+    }
+
+    #[test]
+    fn dual_module_erasure_1() {  // cargo test dual_module_erasure_1 -- --nocapture
+        let visualize_filename = format!("dual_module_erasure_1.json");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        // create dual module
+        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // try to work on a simple syndrome
+        code.vertices[64].is_syndrome = true;
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        // generate erasures and load them to the dual module
+        let erasures = vec![110, 78, 57, 142, 152, 163, 164];
+        dual_module.load_erasures(&erasures);
+        visualizer.snapshot_combined(format!("load erasure"), vec![&interface, &dual_module]).unwrap();
+        // create dual nodes and grow them by half length
+        for _ in 0..3 {
+            interface.grow_iterative(2 * half_weight, &mut dual_module);
+            visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        }
+        // set them to shrink
+        let dual_node_ptr = interface.nodes[0].as_ref().unwrap().clone();
+        interface.set_grow_state(&dual_node_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        // shrink them back, to make sure the operation is reversible
+        for _ in 0..3 {
+            interface.grow_iterative(2 * half_weight, &mut dual_module);
+            visualizer.snapshot_combined(format!("shrink"), vec![&interface, &dual_module]).unwrap();
+        }
+        // cancel the erasures and grow the dual module in normal case, this should automatically clear the erasures
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("after clear"), vec![&interface, &dual_module]).unwrap();
+        dual_module.load_erasures(&vec![]);  // no erasures this time, to test if the module recovers correctly
+        for _ in 0..3 {
+            interface.grow_iterative(2 * half_weight, &mut dual_module);
+            visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        }
     }
     
 }

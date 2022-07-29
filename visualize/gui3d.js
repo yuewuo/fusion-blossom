@@ -381,8 +381,8 @@ export async function refresh_snapshot_data() {
             }
             const left_start = local_edge_offset
             const [left_grown, right_grown] = translate_edge(edge.lg, edge.rg, edge.w)
-            let left_end = local_edge_offset + edge_length * (left_grown / edge.w)
-            let right_end = local_edge_offset + edge_length * ((edge.w - right_grown) / edge.w)
+            let left_end = local_edge_offset + edge_length * (edge.w == 0 ? 0.5 : (left_grown / edge.w))  // always show 0-weight edge as fully-grown
+            let right_end = local_edge_offset + edge_length * (edge.w == 0 ? 0.5 : (edge.w - right_grown) / edge.w)  // always show 0-weight edge as fully-grown
             const right_start = local_edge_offset + edge_length
             edge_caches.push({
                 position: {

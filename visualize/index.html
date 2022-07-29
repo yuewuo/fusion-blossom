@@ -198,13 +198,13 @@ h3 {
                         </div>
                     </q-btn>
                     <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
+                        <div class="left-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
                             {{ edge.left_grown == 0 ? "|" : edge.left_grown }}
                         </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
+                        <div class="unexplored" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0 : 0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
                             {{ edge.unexplored == 0 ? "|" : edge.unexplored }}
                         </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
+                        <div class="right-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
                             {{ edge.right_grown == 0 ? "|" : edge.right_grown }}
                         </div>
                     </div>
@@ -240,14 +240,14 @@ h3 {
                             Vertex</span><br>{{ selected_edge.left_vertex_index }}
                         </div>
                     </q-btn>
-                    <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', selected_edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.translated_left_grown / selected_edge.weight})` }">
+                    <div class="edge-visualizer" style="width: 320px;" @mouseenter="mouseenter('edge', selected_edge.edge_index)" @mouseleave="mouseleave()">
+                        <div class="left-grown" :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0.5 : 0.01 + 0.97 * selected_edge.translated_left_grown / selected_edge.weight})` }">
                             {{ selected_edge.left_grown == 0 ? "|" : selected_edge.left_grown }}
                         </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.translated_unexplored / selected_edge.weight})` }">
+                        <div class="unexplored" :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0 : 0.01 + 0.97 * selected_edge.translated_unexplored / selected_edge.weight})` }">
                             {{ selected_edge.unexplored == 0 ? "|" : selected_edge.unexplored }}
                         </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${0.01 + 0.97 * selected_edge.translated_right_grown / selected_edge.weight})` }">
+                        <div class="right-grown" :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0.5 : 0.01 + 0.97 * selected_edge.translated_right_grown / selected_edge.weight})` }">
                             {{ selected_edge.right_grown == 0 ? "|" : selected_edge.right_grown }}
                         </div>
                     </div>

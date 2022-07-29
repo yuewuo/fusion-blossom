@@ -351,6 +351,11 @@ pub trait DualModuleImpl {
     /// note that reversing the process is possible, but not recommended: to do that, reverse the state of each dual node, Grow->Shrink, Shrink->Grow
     fn grow(&mut self, length: Weight);
 
+    /// optional support for erasures: temporarily set some edges to 0 weight, and when it clears, those edges must be reverted back to the original weight
+    fn load_erasures(&mut self, _erasures: &Vec<EdgeIndex>) {
+        unimplemented!("load erasure is an optional interface, and the current dual module implementation doesn't support it");
+    }
+
 }
 
 impl FusionVisualizer for DualModuleInterface {
@@ -795,6 +800,48 @@ impl MaxUpdateLength {
             Self::VertexShrinkStop(a) => { Some(a.upgrade_force()) },
             _ => { None },
         }
+    }
+
+}
+
+/// temporarily remember the weights that has been changed, so that it can revert back
+#[derive(Debug, Clone)]
+pub struct ErasureModifier {
+    /// edge with 0 weighted caused by the erasure, used by UF decoder or (indirectly) by MWPM decoder
+    pub modified: Vec<(EdgeIndex, Weight)>,
+}
+
+impl ErasureModifier {
+
+    pub fn new() -> Self {
+        Self {
+            modified: Vec::new(),
+        }
+    }
+
+    /// record the modified edge
+    pub fn push_modified_edge(&mut self, erasure_edge: EdgeIndex, original_weight: Weight) {
+        self.modified.push((erasure_edge, original_weight));
+    }
+
+    /// if some edges are not recovered
+    pub fn has_modified_edges(&self) -> bool {
+        !self.modified.is_empty()
+    }
+
+    /// retrieve the last modified edge, panic if no more modified edges
+    pub fn pop_modified_edge(&mut self) -> (EdgeIndex, Weight) {
+        self.modified.pop().expect("no more modified edges, please check `has_modified_edges` before calling this method")
+    }
+
+}
+
+impl std::ops::Deref for ErasureModifier {
+
+    type Target = Vec<(EdgeIndex, Weight)>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.modified
     }
 
 }

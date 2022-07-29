@@ -84,7 +84,7 @@ pub fn main() {
                             dual_module.clear();
                             primal_module.clear();
                             pb.set(round);
-                            let syndrome_vertices = code.generate_random_errors(round);
+                            let (syndrome_vertices, _erasures) = code.generate_random_errors(round);
                             let mut visualizer = None;
                             if enable_visualizer {
                                 let mut new_visualizer = Visualizer::new(Some(visualize_data_folder() + static_visualize_data_filename().as_str())).unwrap();
@@ -123,7 +123,8 @@ pub fn main() {
                                 // if blossom_total_weight > 0 { println!("w {} {}", interface.sum_dual_variables, blossom_total_weight); }
                                 assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
                                 // also construct the perfect matching from fusion blossom to compare them
-                                let fusion_mwpm_result = primal_module.perfect_matching(&mut interface, &mut dual_module).legacy_get_mwpm_result(&syndrome_vertices);
+                                let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+                                let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
                                 let fusion_details = fusion_blossom::detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
                                 let mut fusion_total_weight = 0;
                                 for detail in fusion_details.iter() {
@@ -131,6 +132,10 @@ pub fn main() {
                                 }
                                 // compare with ground truth from the blossom V algorithm
                                 assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+                                // also test subgraph builder
+                                let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+                                subgraph_builder.load_perfect_matching(&fusion_mwpm);
+                                assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
                             }
                         }
                         pb.finish();

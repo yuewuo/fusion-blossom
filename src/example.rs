@@ -33,6 +33,8 @@ pub struct CodeEdge {
     pub vertices: (usize, usize),
     /// probability of flipping the results of these two vertices; do not set p to 0 to remove edge: if desired, create a new code type
     pub p: f64,
+    /// probability of having a reported event of error on this edge
+    pub pe: f64,
     /// the integer weight of this edge
     pub half_weight: Weight,
 }
@@ -42,6 +44,7 @@ impl CodeEdge {
         Self {
             vertices: (a, b),
             p: 0.,
+            pe: 0.,
             half_weight: 0,
         }
     }
@@ -121,6 +124,14 @@ pub trait ExampleCode {
         }
     }
 
+    /// set erasure probability of all edges; user can set individual probabilities
+    fn set_erasure_probability(&mut self, pe: f64) {
+        let (_vertices, edges) = self.vertices_edges();
+        for edge in edges.iter_mut() {
+            edge.pe = pe;
+        }
+    }
+
     /// automatically create vertices given edges
     fn fill_vertices(&mut self, vertex_num: usize) {
         let (vertices, edges) = self.vertices_edges();
@@ -194,14 +205,21 @@ pub trait ExampleCode {
     }
     
     /// generate random errors based on the edge probabilities and a seed for pseudo number generator
-    fn generate_random_errors(&mut self, seed: u64) -> Vec<usize> {
+    fn generate_random_errors(&mut self, seed: u64) -> (Vec<VertexIndex>, Vec<EdgeIndex>) {
         let mut rng = DeterministicRng::seed_from_u64(seed);
         let (vertices, edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
             vertex.is_syndrome = false;
         }
-        for edge in edges.iter() {
-            if rng.next_f64() < edge.p {
+        let mut erasures = Vec::<EdgeIndex>::new();
+        for (edge_idx, edge) in edges.iter().enumerate() {
+            let p = if rng.next_f64() < edge.pe {
+                erasures.push(edge_idx);
+                0.5  // when erasure happens, there are 50% chance of error
+            } else {
+                edge.p
+            };
+            if rng.next_f64() < p {
                 let (v1, v2) = edge.vertices;
                 let vertex_1 = &mut vertices[v1];
                 if !vertex_1.is_virtual {
@@ -213,7 +231,7 @@ pub trait ExampleCode {
                 }
             }
         }
-        self.get_syndrome()
+        (self.get_syndrome(), erasures)
     }
 
     fn is_virtual(&self, vertex_idx: usize) -> bool {
