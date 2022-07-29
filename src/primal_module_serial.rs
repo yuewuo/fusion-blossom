@@ -1489,4 +1489,74 @@ pub mod tests {
         println!("perfect_matching: {perfect_matching:?}");
     }
 
+    /// debug a case of non-zero weight given pure erasure
+    #[test]
+    fn primal_module_debug_6() {  // cargo test primal_module_debug_6 -- --nocapture
+        let visualize_filename = format!("primal_module_debug_6.json");
+        let syndrome_vertices = vec![13, 34, 87, 107, 276, 296];
+        let erasures = vec![13, 33, 174, 516];
+        let max_half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(19, 0., max_half_weight);
+        code.set_erasure_probability(0.003);
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(&visualize_filename);
+        let (vertex_num, mut weighted_edges, virtual_vertices) = code.get_initializer();
+        for edge_index in erasures.iter() {
+            let (vertex_idx_1, vertex_idx_2, _) = &weighted_edges[*edge_index];
+            weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
+        }
+        // blossom V ground truth
+        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
+        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let mut blossom_total_weight = 0;
+        for detail in blossom_details.iter() {
+            println!("    {detail:?}");
+            blossom_total_weight += detail.weight;
+        }
+        // create dual module
+        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        // try to work on a simple syndrome
+        code.set_syndrome(&syndrome_vertices);
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let mut current_viz_id = 1;
+        // grow until end
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        while !group_max_update_length.is_empty() {
+            println!("group_max_update_length: {:?}", group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                interface.grow(length, &mut dual_module);
+                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
+            } else {
+                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
+            }
+            group_max_update_length = dual_module.compute_maximum_update_length();
+            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
+            current_viz_id += 1;
+        }
+        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let mut fusion_total_weight = 0;
+        for detail in fusion_details.iter() {
+            println!("    {detail:?}");
+            fusion_total_weight += detail.weight;
+        }
+        assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
+        {  // also test subgraph builder
+            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            subgraph_builder.load_perfect_matching(&fusion_mwpm);
+            assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        }
+        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+    }
+
 }

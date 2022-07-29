@@ -182,8 +182,6 @@ impl PerfectMatching {
 pub struct SubGraphBuilder {
     /// number of vertices
     pub vertex_num: usize,
-    /// just record the weighted edges in case we need it
-    weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
     /// mapping from vertex pair to edge index
     vertex_pair_edges: HashMap<(VertexIndex, VertexIndex), EdgeIndex>,
     /// an instance of complete graph to compute minimum-weight path between any pair of vertices
@@ -202,7 +200,6 @@ impl SubGraphBuilder {
         }
         Self {
             vertex_num: vertex_num,
-            weighted_edges: weighted_edges.clone(),
             vertex_pair_edges: vertex_pair_edges,
             complete_graph: CompleteGraph::new(vertex_num, weighted_edges),
             subgraph: BTreeSet::new(),
@@ -211,11 +208,16 @@ impl SubGraphBuilder {
 
     pub fn clear(&mut self) {
         self.subgraph.clear();
+        self.complete_graph.reset();
+    }
+
+    /// temporarily set some edges to 0 weight, and when it resets, those edges will be reverted back to the original weight
+    pub fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+        self.complete_graph.load_erasures(erasures);
     }
 
     /// load perfect matching to the subgraph builder
     pub fn load_perfect_matching(&mut self, perfect_matching: &PerfectMatching) {
-        self.clear();
         for (ptr_1, ptr_2) in perfect_matching.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
@@ -257,7 +259,7 @@ impl SubGraphBuilder {
     pub fn total_weight(&self) -> Weight {
         let mut weight = 0;
         for edge_index in self.subgraph.iter() {
-            weight += self.weighted_edges[*edge_index].2;
+            weight += self.complete_graph.weighted_edges[*edge_index].2;
         }
         weight
     }

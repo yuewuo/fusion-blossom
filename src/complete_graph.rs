@@ -22,7 +22,7 @@ pub struct CompleteGraph {
 #[derive(Debug, Clone)]
 pub struct CompleteGraphVertex {
     /// all skeleton graph edges connected to this vertex
-    pub edges: BTreeMap<EdgeIndex, Weight>,
+    pub edges: BTreeMap<VertexIndex, Weight>,
     /// timestamp for Dijkstra's algorithm
     timestamp: FastClearTimestamp,
 }
@@ -50,12 +50,12 @@ impl CompleteGraph {
         // recover erasure edges
         while self.erasure_modifier.has_modified_edges() {
             let (edge_index, original_weight) = self.erasure_modifier.pop_modified_edge();
-            let (vertex_idx_1, vertex_idx_2, _original_weight) = &self.weighted_edges[edge_index];
-            debug_assert!(original_weight == *_original_weight);
+            let (vertex_idx_1, vertex_idx_2, _) = &self.weighted_edges[edge_index];
             let vertex_1 = &mut self.vertices[*vertex_idx_1];
-            assert_eq!(vertex_1.edges.insert(edge_index, original_weight), Some(0), "previous weight should be 0");
+            assert_eq!(vertex_1.edges.insert(*vertex_idx_2, original_weight), Some(0), "previous weight should be 0");
             let vertex_2 = &mut self.vertices[*vertex_idx_2];
-            assert_eq!(vertex_2.edges.insert(edge_index, original_weight), Some(0), "previous weight should be 0");
+            assert_eq!(vertex_2.edges.insert(*vertex_idx_1, original_weight), Some(0), "previous weight should be 0");
+            self.weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
         }
     }
 
@@ -65,10 +65,11 @@ impl CompleteGraph {
         for edge_index in erasures.iter() {
             let (vertex_idx_1, vertex_idx_2, original_weight) = &self.weighted_edges[*edge_index];
             let vertex_1 = &mut self.vertices[*vertex_idx_1];
-            vertex_1.edges.insert(*edge_index, 0);
+            vertex_1.edges.insert(*vertex_idx_2, 0);
             let vertex_2 = &mut self.vertices[*vertex_idx_2];
-            vertex_2.edges.insert(*edge_index, 0);
+            vertex_2.edges.insert(*vertex_idx_1, 0);
             self.erasure_modifier.push_modified_edge(*edge_index, *original_weight);
+            self.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
         }
     }
 

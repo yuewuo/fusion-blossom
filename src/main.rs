@@ -57,6 +57,13 @@ pub fn main() {
                             codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
                         }
                     }
+                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // test erasures
+                        for d in [3, 7, 11, 15, 19] {
+                            let mut code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
+                            code.set_erasure_probability(p);
+                            codes.push((format!("mixed erasure planar {d} {p}"), Box::new(code)));
+                        }
+                    }
                     for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                         for d in [3, 7, 11] {
                             codes.push((format!("phenomenological {d} {p}"), Box::new(PhenomenologicalPlanarCode::new(d, d, p, max_half_weight))));
@@ -75,16 +82,17 @@ pub fn main() {
                         let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
                         pb.message(format!("{code_name} [{code_idx}/{codes_len}] ").as_str());
                         // create dual module
-                        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+                        let (vertex_num, mut weighted_edges, virtual_vertices) = code.get_initializer();
                         let mut dual_module = dual_module_serial::DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
                         // create primal module
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
                         primal_module.debug_resolve_only_one = true;  // to enable debug mode
+                        let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
                         for round in 0..total_rounds {
                             dual_module.clear();
                             primal_module.clear();
                             pb.set(round);
-                            let (syndrome_vertices, _erasures) = code.generate_random_errors(round);
+                            let (syndrome_vertices, erasures) = code.generate_random_errors(round);
                             let mut visualizer = None;
                             if enable_visualizer {
                                 let mut new_visualizer = Visualizer::new(Some(visualize_data_folder() + static_visualize_data_filename().as_str())).unwrap();
@@ -94,7 +102,9 @@ pub fn main() {
                             // try to work on a simple syndrome
                             code.set_syndrome(&syndrome_vertices);
                             // println!("syndrome_vertices: {syndrome_vertices:?}");
+                            // println!("erasures: {erasures:?}");
                             let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+                            dual_module.load_erasures(&erasures);
                             // interface.debug_print_actions = true;
                             primal_module.load(&interface);  // load syndrome and connect to the dual module interface
                             visualizer.as_mut().map(|v| v.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap());
@@ -113,6 +123,13 @@ pub fn main() {
                                 group_max_update_length = dual_module.compute_maximum_update_length();
                             }
                             if !disable_blossom {
+                                // prepare modified weighted edges
+                                let mut erasure_modifier = ErasureModifier::new();
+                                for edge_index in erasures.iter() {
+                                    let (vertex_idx_1, vertex_idx_2, original_weight) = &weighted_edges[*edge_index];
+                                    erasure_modifier.push_modified_edge(*edge_index, *original_weight);
+                                    weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
+                                }
                                 // use blossom V to compute ground truth
                                 let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
                                 let blossom_details = fusion_blossom::detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
@@ -130,11 +147,19 @@ pub fn main() {
                                 for detail in fusion_details.iter() {
                                     fusion_total_weight += detail.weight;
                                 }
+                                // recover those weighted_edges
+                                while erasure_modifier.has_modified_edges() {
+                                    let (edge_index, original_weight) = erasure_modifier.pop_modified_edge();
+                                    let (vertex_idx_1, vertex_idx_2, _) = &weighted_edges[edge_index];
+                                    weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
+                                }
                                 // compare with ground truth from the blossom V algorithm
                                 assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
                                 // also test subgraph builder
-                                let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+                                subgraph_builder.clear();
+                                subgraph_builder.load_erasures(&erasures);
                                 subgraph_builder.load_perfect_matching(&fusion_mwpm);
+                                // println!("blossom_total_weight: {blossom_total_weight} = {} = {fusion_total_weight}", subgraph_builder.total_weight());
                                 assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
                             }
                         }
