@@ -33,7 +33,7 @@ pub struct DualModuleSerial {
     /// helps to deduplicate [`DualModuleSerial::active_list`]
     current_cycle: usize,
     /// remember the edges that's modified by erasures
-    pub erasure_modifier: ErasureModifier,
+    pub edge_modifier: EdgeWeightModifier,
 }
 
 pub struct DualNodeInternalPtr { ptr: Arc<RwLock<DualNodeInternal>>, }
@@ -313,15 +313,15 @@ impl DualModuleImpl for DualModuleSerial {
             vertex_index_bias: 0,
             active_list: vec![],
             current_cycle: 0,
-            erasure_modifier: ErasureModifier::new(),
+            edge_modifier: EdgeWeightModifier::new(),
         }
     }
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
         // recover erasure edges first
-        while self.erasure_modifier.has_modified_edges() {
-            let (edge_index, original_weight) = self.erasure_modifier.pop_modified_edge();
+        while self.edge_modifier.has_modified_edges() {
+            let (edge_index, original_weight) = self.edge_modifier.pop_modified_edge();
             let edge_ptr = &self.edges[edge_index];
             let mut edge = edge_ptr.write(self.active_timestamp);
             edge.weight = original_weight;
@@ -751,16 +751,16 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
-    fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
-        assert!(!self.erasure_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
+    fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+        assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         let active_timestamp = self.active_timestamp;
-        for edge_index in erasures.iter() {
+        for (edge_index, target_weight) in edge_modifier.iter() {
             let edge_ptr = &self.edges[*edge_index];
             edge_ptr.dynamic_clear(active_timestamp);  // may visit stale edges
             let mut edge = edge_ptr.write(active_timestamp);
             let original_weight = edge.weight;
-            edge.weight = 0;  // an erasure error means this edge is totally uncertain: p=0.5, so new weight = ln((1-p)/p) = 0
-            self.erasure_modifier.push_modified_edge(*edge_index, original_weight);
+            edge.weight = *target_weight;
+            self.edge_modifier.push_modified_edge(*edge_index, original_weight);
         }
     }
 

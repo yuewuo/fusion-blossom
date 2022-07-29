@@ -124,10 +124,10 @@ pub fn main() {
                             }
                             if !disable_blossom {
                                 // prepare modified weighted edges
-                                let mut erasure_modifier = ErasureModifier::new();
+                                let mut edge_modifier = EdgeWeightModifier::new();
                                 for edge_index in erasures.iter() {
                                     let (vertex_idx_1, vertex_idx_2, original_weight) = &weighted_edges[*edge_index];
-                                    erasure_modifier.push_modified_edge(*edge_index, *original_weight);
+                                    edge_modifier.push_modified_edge(*edge_index, *original_weight);
                                     weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
                                 }
                                 // use blossom V to compute ground truth
@@ -148,8 +148,8 @@ pub fn main() {
                                     fusion_total_weight += detail.weight;
                                 }
                                 // recover those weighted_edges
-                                while erasure_modifier.has_modified_edges() {
-                                    let (edge_index, original_weight) = erasure_modifier.pop_modified_edge();
+                                while edge_modifier.has_modified_edges() {
+                                    let (edge_index, original_weight) = edge_modifier.pop_modified_edge();
                                     let (vertex_idx_1, vertex_idx_2, _) = &weighted_edges[edge_index];
                                     weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
                                 }

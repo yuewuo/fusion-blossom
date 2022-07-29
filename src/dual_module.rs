@@ -351,9 +351,16 @@ pub trait DualModuleImpl {
     /// note that reversing the process is possible, but not recommended: to do that, reverse the state of each dual node, Grow->Shrink, Shrink->Grow
     fn grow(&mut self, length: Weight);
 
-    /// optional support for erasures: temporarily set some edges to 0 weight, and when it clears, those edges must be reverted back to the original weight
-    fn load_erasures(&mut self, _erasures: &Vec<EdgeIndex>) {
-        unimplemented!("load erasure is an optional interface, and the current dual module implementation doesn't support it");
+    /// optional support for edge modifier. for example, erasure errors temporarily set some edges to 0 weight.
+    /// When it clears, those edges must be reverted back to the original weight
+    fn load_edge_modifier(&mut self, _edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+        unimplemented!("load_edge_modifier is an optional interface, and the current dual module implementation doesn't support it");
+    }
+
+    /// an erasure error means this edge is totally uncertain: p=0.5, so new weight = ln((1-p)/p) = 0
+    fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+        let edge_modifier = erasures.iter().map(|edge_index| (*edge_index, 0)).collect();
+        self.load_edge_modifier(&edge_modifier);
     }
 
 }
@@ -806,12 +813,12 @@ impl MaxUpdateLength {
 
 /// temporarily remember the weights that has been changed, so that it can revert back
 #[derive(Debug, Clone)]
-pub struct ErasureModifier {
-    /// edge with 0 weighted caused by the erasure, used by UF decoder or (indirectly) by MWPM decoder
+pub struct EdgeWeightModifier {
+    /// edge with changed weighted caused by the erasure or X/Z correlation
     pub modified: Vec<(EdgeIndex, Weight)>,
 }
 
-impl ErasureModifier {
+impl EdgeWeightModifier {
 
     pub fn new() -> Self {
         Self {
@@ -836,7 +843,7 @@ impl ErasureModifier {
 
 }
 
-impl std::ops::Deref for ErasureModifier {
+impl std::ops::Deref for EdgeWeightModifier {
 
     type Target = Vec<(EdgeIndex, Weight)>;
 
