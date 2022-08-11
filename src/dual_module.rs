@@ -164,49 +164,7 @@ impl DualNode {
 
 }
 
-/// the shared pointer of [`DualNode`]
-pub struct DualNodePtr { ptr: Arc<RwLock<DualNode>>, }
-pub struct DualNodeWeak { ptr: Weak<RwLock<DualNode>>, }
-
-impl DualNodePtr { pub fn downgrade(&self) -> DualNodeWeak { DualNodeWeak { ptr: Arc::downgrade(&self.ptr) } } }
-impl DualNodeWeak { pub fn upgrade_force(&self) -> DualNodePtr { DualNodePtr { ptr: self.ptr.upgrade().unwrap() } } }
-
-impl Clone for DualNodePtr {
-    fn clone(&self) -> Self {
-        Self::new_ptr(Arc::clone(self.ptr()))
-    }
-}
-
-impl RwLockPtr<DualNode> for DualNodePtr {
-    fn new_ptr(ptr: Arc<RwLock<DualNode>>) -> Self { Self { ptr: ptr }  }
-    fn new(obj: DualNode) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<DualNode>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<DualNode>> { &mut self.ptr }
-}
-
-impl PartialEq for DualNodePtr {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-}
-
-impl Eq for DualNodePtr { }
-
-impl Clone for DualNodeWeak {
-    fn clone(&self) -> Self {
-       Self { ptr: self.ptr.clone() }
-    }
-}
-
-impl std::fmt::Debug for DualNodeWeak {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
-    }
-}
-
-impl PartialEq for DualNodeWeak {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
-}
-
-impl Eq for DualNodeWeak { }
+create_ptr_types!(DualNode, DualNodePtr, DualNodeWeak);
 
 impl Ord for DualNodePtr {
     // a consistent compare (during a single program)
@@ -235,6 +193,12 @@ impl std::fmt::Debug for DualNodePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let dual_node = self.read_recursive();
         write!(f, "{}", dual_node.index)
+    }
+}
+
+impl std::fmt::Debug for DualNodeWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
     }
 }
 

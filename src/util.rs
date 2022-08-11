@@ -154,3 +154,103 @@ pub trait RwLockPtr<ObjType> {
     }
 
 }
+
+#[macro_export]
+macro_rules! create_ptr_types {
+    (
+        $struct_name:ident, $ptr_name:ident, $weak_name:ident
+    ) => {
+
+        pub struct $ptr_name { ptr: Arc<RwLock<$struct_name>>, }
+        pub struct $weak_name { ptr: Weak<RwLock<$struct_name>>, }
+
+        impl $ptr_name { pub fn downgrade(&self) -> $weak_name { $weak_name { ptr: Arc::downgrade(&self.ptr) } } }
+        impl $weak_name {
+            pub fn upgrade_force(&self) -> $ptr_name { $ptr_name { ptr: self.ptr.upgrade().unwrap() } }
+            pub fn upgrade(&self) -> Option<$ptr_name> { self.ptr.upgrade().map(|x| $ptr_name { ptr: x }) }
+        }
+
+        impl Clone for $ptr_name {
+            fn clone(&self) -> Self {
+                Self::new_ptr(Arc::clone(self.ptr()))
+            }
+        }
+
+        impl RwLockPtr<$struct_name> for $ptr_name {
+            fn new_ptr(ptr: Arc<RwLock<$struct_name>>) -> Self { Self { ptr: ptr }  }
+            fn new(obj: $struct_name) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+            #[inline(always)] fn ptr(&self) -> &Arc<RwLock<$struct_name>> { &self.ptr }
+            #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<$struct_name>> { &mut self.ptr }
+        }
+
+        impl PartialEq for $ptr_name {
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl Eq for $ptr_name { }
+
+        impl Clone for $weak_name {
+            fn clone(&self) -> Self {
+            Self { ptr: self.ptr.clone() }
+            }
+        }
+
+        impl PartialEq for $weak_name {
+            fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+        }
+
+        impl Eq for $weak_name { }
+
+    }
+}
+#[allow(unused_imports)] pub use create_ptr_types;
+
+#[macro_export]
+macro_rules! create_fast_clear_ptr_types {
+    (
+        $struct_name:ident, $ptr_name:ident, $weak_name:ident
+    ) => {
+
+        pub struct $ptr_name { ptr: Arc<RwLock<$struct_name>>, }
+        pub struct $weak_name { ptr: Weak<RwLock<$struct_name>>, }
+
+        impl $ptr_name { pub fn downgrade(&self) -> $weak_name { $weak_name { ptr: Arc::downgrade(&self.ptr) } } }
+        impl $weak_name {
+            pub fn upgrade_force(&self) -> $ptr_name { $ptr_name { ptr: self.ptr.upgrade().unwrap() } }
+            pub fn upgrade(&self) -> Option<$ptr_name> { self.ptr.upgrade().map(|x| $ptr_name { ptr: x }) }
+        }
+
+        impl Clone for $ptr_name {
+            fn clone(&self) -> Self {
+                Self::new_ptr(Arc::clone(self.ptr()))
+            }
+        }
+
+        impl FastClearRwLockPtr<$struct_name> for $ptr_name {
+            fn new_ptr(ptr: Arc<RwLock<$struct_name>>) -> Self { Self { ptr: ptr }  }
+            fn new(obj: $struct_name) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+            #[inline(always)] fn ptr(&self) -> &Arc<RwLock<$struct_name>> { &self.ptr }
+            #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<$struct_name>> { &mut self.ptr }
+        }
+
+        impl PartialEq for $ptr_name {
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl Eq for $ptr_name { }
+
+        impl Clone for $weak_name {
+            fn clone(&self) -> Self {
+            Self { ptr: self.ptr.clone() }
+            }
+        }
+
+        impl PartialEq for $weak_name {
+            fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+        }
+
+        impl Eq for $weak_name { }
+
+    }
+}
+#[allow(unused_imports)] pub use create_fast_clear_ptr_types;

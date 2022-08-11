@@ -20,52 +20,6 @@ pub struct PrimalModuleSerial {
     pub debug_resolve_only_one: bool,
 }
 
-pub struct PrimalNodeInternalPtr { ptr: Arc<RwLock<PrimalNodeInternal>>, }
-pub struct PrimalNodeInternalWeak { ptr: Weak<RwLock<PrimalNodeInternal>>, }
-
-impl PrimalNodeInternalPtr { pub fn downgrade(&self) -> PrimalNodeInternalWeak { PrimalNodeInternalWeak { ptr: Arc::downgrade(&self.ptr) } } }
-impl PrimalNodeInternalWeak { pub fn upgrade_force(&self) -> PrimalNodeInternalPtr { PrimalNodeInternalPtr { ptr: self.ptr.upgrade().unwrap() } } }
-
-impl Clone for PrimalNodeInternalPtr {
-    fn clone(&self) -> Self {
-        Self::new_ptr(Arc::clone(self.ptr()))
-    }
-}
-
-impl RwLockPtr<PrimalNodeInternal> for PrimalNodeInternalPtr {
-    fn new_ptr(ptr: Arc<RwLock<PrimalNodeInternal>>) -> Self { Self { ptr: ptr }  }
-    fn new(obj: PrimalNodeInternal) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<PrimalNodeInternal>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<PrimalNodeInternal>> { &mut self.ptr }
-}
-
-impl PartialEq for PrimalNodeInternalPtr {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-}
-
-impl std::fmt::Debug for PrimalNodeInternalPtr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let primal_node_internal = self.read_recursive();
-        write!(f, "{}", primal_node_internal.index)
-    }
-}
-
-impl Clone for PrimalNodeInternalWeak {
-    fn clone(&self) -> Self {
-       Self { ptr: self.ptr.clone() }
-    }
-}
-
-impl std::fmt::Debug for PrimalNodeInternalWeak {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
-    }
-}
-
-impl PartialEq for PrimalNodeInternalWeak {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
-}
-
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct AlternatingTreeNode {
@@ -98,6 +52,21 @@ pub struct PrimalNodeInternal {
     pub tree_node: Option<AlternatingTreeNode>,
     /// temporary match with another node, (target, touching_grandson)
     pub temporary_match: Option<(MatchTarget, DualNodeWeak)>,
+}
+
+create_ptr_types!(PrimalNodeInternal, PrimalNodeInternalPtr, PrimalNodeInternalWeak);
+
+impl std::fmt::Debug for PrimalNodeInternalPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let primal_node_internal = self.read_recursive();
+        write!(f, "{}", primal_node_internal.index)
+    }
+}
+
+impl std::fmt::Debug for PrimalNodeInternalWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
 }
 
 impl PrimalNodeInternal {

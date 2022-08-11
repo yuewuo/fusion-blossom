@@ -15,7 +15,6 @@ use crate::parking_lot::RwLock;
 use super::dual_module::*;
 use super::visualize::*;
 
-
 pub struct DualModuleSerial {
     /// all vertices including virtual ones
     pub vertices: Vec<VertexPtr>,
@@ -36,54 +35,7 @@ pub struct DualModuleSerial {
     pub edge_modifier: EdgeWeightModifier,
 }
 
-pub struct DualNodeInternalPtr { ptr: Arc<RwLock<DualNodeInternal>>, }
-pub struct DualNodeInternalWeak { ptr: Weak<RwLock<DualNodeInternal>>, }
-
-impl DualNodeInternalPtr { pub fn downgrade(&self) -> DualNodeInternalWeak { DualNodeInternalWeak { ptr: Arc::downgrade(&self.ptr) } } }
-impl DualNodeInternalWeak {
-    pub fn upgrade_force(&self) -> DualNodeInternalPtr { DualNodeInternalPtr { ptr: self.ptr.upgrade().unwrap() } }
-    pub fn upgrade(&self) -> Option<DualNodeInternalPtr> { self.ptr.upgrade().map(|x| DualNodeInternalPtr { ptr: x }) }
-}
-
-impl Clone for DualNodeInternalPtr {
-    fn clone(&self) -> Self {
-        Self::new_ptr(Arc::clone(self.ptr()))
-    }
-}
-
-impl RwLockPtr<DualNodeInternal> for DualNodeInternalPtr {
-    fn new_ptr(ptr: Arc<RwLock<DualNodeInternal>>) -> Self { Self { ptr: ptr }  }
-    fn new(obj: DualNodeInternal) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<DualNodeInternal>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<DualNodeInternal>> { &mut self.ptr }
-}
-
-impl PartialEq for DualNodeInternalPtr {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-}
-
-impl std::fmt::Debug for DualNodeInternalPtr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let dual_node_internal = self.read_recursive();
-        write!(f, "{}", dual_node_internal.index)
-    }
-}
-
-impl Clone for DualNodeInternalWeak {
-    fn clone(&self) -> Self {
-       Self { ptr: self.ptr.clone() }
-    }
-}
-
-impl std::fmt::Debug for DualNodeInternalWeak {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
-    }
-}
-
-impl PartialEq for DualNodeInternalWeak {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
-}
+create_ptr_types!(DualModuleSerial, DualModuleSerialPtr, DualModuleSerialWeak);
 
 /// internal information of the dual node, added to the [`DualNode`]
 #[derive(Derivative)]
@@ -104,96 +56,19 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
-pub struct VertexPtr { ptr: Arc<RwLock<Vertex>> }
-pub struct VertexWeak { ptr: Weak<RwLock<Vertex>> }
+create_ptr_types!(DualNodeInternal, DualNodeInternalPtr, DualNodeInternalWeak);
 
-impl VertexPtr { pub fn downgrade(&self) -> VertexWeak { VertexWeak { ptr: Arc::downgrade(&self.ptr) } } }
-impl VertexWeak { pub fn upgrade_force(&self) -> VertexPtr { VertexPtr { ptr: self.ptr.upgrade().unwrap() } } }
-
-impl Clone for VertexPtr {
-    fn clone(&self) -> Self {
-        Self::new_ptr(Arc::clone(self.ptr()))
-    }
-}
-
-impl FastClearRwLockPtr<Vertex> for VertexPtr {
-    fn new_ptr(ptr: Arc<RwLock<Vertex>>) -> Self { Self { ptr: ptr }  }
-    fn new(obj: Vertex) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<Vertex>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<Vertex>> { &mut self.ptr }
-}
-
-impl PartialEq for VertexPtr {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-}
-
-impl std::fmt::Debug for VertexPtr {
+impl std::fmt::Debug for DualNodeInternalPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let vertex = self.read_recursive_force();
-        write!(f, "{}", vertex.vertex_index)
+        let dual_node_internal = self.read_recursive();
+        write!(f, "{}", dual_node_internal.index)
     }
 }
 
-impl Clone for VertexWeak {
-    fn clone(&self) -> Self {
-       Self { ptr: self.ptr.clone() }
-    }
-}
-
-impl std::fmt::Debug for VertexWeak {
+impl std::fmt::Debug for DualNodeInternalWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.upgrade_force().fmt(f)
     }
-}
-
-impl PartialEq for VertexWeak {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
-}
-
-pub struct EdgePtr { ptr: Arc<RwLock<Edge>> }
-pub struct EdgeWeak { ptr: Weak<RwLock<Edge>> }
-
-impl EdgePtr { pub fn downgrade(&self) -> EdgeWeak { EdgeWeak { ptr: Arc::downgrade(&self.ptr) } } }
-impl EdgeWeak { pub fn upgrade_force(&self) -> EdgePtr { EdgePtr { ptr: self.ptr.upgrade().unwrap() } } }
-
-impl Clone for EdgePtr {
-    fn clone(&self) -> Self {
-        Self::new_ptr(Arc::clone(self.ptr()))
-    }
-}
-
-impl FastClearRwLockPtr<Edge> for EdgePtr {
-    fn new_ptr(ptr: Arc<RwLock<Edge>>) -> Self { Self { ptr: ptr }  }
-    fn new(obj: Edge) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<Edge>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<Edge>> { &mut self.ptr }
-}
-
-impl PartialEq for EdgePtr {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-}
-
-impl std::fmt::Debug for EdgePtr {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let edge = self.read_recursive_force();
-        write!(f, "{}", edge.index)
-    }
-}
-
-impl Clone for EdgeWeak {
-    fn clone(&self) -> Self {
-       Self { ptr: self.ptr.clone() }
-    }
-}
-
-impl std::fmt::Debug for EdgeWeak {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
-    }
-}
-
-impl PartialEq for EdgeWeak {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
 }
 
 #[derive(Derivative)]
@@ -215,6 +90,22 @@ pub struct Vertex {
     /// for fast clear
     pub timestamp: FastClearTimestamp,
 }
+
+create_fast_clear_ptr_types!(Vertex, VertexPtr, VertexWeak);
+
+impl std::fmt::Debug for VertexPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let vertex = self.read_recursive_force();
+        write!(f, "{}", vertex.vertex_index)
+    }
+}
+
+impl std::fmt::Debug for VertexWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
+}
+
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -243,6 +134,21 @@ pub struct Edge {
     pub right_grandson_dual_node: Option<DualNodeInternalWeak>,
     /// for fast clear
     pub timestamp: FastClearTimestamp,
+}
+
+create_fast_clear_ptr_types!(Edge, EdgePtr, EdgeWeak);
+
+impl std::fmt::Debug for EdgePtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let edge = self.read_recursive_force();
+        write!(f, "{}", edge.index)
+    }
+}
+
+impl std::fmt::Debug for EdgeWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
 }
 
 impl DualModuleImpl for DualModuleSerial {
