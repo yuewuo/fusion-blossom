@@ -5,7 +5,6 @@
 //! 
 
 use super::util::*;
-use std::sync::Arc;
 use super::dual_module::{DualModuleInterface, DualModuleImpl};
 use super::primal_module::{PrimalModuleImpl, SubGraphBuilder};
 use super::dual_module_serial::DualModuleSerial;
@@ -14,18 +13,11 @@ use super::visualize::*;
 use crate::derivative::Derivative;
 
 
-#[derive(Debug)]
-pub struct SolverInitializer {
-    pub vertex_num: usize,
-    pub weighted_edges: Vec<(usize, usize, Weight)>,
-    pub virtual_vertices: Vec<usize>,
-}
-
 /// a serial solver
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct SolverSerial {
-    initializer: Arc<SolverInitializer>,
+    initializer: SolverInitializer,
     /// a serial implementation of the primal module
     #[derivative(Debug="ignore")]
     primal_module: PrimalModuleSerial,
@@ -40,29 +32,20 @@ pub struct SolverSerial {
 
 impl Clone for SolverSerial {
     fn clone(&self) -> Self {
-        Self::from_initializer(&self.initializer)  // create independent instances of the solver
+        Self::new(&self.initializer)  // create independent instances of the solver
     }
 }
 
 impl SolverSerial {
 
     /// create a new decoder
-    pub fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>) -> Self {
-        let initializer = Arc::new(SolverInitializer {
-            vertex_num: vertex_num,
-            weighted_edges: weighted_edges.clone(),
-            virtual_vertices: virtual_vertices.clone(),
-        });
-        Self::from_initializer(&initializer)
-    }
-
-    pub fn from_initializer(initializer: &Arc<SolverInitializer>) -> Self {
-        let mut dual_module = DualModuleSerial::new(initializer.vertex_num, &initializer.weighted_edges, &initializer.virtual_vertices);
-        let primal_module = PrimalModuleSerial::new(initializer.vertex_num, &initializer.weighted_edges, &initializer.virtual_vertices);
+    pub fn new(initializer: &SolverInitializer) -> Self {
+        let mut dual_module = DualModuleSerial::new(initializer);
+        let primal_module = PrimalModuleSerial::new(initializer);
         let interface = DualModuleInterface::new(&vec![], &mut dual_module);  // initialize with empty syndrome
-        let subgraph_builder = SubGraphBuilder::new(initializer.vertex_num, &initializer.weighted_edges, &initializer.virtual_vertices);
+        let subgraph_builder = SubGraphBuilder::new(initializer);
         Self {
-            initializer: Arc::clone(&initializer),
+            initializer: initializer.clone(),
             primal_module: primal_module,
             dual_module: dual_module,
             interface: interface,
@@ -105,16 +88,15 @@ impl SolverSerial {
     }
 
     // utilities to call this solver
-    pub fn solve_mwpm_visualizer(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>
-            , syndrome_vertices: &Vec<usize>, mut visualizer: Option<&mut Visualizer>) -> Vec<usize> {
-        let mut solver = Self::new(node_num, weighted_edges, virtual_vertices);
+    pub fn solve_mwpm_visualizer(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>, mut visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+        let mut solver = Self::new(initializer);
         solver.load_syndrome(syndrome_vertices);
         if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("start"), &solver).unwrap(); }
         unimplemented!()
     }
 
-    pub fn solve_mwpm(node_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
-        Self::solve_mwpm_visualizer(node_num, weighted_edges, virtual_vertices, syndrome_nodes, None)
+    pub fn solve_mwpm(initializer: &SolverInitializer, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
+        Self::solve_mwpm_visualizer(initializer, syndrome_nodes, None)
     }
 
 }

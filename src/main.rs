@@ -82,12 +82,12 @@ pub fn main() {
                         let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
                         pb.message(format!("{code_name} [{code_idx}/{codes_len}] ").as_str());
                         // create dual module
-                        let (vertex_num, mut weighted_edges, virtual_vertices) = code.get_initializer();
-                        let mut dual_module = dual_module_serial::DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+                        let mut initializer = code.get_initializer();
+                        let mut dual_module = dual_module_serial::DualModuleSerial::new(&initializer);
                         // create primal module
-                        let mut primal_module = primal_module_serial::PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+                        let mut primal_module = primal_module_serial::PrimalModuleSerial::new(&initializer);
                         primal_module.debug_resolve_only_one = true;  // to enable debug mode
-                        let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+                        let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 0..total_rounds {
                             dual_module.clear();
                             primal_module.clear();
@@ -126,13 +126,13 @@ pub fn main() {
                                 // prepare modified weighted edges
                                 let mut edge_modifier = EdgeWeightModifier::new();
                                 for edge_index in erasures.iter() {
-                                    let (vertex_idx_1, vertex_idx_2, original_weight) = &weighted_edges[*edge_index];
+                                    let (vertex_idx_1, vertex_idx_2, original_weight) = &initializer.weighted_edges[*edge_index];
                                     edge_modifier.push_modified_edge(*edge_index, *original_weight);
-                                    weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
+                                    initializer.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
                                 }
                                 // use blossom V to compute ground truth
-                                let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
-                                let blossom_details = fusion_blossom::detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+                                let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&initializer, &syndrome_vertices);
+                                let blossom_details = fusion_blossom::detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
                                 let mut blossom_total_weight = 0;
                                 for detail in blossom_details.iter() {
                                     blossom_total_weight += detail.weight;
@@ -142,7 +142,7 @@ pub fn main() {
                                 // also construct the perfect matching from fusion blossom to compare them
                                 let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
                                 let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-                                let fusion_details = fusion_blossom::detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+                                let fusion_details = fusion_blossom::detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
                                 let mut fusion_total_weight = 0;
                                 for detail in fusion_details.iter() {
                                     fusion_total_weight += detail.weight;
@@ -150,8 +150,8 @@ pub fn main() {
                                 // recover those weighted_edges
                                 while edge_modifier.has_modified_edges() {
                                     let (edge_index, original_weight) = edge_modifier.pop_modified_edge();
-                                    let (vertex_idx_1, vertex_idx_2, _) = &weighted_edges[edge_index];
-                                    weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
+                                    let (vertex_idx_1, vertex_idx_2, _) = &initializer.weighted_edges[edge_index];
+                                    initializer.weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
                                 }
                                 // compare with ground truth from the blossom V algorithm
                                 assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");

@@ -154,10 +154,10 @@ impl std::fmt::Debug for EdgeWeak {
 impl DualModuleImpl for DualModuleSerial {
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
-    fn new(vertex_num: usize, weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: &Vec<VertexIndex>) -> Self {
+    fn new(initializer: &SolverInitializer) -> Self {
         let active_timestamp = 0;
         // create vertices
-        let vertices: Vec<VertexPtr> = (0..vertex_num).map(|vertex_index| VertexPtr::new(Vertex {
+        let vertices: Vec<VertexPtr> = (0..initializer.vertex_num).map(|vertex_index| VertexPtr::new(Vertex {
             vertex_index: vertex_index,
             is_virtual: false,
             is_syndrome: false,
@@ -167,16 +167,16 @@ impl DualModuleImpl for DualModuleSerial {
             timestamp: active_timestamp,
         })).collect();
         // set virtual vertices
-        for &virtual_vertex in virtual_vertices.iter() {
+        for &virtual_vertex in initializer.virtual_vertices.iter() {
             let mut vertex = vertices[virtual_vertex].write(active_timestamp);
             vertex.is_virtual = true;
         }
         // set edges
         let mut edges = Vec::<EdgePtr>::new();
-        for &(i, j, weight) in weighted_edges.iter() {
+        for &(i, j, weight) in initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
-            assert!(i < vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
-            assert!(j < vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
+            assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
+            assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
             let left = usize::min(i, j);
             let right = usize::max(i, j);
             let edge_ptr = EdgePtr::new(Edge {

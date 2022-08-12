@@ -28,6 +28,13 @@ cfg_if::cfg_if! {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SolverInitializer {
+    pub vertex_num: VertexIndex,
+    pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
+    pub virtual_vertices: Vec<VertexIndex>,
+}
+
 /// timestamp type determines how many fast clear before a hard clear is required, see [`FastClear`]
 pub type FastClearTimestamp = usize;
 

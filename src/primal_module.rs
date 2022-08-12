@@ -32,7 +32,7 @@ pub struct PerfectMatching {
 pub trait PrimalModuleImpl {
 
     /// create a primal module given the same parameters of the dual module, although not all of them is needed
-    fn new(vertex_num: usize, weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: &Vec<VertexIndex>) -> Self;
+    fn new(initializer: &SolverInitializer) -> Self;
 
     /// clear all states; however this method is not necessarily called when load a new decoding problem, so you need to call it yourself
     fn clear(&mut self);
@@ -192,16 +192,16 @@ pub struct SubGraphBuilder {
 
 impl SubGraphBuilder {
 
-    pub fn new(vertex_num: usize, weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, _virtual_vertices: &Vec<VertexIndex>) -> Self {
-        let mut vertex_pair_edges = HashMap::with_capacity(weighted_edges.len());
-        for (edge_index, (i, j, _)) in weighted_edges.iter().enumerate() {
+    pub fn new(initializer: &SolverInitializer) -> Self {
+        let mut vertex_pair_edges = HashMap::with_capacity(initializer.weighted_edges.len());
+        for (edge_index, (i, j, _)) in initializer.weighted_edges.iter().enumerate() {
             let id = if i < j { (*i, *j) } else { (*j, *i) };
             vertex_pair_edges.insert(id, edge_index);
         }
         Self {
-            vertex_num: vertex_num,
+            vertex_num: initializer.vertex_num,
             vertex_pair_edges: vertex_pair_edges,
-            complete_graph: CompleteGraph::new(vertex_num, weighted_edges),
+            complete_graph: CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges),
             subgraph: BTreeSet::new(),
         }
     }

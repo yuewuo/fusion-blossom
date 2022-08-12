@@ -20,54 +20,55 @@ pub mod dual_module_serial;
 pub mod primal_module;
 pub mod primal_module_serial;
 pub mod mwpm_solver;
+pub mod dual_module_parallel;
 
 use util::*;
 use complete_graph::*;
 
 /// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`mwpm_solver::SolverSerial`] object)
-pub fn fusion_mwpm(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
     // sanity check
-    assert!(vertex_num > 1, "at least one vertex required");
-    let max_safe_weight = ((Weight::MAX as usize) / vertex_num) as Weight;
-    for (i, j, weight) in weighted_edges.iter() {
+    assert!(initializer.vertex_num > 1, "at least one vertex required");
+    let max_safe_weight = ((Weight::MAX as usize) / initializer.vertex_num) as Weight;
+    for (i, j, weight) in initializer.weighted_edges.iter() {
         if weight > &max_safe_weight {
             panic!("edge {}-{} has weight {} > max safe weight {}, it may cause fusion blossom to overflow", i, j, weight, max_safe_weight);
         }
     }
     // by default use serial implementation fusion blossom
-    mwpm_solver::SolverSerial::solve_mwpm(vertex_num, weighted_edges, virtual_vertices, syndrome_vertices)
+    mwpm_solver::SolverSerial::solve_mwpm(initializer, syndrome_vertices)
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)
-pub fn blossom_v_mwpm(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, virtual_vertices: &Vec<usize>, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+pub fn blossom_v_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
     // this feature will be automatically enabled if you install blossom V source code, see README.md for more information
     if cfg!(not(feature = "blossom_v")) {
         panic!("need blossom V library, see README.md")
     }
     // sanity check
-    assert!(vertex_num > 1, "at least one vertex required");
-    let max_safe_weight = ((i32::MAX as usize) / vertex_num) as Weight;
-    for (i, j, weight) in weighted_edges.iter() {
+    assert!(initializer.vertex_num > 1, "at least one vertex required");
+    let max_safe_weight = ((i32::MAX as usize) / initializer.vertex_num) as Weight;
+    for (i, j, weight) in initializer.weighted_edges.iter() {
         if weight > &max_safe_weight {
             panic!("edge {}-{} has weight {} > max safe weight {}, it may cause blossom V library to overflow", i, j, weight, max_safe_weight);
         }
     }
-    let mut complete_graph = CompleteGraph::new(vertex_num, weighted_edges);
-    blossom_v_mwpm_reuse(&mut complete_graph, vertex_num, virtual_vertices, syndrome_vertices)
+    let mut complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);
+    blossom_v_mwpm_reuse(&mut complete_graph, initializer, syndrome_vertices)
 }
 
-pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, vertex_num: usize, virtual_vertices: &Vec<usize>, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
     // first collect virtual vertices and real vertices
-    let mut is_virtual: Vec<bool> = (0..vertex_num).map(|_| false).collect();
-    let mut is_syndrome: Vec<bool> = (0..vertex_num).map(|_| false).collect();
-    for &virtual_vertex in virtual_vertices.iter() {
-        assert!(virtual_vertex < vertex_num, "invalid input");
+    let mut is_virtual: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
+    let mut is_syndrome: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
+    for &virtual_vertex in initializer.virtual_vertices.iter() {
+        assert!(virtual_vertex < initializer.vertex_num, "invalid input");
         assert_eq!(is_virtual[virtual_vertex], false, "same virtual vertex appears twice");
         is_virtual[virtual_vertex] = true;
     }
-    let mut mapping_to_syndrome_vertices: Vec<usize> = (0..vertex_num).map(|_| usize::MAX).collect();
+    let mut mapping_to_syndrome_vertices: Vec<usize> = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
     for (i, &syndrome_vertex) in syndrome_vertices.iter().enumerate() {
-        assert!(syndrome_vertex < vertex_num, "invalid input");
+        assert!(syndrome_vertex < initializer.vertex_num, "invalid input");
         assert_eq!(is_virtual[syndrome_vertex], false, "syndrome vertex cannot be virtual");
         assert_eq!(is_syndrome[syndrome_vertex], false, "same syndrome vertex appears twice");
         is_syndrome[syndrome_vertex] = true;
@@ -140,16 +141,16 @@ pub struct DetailedMatching {
 }
 
 /// compute detailed matching information, note that the output will not include duplicated matched pairs
-pub fn detailed_matching(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>, syndrome_vertices: &Vec<usize>, mwpm_result: &Vec<usize>) -> Vec<DetailedMatching> {
+pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>, mwpm_result: &Vec<usize>) -> Vec<DetailedMatching> {
     let syndrome_num = syndrome_vertices.len();
-    let mut is_syndrome: Vec<bool> = (0..vertex_num).map(|_| false).collect();
+    let mut is_syndrome: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &syndrome_vertex in syndrome_vertices.iter() {
-        assert!(syndrome_vertex < vertex_num, "invalid input");
+        assert!(syndrome_vertex < initializer.vertex_num, "invalid input");
         assert_eq!(is_syndrome[syndrome_vertex], false, "same syndrome vertex appears twice");
         is_syndrome[syndrome_vertex] = true;
     }
     assert_eq!(syndrome_num, mwpm_result.len(), "invalid mwpm result");
-    let mut complete_graph = complete_graph::CompleteGraph::new(vertex_num, weighted_edges);
+    let mut complete_graph = complete_graph::CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);
     let mut details = Vec::new();
     for i in 0..syndrome_num {
         let a = syndrome_vertices[i];

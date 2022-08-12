@@ -259,7 +259,7 @@ pub struct DualModuleInterface {
 pub trait DualModuleImpl {
 
     /// create a new dual module
-    fn new(vertex_num: usize, weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: &Vec<VertexIndex>) -> Self;
+    fn new(initializer: &SolverInitializer) -> Self;
 
     /// clear all growth and existing dual nodes, prepared for the next decoding
     fn clear(&mut self);

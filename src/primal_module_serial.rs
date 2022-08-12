@@ -99,7 +99,7 @@ impl PrimalNodeInternal {
 
 impl PrimalModuleImpl for PrimalModuleSerial {
 
-    fn new(_vertex_num: usize, _weighted_edges: &Vec<(VertexIndex, VertexIndex, Weight)>, _virtual_vertices: &Vec<VertexIndex>) -> Self {
+    fn new(_initializer: &SolverInitializer) -> Self {
         Self {
             nodes: vec![],
             debug_resolve_only_one: false,
@@ -1124,6 +1124,14 @@ pub mod tests {
         let visualize_filename = format!("primal_module_serial_basic_9.json");
         let syndrome_vertices = vec![60, 63, 66, 30];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 6);
+    }
+
+    /// test the error pattern in the paper
+    #[test]
+    fn primal_module_serial_basic_10() {  // cargo test primal_module_serial_basic_10 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_10.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 9);
     }
 
     /// debug a case where it disagree with blossom V library, mine reports 11866, blossom V reports 12284

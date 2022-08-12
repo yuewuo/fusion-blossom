@@ -164,7 +164,7 @@ pub trait ExampleCode {
     }
 
     /// generate standard interface to instantiate Fussion blossom solver
-    fn get_initializer(&self) -> (usize, Vec<(usize, usize, Weight)>, Vec<usize>) {
+    fn get_initializer(&self) -> SolverInitializer {
         let (vertices, edges) = self.immutable_vertices_edges();
         let vertex_num = vertices.len();
         let mut weighted_edges = Vec::with_capacity(edges.len());
@@ -177,7 +177,11 @@ pub trait ExampleCode {
                 virtual_vertices.push(vertex_idx);
             }
         }
-        (vertex_num, weighted_edges, virtual_vertices)
+        SolverInitializer {
+            vertex_num: vertex_num,
+            weighted_edges: weighted_edges,
+            virtual_vertices: virtual_vertices,
+        }
     }
 
     /// set syndrome
