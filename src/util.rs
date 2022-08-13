@@ -35,6 +35,16 @@ pub struct SolverInitializer {
     pub virtual_vertices: Vec<VertexIndex>,
 }
 
+impl SolverInitializer {
+    pub fn new(vertex_num: VertexIndex, weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: Vec<VertexIndex>) -> SolverInitializer {
+        SolverInitializer {
+            vertex_num: vertex_num,
+            weighted_edges: weighted_edges,
+            virtual_vertices: virtual_vertices,
+        }
+    }
+}
+
 /// timestamp type determines how many fast clear before a hard clear is required, see [`FastClear`]
 pub type FastClearTimestamp = usize;
 

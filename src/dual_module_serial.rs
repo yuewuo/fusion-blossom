@@ -1168,8 +1168,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
@@ -1207,8 +1207,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
@@ -1259,8 +1259,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
@@ -1295,8 +1295,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[18].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
@@ -1396,8 +1396,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[18].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
@@ -1488,8 +1488,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[39].is_syndrome = true;
         code.vertices[65].is_syndrome = true;
@@ -1534,8 +1534,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[64].is_syndrome = true;
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);

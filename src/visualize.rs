@@ -319,8 +319,8 @@ mod tests {
         visualizer.set_positions(code.get_positions(), true);  // automatic center all vertices
         print_visualize_link(&visualize_filename);
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         let syndrome_vertices = vec![39, 63, 52, 100, 90];
         for syndrome_vertex in syndrome_vertices.iter() {
             code.vertices[*syndrome_vertex].is_syndrome = true;
@@ -449,7 +449,8 @@ mod tests {
             }
         }
         visualizer.set_positions(positions, true);  // automatic center all vertices
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         let interface = DualModuleInterface::new(&syndrome_vertices, &mut dual_module);
         // grow edges
         for &edge_index in grow_edges.iter() {
@@ -479,8 +480,8 @@ mod tests {
             visualizer.set_positions(code.get_positions(), true);  // automatic center all vertices
             print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
             // create dual module
-            let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-            let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let initializer = code.get_initializer();
+            let mut dual_module = DualModuleSerial::new(&initializer);
             // hardcode syndrome          1   2   0   3    5    4    6    7
             let syndrome_vertices = vec![25, 33, 20, 76, 203, 187, 243, 315];
             code.set_syndrome(&syndrome_vertices);

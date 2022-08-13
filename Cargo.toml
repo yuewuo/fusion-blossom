@@ -37,6 +37,7 @@ derivative = "2.2.0"
 urlencoding = "2.1.0"
 clap = { version = "3.1.6", features = ["cargo", "derive"] }
 pbr = "1.0.4"
+futures = { version = "0.3.21", features = ["thread-pool"] }
 
 [build-dependencies]
 cc = "1.0.66"

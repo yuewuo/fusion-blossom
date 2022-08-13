@@ -1020,10 +1020,10 @@ pub mod tests {
             }, None => None
         };
         // create dual module
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1144,20 +1144,20 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
         println!("blossom_mwpm_result: {blossom_mwpm_result:?}");
-        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1182,7 +1182,7 @@ pub mod tests {
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1190,7 +1190,7 @@ pub mod tests {
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         {  // also test subgraph builder
-            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let mut subgraph_builder = SubGraphBuilder::new(&initializer);
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
@@ -1207,19 +1207,19 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
-        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
+        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1247,7 +1247,7 @@ pub mod tests {
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1255,7 +1255,7 @@ pub mod tests {
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         {  // also test subgraph builder
-            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let mut subgraph_builder = SubGraphBuilder::new(&initializer);
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
@@ -1272,19 +1272,19 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
-        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
+        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1312,7 +1312,7 @@ pub mod tests {
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1320,7 +1320,7 @@ pub mod tests {
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         {  // also test subgraph builder
-            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let mut subgraph_builder = SubGraphBuilder::new(&initializer);
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
@@ -1337,19 +1337,19 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
-        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
+        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1377,7 +1377,7 @@ pub mod tests {
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1385,7 +1385,7 @@ pub mod tests {
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         {  // also test subgraph builder
-            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let mut subgraph_builder = SubGraphBuilder::new(&initializer);
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
@@ -1402,19 +1402,19 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        let (vertex_num, weighted_edges, virtual_vertices) = code.get_initializer();
+        let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
-        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
+        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
@@ -1441,7 +1441,7 @@ pub mod tests {
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1449,7 +1449,7 @@ pub mod tests {
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         {  // also test subgraph builder
-            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let mut subgraph_builder = SubGraphBuilder::new(&initializer);
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
@@ -1478,23 +1478,23 @@ pub mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
         print_visualize_link(&visualize_filename);
-        let (vertex_num, mut weighted_edges, virtual_vertices) = code.get_initializer();
+        let mut initializer = code.get_initializer();
         for edge_index in erasures.iter() {
-            let (vertex_idx_1, vertex_idx_2, _) = &weighted_edges[*edge_index];
-            weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
+            let (vertex_idx_1, vertex_idx_2, _) = &initializer.weighted_edges[*edge_index];
+            initializer.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
         }
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(vertex_num, &weighted_edges, &virtual_vertices, &syndrome_vertices);
-        let blossom_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
+        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(vertex_num, &weighted_edges, &virtual_vertices);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
@@ -1521,7 +1521,7 @@ pub mod tests {
         visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = detailed_matching(vertex_num, &weighted_edges, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1529,7 +1529,7 @@ pub mod tests {
         }
         assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
         {  // also test subgraph builder
-            let mut subgraph_builder = SubGraphBuilder::new(vertex_num, &weighted_edges, &virtual_vertices);
+            let mut subgraph_builder = SubGraphBuilder::new(&initializer);
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }

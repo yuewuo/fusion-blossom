@@ -98,6 +98,34 @@ impl GroupMaxUpdateLength {
         }
     }
 
+    pub fn extend(&mut self, other: Self) {
+        if other.is_empty() {
+            return  // do nothing
+        }
+        match self {
+            Self::NonZeroGrow(current_length) => {
+                match other {
+                    Self::NonZeroGrow(length) => {
+                        *current_length = std::cmp::min(*current_length, length);
+                    },
+                    Self::Conflicts(conflicts) => {
+                        let mut heap = BinaryHeap::new();
+                        heap.extend(conflicts.into_iter());
+                        *self = Self::Conflicts(heap);
+                    },
+                }
+            },
+            Self::Conflicts(conflicts) => {
+                match other {
+                    Self::Conflicts(other_conflicts) => {
+                        conflicts.extend(other_conflicts.into_iter());
+                    },
+                    _ => { },  // only add conflicts, not NonZeroGrow
+                }
+            },
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::NonZeroGrow(Weight::MAX))
     }

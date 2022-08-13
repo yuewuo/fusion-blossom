@@ -8,6 +8,7 @@ extern crate serde;
 extern crate chrono;
 extern crate derivative;
 extern crate urlencoding;
+extern crate futures;
 
 pub mod blossom_v;
 pub mod util;
