@@ -20,8 +20,9 @@ use crate::parking_lot::RwLock;
 use super::serde_json;
 use serde::{Serialize, Deserialize};
 use super::futures::future::join_all;
-use crate::futures::executor::ThreadPool;
-// use crate::futures::FutureExt;  // .boxed()
+use crate::futures::executor::{block_on, ThreadPool};
+use crate::futures::task::SpawnExt;
+use super::visualize::*;
 
 
 pub struct DualModuleParallel {
@@ -84,15 +85,23 @@ impl DualModuleParallel {
         }
         let thread_pool = thread_pool_builder.create().expect("creating thread pool failed");
         assert!(config.division > 0, "0 division forbidden");
+        let mut units = vec![];
+        let mut vertex_to_unit = Vec::with_capacity(initializer.vertex_num);
         if config.division == 1 {  // no division
-            // let dual_module = 
+            let dual_module = DualModuleSerial::new(&initializer);
+            let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
+            let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr);
+            units.push(unit);
+            for _ in 0..initializer.vertex_num {
+                vertex_to_unit.push(0);  // all vertices belongs to the only unit
+            }
         } else {  // exist division
             unimplemented!()
         }
         Self {
             initializer: initializer.clone(),
-            units: vec![],
-            vertex_to_unit: vec![],
+            units: units,
+            vertex_to_unit: vertex_to_unit,
             config: config,
             thread_pool: thread_pool,
         }
@@ -113,9 +122,9 @@ impl DualModuleImpl for DualModuleParallel {
         for (unit_idx, unit_ptr) in self.units.iter().enumerate() {
             {  // copy async data
                 let unit_ptr = unit_ptr.clone();
-                self.thread_pool.spawn_ok(async move {
+                block_on(self.thread_pool.spawn_with_handle(async move {
                     unit_ptr.clear().await
-                });
+                }).unwrap());
             }
             let mut unit = unit_ptr.write();
             unit.is_fused = false;  // everything is not fused at the beginning
@@ -134,11 +143,11 @@ impl DualModuleImpl for DualModuleParallel {
                 let dual_node_ptr = dual_node_ptr.clone();
                 async_tasks.push(async move {
                     unit_ptr.add_dual_node(&dual_node_ptr).await
-                });
+                })
             }
         }
         if !async_tasks.is_empty() {
-            self.thread_pool.spawn_ok(async { join_all(async_tasks).await; });
+            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
         }
     }
 
@@ -155,7 +164,7 @@ impl DualModuleImpl for DualModuleParallel {
             }
         }
         if !async_tasks.is_empty() {
-            self.thread_pool.spawn_ok(async { join_all(async_tasks).await; });
+            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
         }
     }
 
@@ -173,7 +182,7 @@ impl DualModuleImpl for DualModuleParallel {
             }
         }
         if !async_tasks.is_empty() {
-            self.thread_pool.spawn_ok(async { join_all(async_tasks).await; });
+            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
         }
     }
 
@@ -189,20 +198,19 @@ impl DualModuleImpl for DualModuleParallel {
                 });
             }
         }
-        let group_max_update_length = Arc::new(RwLock::new(GroupMaxUpdateLength::new()));
-        if !async_tasks.is_empty() {
-            {  // copy async data
-                let group_max_update_length = group_max_update_length.clone();
-                self.thread_pool.spawn_ok(async move {
-                    let results = join_all(async_tasks).await;
-                    let mut group_max_update_length = group_max_update_length.write();
-                    for max_update_length in results.into_iter() {
-                        group_max_update_length.add(max_update_length);
-                    }
-                });
-            }
-        }
-        match Arc::try_unwrap(group_max_update_length).unwrap().into_inner() {
+        let group_max_update_length = if async_tasks.is_empty() {
+            GroupMaxUpdateLength::new()
+        } else {
+            block_on(self.thread_pool.spawn_with_handle(async move {
+                let mut group_max_update_length = GroupMaxUpdateLength::new();
+                let results = join_all(async_tasks).await;
+                for max_update_length in results.into_iter() {
+                    group_max_update_length.add(max_update_length);
+                }
+                group_max_update_length
+            }).unwrap())
+        };
+        match group_max_update_length {
             GroupMaxUpdateLength::NonZeroGrow(weight) => MaxUpdateLength::NonZeroGrow(weight),
             GroupMaxUpdateLength::Conflicts(mut conflicts) => conflicts.pop().unwrap(),  // just return the first conflict is fine
         }
@@ -219,20 +227,19 @@ impl DualModuleImpl for DualModuleParallel {
                 });
             }
         }
-        let group_max_update_length = Arc::new(RwLock::new(GroupMaxUpdateLength::new()));
-        if !async_tasks.is_empty() {
-            {  // copy async data
-                let group_max_update_length = group_max_update_length.clone();
-                self.thread_pool.spawn_ok(async move {
-                    let results = join_all(async_tasks).await;
-                    let mut group_max_update_length = group_max_update_length.write();
-                    for local_group_max_update_length in results.into_iter() {
-                        group_max_update_length.extend(local_group_max_update_length);
-                    }
-                });
-            }
-        }
-        Arc::try_unwrap(group_max_update_length).unwrap().into_inner()
+        let group_max_update_length = if async_tasks.is_empty() {
+            GroupMaxUpdateLength::new()
+        } else {
+            block_on(self.thread_pool.spawn_with_handle(async move {
+                let mut group_max_update_length = GroupMaxUpdateLength::new();
+                let results = join_all(async_tasks).await;
+                for local_group_max_update_length in results.into_iter() {
+                    group_max_update_length.extend(local_group_max_update_length);
+                }
+                group_max_update_length
+            }).unwrap())
+        };
+        group_max_update_length
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
@@ -248,7 +255,7 @@ impl DualModuleImpl for DualModuleParallel {
             }
         }
         if !async_tasks.is_empty() {
-            self.thread_pool.spawn_ok(async { join_all(async_tasks).await; });
+            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
         }
     }
 
@@ -264,7 +271,7 @@ impl DualModuleImpl for DualModuleParallel {
             }
         }
         if !async_tasks.is_empty() {
-            self.thread_pool.spawn_ok(async { join_all(async_tasks).await; });
+            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
         }
     }
 
@@ -282,14 +289,44 @@ impl DualModuleImpl for DualModuleParallel {
             }
         }
         if !async_tasks.is_empty() {
-            self.thread_pool.spawn_ok(async { join_all(async_tasks).await; });
+            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
         }
     }
 
 }
 
+
+/*
+Implementing visualization functions
+*/
+
+impl FusionVisualizer for DualModuleParallel {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        // do the sanity check first before taking snapshot
+        // self.sanity_check().unwrap();
+        if self.config.division == 1 {
+            self.units[0].read_recursive().wrapped_module.as_ref().unwrap().read_recursive().snapshot(abbrev)
+        } else {
+            unimplemented!();
+        }
+    }
+}
+
 /// We cannot implement async function because a RwLockWriteGuard implements !Send
 impl DualModuleParallelUnitPtr {
+
+    /// create a simple wrapper over a serial dual module
+    pub fn new_wrapper(dual_module_ptr: DualModuleSerialPtr) -> Self {
+        Self::new(DualModuleParallelUnit {
+            is_active: true,
+            is_fused: false,
+            wrapped_module: Some(dual_module_ptr),
+            children: None,
+            parent: None,
+            interfaces: vec![],
+            nodes: vec![],
+        })
+    }
 
     /// clear all growth and existing dual nodes
     pub async fn clear(&self) {
@@ -392,4 +429,70 @@ pub struct Interface {
     pub interface_id: usize,
     /// link to interface data
     pub data: Weak<InterfaceData>,
+}
+
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use super::super::example::*;
+    use super::super::primal_module::*;
+    use super::super::primal_module_serial::*;
+
+    pub fn dual_module_parallel_basic_standard_syndrome_optional_viz(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) {
+        println!("{syndrome_vertices:?}");
+        let half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
+        let mut visualizer = match visualize_filename.as_ref() {
+            Some(visualize_filename) => {
+                let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(&visualize_filename);
+                Some(visualizer)
+            }, None => None
+        };
+        // create dual module
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleParallel::new(&initializer);
+        // create primal module
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
+        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        // try to work on a simple syndrome
+        code.set_syndrome(&syndrome_vertices);
+        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        interface.debug_print_actions = true;
+        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
+        visualizer.as_mut().map(|v| v.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap());
+        // grow until end
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        while !group_max_update_length.is_empty() {
+            println!("group_max_update_length: {:?}", group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                interface.grow(length, &mut dual_module);
+                visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
+            } else {
+                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
+                visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
+            }
+            group_max_update_length = dual_module.compute_maximum_update_length();
+        }
+        assert_eq!(interface.sum_dual_variables, final_dual * 2 * half_weight, "unexpected final dual variable sum");
+        (interface, primal_module, dual_module)
+    }
+
+    pub fn dual_module_parallel_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) {
+        dual_module_parallel_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
+    }
+
+    /// test a simple case
+    #[test]
+    fn dual_module_parallel_basic_1() {  // cargo test dual_module_parallel_basic_1 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_basic_1.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9);
+    }
+
 }
