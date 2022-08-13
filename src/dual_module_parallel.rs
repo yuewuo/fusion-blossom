@@ -17,11 +17,9 @@ use std::sync::{Arc, Weak};
 use super::dual_module::*;
 use super::dual_module_serial::*;
 use crate::parking_lot::RwLock;
-use super::serde_json;
+use crate::serde_json;
 use serde::{Serialize, Deserialize};
-use super::futures::future::join_all;
 use crate::futures::executor::{block_on, ThreadPool};
-use crate::futures::task::SpawnExt;
 use super::visualize::*;
 
 
@@ -35,7 +33,7 @@ pub struct DualModuleParallel {
     pub vertex_to_unit: Vec<usize>,
     /// configuration
     pub config: DualModuleParallelConfig,
-    /// thread pool used to execute async functions
+    /// thread pool used to execute async functions in parallel
     pub thread_pool: ThreadPool,
 }
 
@@ -71,6 +69,8 @@ pub struct DualModuleParallelUnit {
     /// interface ids (each dual module may have multiple interfaces, e.g. in case A-B, B-C, C-D, D-A,
     /// if ABC is in the same module, D is in another module, then there are two interfaces C-D, D-A between modules ABC and D)
     pub interfaces: Vec<Weak<Interface>>,
+    /// a reference to the thread pool used to execute async functions in parallel
+    pub thread_pool: ThreadPool,
 }
 
 create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleParallelUnitWeak);
@@ -90,7 +90,7 @@ impl DualModuleParallel {
         if config.division == 1 {  // no division
             let dual_module = DualModuleSerial::new(&initializer);
             let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
-            let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr);
+            let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, thread_pool.clone());
             units.push(unit);
             for _ in 0..initializer.vertex_num {
                 vertex_to_unit.push(0);  // all vertices belongs to the only unit
@@ -119,178 +119,165 @@ impl DualModuleImpl for DualModuleParallel {
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
-        for (unit_idx, unit_ptr) in self.units.iter().enumerate() {
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                block_on(self.thread_pool.spawn_with_handle(async move {
-                    unit_ptr.clear().await
-                }).unwrap());
+        block_on(async {
+            for (unit_idx, unit_ptr) in self.units.iter().enumerate() {
+                unit_ptr.clear().await;
+                let mut unit = unit_ptr.write();
+                unit.is_fused = false;  // everything is not fused at the beginning
+                unit.is_active = unit_idx < self.config.division;  // only divided serial modules are active at the beginning
             }
-            let mut unit = unit_ptr.write();
-            unit.is_fused = false;  // everything is not fused at the beginning
-            unit.is_active = unit_idx < self.config.division;  // only divided serial modules are active at the beginning
-        }
+        })
     }
 
     // although not the intended way to use it, we do support these common APIs for compatibility with normal primal modules
 
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                let dual_node_ptr = dual_node_ptr.clone();
-                async_tasks.push(async move {
-                    unit_ptr.add_dual_node(&dual_node_ptr).await
-                })
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    let dual_node_ptr = dual_node_ptr.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.add_dual_node(&dual_node_ptr).await
+                    })
+                }
             }
-        }
-        if !async_tasks.is_empty() {
-            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
-        }
+            thread_pool_join_all(&self.thread_pool, async_tasks).await;
+        })
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                let dual_node_ptr = dual_node_ptr.clone();
-                async_tasks.push(async move {
-                    unit_ptr.remove_blossom(dual_node_ptr.clone()).await
-                });
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    let dual_node_ptr = dual_node_ptr.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.remove_blossom(dual_node_ptr.clone()).await
+                    });
+                }
             }
-        }
-        if !async_tasks.is_empty() {
-            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
-        }
+            thread_pool_join_all(&self.thread_pool, async_tasks).await;
+        })
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                let dual_node_ptr = dual_node_ptr.clone();
-                let grow_state = grow_state.clone();
-                async_tasks.push(async move {
-                    unit_ptr.set_grow_state(&dual_node_ptr, grow_state).await
-                });
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    let dual_node_ptr = dual_node_ptr.clone();
+                    let grow_state = grow_state.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.set_grow_state(&dual_node_ptr, grow_state).await
+                    });
+                }
             }
-        }
-        if !async_tasks.is_empty() {
-            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
-        }
+            thread_pool_join_all(&self.thread_pool, async_tasks).await;
+        })
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                let dual_node_ptr = dual_node_ptr.clone();
-                async_tasks.push(async move {
-                    unit_ptr.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update).await
-                });
-            }
-        }
-        let group_max_update_length = if async_tasks.is_empty() {
-            GroupMaxUpdateLength::new()
-        } else {
-            block_on(self.thread_pool.spawn_with_handle(async move {
-                let mut group_max_update_length = GroupMaxUpdateLength::new();
-                let results = join_all(async_tasks).await;
-                for max_update_length in results.into_iter() {
-                    group_max_update_length.add(max_update_length);
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    let dual_node_ptr = dual_node_ptr.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update).await
+                    });
                 }
-                group_max_update_length
-            }).unwrap())
-        };
-        match group_max_update_length {
-            GroupMaxUpdateLength::NonZeroGrow(weight) => MaxUpdateLength::NonZeroGrow(weight),
-            GroupMaxUpdateLength::Conflicts(mut conflicts) => conflicts.pop().unwrap(),  // just return the first conflict is fine
-        }
+            }
+            let mut group_max_update_length = GroupMaxUpdateLength::new();
+            let results = thread_pool_join_all(&self.thread_pool, async_tasks).await;
+            for max_update_length in results.into_iter() {
+                group_max_update_length.add(max_update_length);
+            }
+            match group_max_update_length {
+                GroupMaxUpdateLength::NonZeroGrow(weight) => MaxUpdateLength::NonZeroGrow(weight),
+                GroupMaxUpdateLength::Conflicts(mut conflicts) => conflicts.pop().unwrap(),  // just return the first conflict is fine
+            }
+        })
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                async_tasks.push(async move {
-                    unit_ptr.compute_maximum_update_length().await
-                });
-            }
-        }
-        let group_max_update_length = if async_tasks.is_empty() {
-            GroupMaxUpdateLength::new()
-        } else {
-            block_on(self.thread_pool.spawn_with_handle(async move {
-                let mut group_max_update_length = GroupMaxUpdateLength::new();
-                let results = join_all(async_tasks).await;
-                for local_group_max_update_length in results.into_iter() {
-                    group_max_update_length.extend(local_group_max_update_length);
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.compute_maximum_update_length().await
+                    });
                 }
-                group_max_update_length
-            }).unwrap())
-        };
-        group_max_update_length
+            }
+            let mut group_max_update_length = GroupMaxUpdateLength::new();
+            let results = thread_pool_join_all(&self.thread_pool, async_tasks).await;
+            for local_group_max_update_length in results.into_iter() {
+                group_max_update_length.extend(local_group_max_update_length);
+            }
+            group_max_update_length
+        })
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                let dual_node_ptr = dual_node_ptr.clone();
-                async_tasks.push(async move {
-                    unit_ptr.grow_dual_node(&dual_node_ptr, length).await
-                });
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    let dual_node_ptr = dual_node_ptr.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.grow_dual_node(&dual_node_ptr, length).await
+                    });
+                }
             }
-        }
-        if !async_tasks.is_empty() {
-            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
-        }
+            thread_pool_join_all(&self.thread_pool, async_tasks).await;
+        })
     }
 
     fn grow(&mut self, length: Weight) {
-        let mut async_tasks = Vec::new();
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                async_tasks.push(async move {
-                    unit_ptr.grow(length).await
-                });
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.grow(length).await
+                    });
+                }
             }
-        }
-        if !async_tasks.is_empty() {
-            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
-        }
+            thread_pool_join_all(&self.thread_pool, async_tasks).await;
+        })
     }
 
     fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
-        let mut async_tasks = Vec::new();
-        let edge_modifier = Arc::new(edge_modifier.clone());  // share as async data
-        for unit_ptr in self.units.iter() {
-            if !unit_ptr.write().is_active { continue }
-            {  // copy async data
-                let unit_ptr = unit_ptr.clone();
-                let edge_modifier = edge_modifier.clone();
-                async_tasks.push(async move {
-                    unit_ptr.load_edge_modifier(&edge_modifier).await
-                });
+        block_on(async {
+            let mut async_tasks = Vec::new();
+            let edge_modifier = Arc::new(edge_modifier.clone());  // share as async data
+            for unit_ptr in self.units.iter() {
+                if !unit_ptr.write().is_active { continue }
+                {  // copy async data
+                    let unit_ptr = unit_ptr.clone();
+                    let edge_modifier = edge_modifier.clone();
+                    async_tasks.push(async move {
+                        unit_ptr.load_edge_modifier(&edge_modifier).await
+                    });
+                }
             }
-        }
-        if !async_tasks.is_empty() {
-            block_on(self.thread_pool.spawn_with_handle(async { join_all(async_tasks).await; }).unwrap());
-        }
+            thread_pool_join_all(&self.thread_pool, async_tasks).await;
+        })
     }
 
 }
@@ -316,7 +303,7 @@ impl FusionVisualizer for DualModuleParallel {
 impl DualModuleParallelUnitPtr {
 
     /// create a simple wrapper over a serial dual module
-    pub fn new_wrapper(dual_module_ptr: DualModuleSerialPtr) -> Self {
+    pub fn new_wrapper(dual_module_ptr: DualModuleSerialPtr, thread_pool: ThreadPool) -> Self {
         Self::new(DualModuleParallelUnit {
             is_active: true,
             is_fused: false,
@@ -325,6 +312,7 @@ impl DualModuleParallelUnitPtr {
             parent: None,
             interfaces: vec![],
             nodes: vec![],
+            thread_pool: thread_pool,
         })
     }
 
