@@ -3,10 +3,7 @@ use crate::rand_xoshiro::rand_core::RngCore;
 use std::sync::Arc;
 use crate::parking_lot::{RwLock, RawRwLock};
 use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
-use crate::futures::executor::ThreadPool;
-use crate::futures::future::join_all;
-use core::future::Future;
-use crate::futures::task::SpawnExt;
+
 
 cfg_if::cfg_if! {
     if #[cfg(feature="i32_weight")] {
@@ -275,14 +272,3 @@ macro_rules! create_fast_clear_ptr_types {
     }
 }
 #[allow(unused_imports)] pub use create_fast_clear_ptr_types;
-
-/// use a thread pool to execute a vector of items
-pub async fn thread_pool_join_all<Item>(thread_pool: &ThreadPool, async_tasks: Vec<Item>) -> Vec<<Item as futures::Future>::Output>
-        where for<'a> Item: Future + std::marker::Send + 'a
-        , <Item as futures::Future>::Output: std::marker::Send {
-    if async_tasks.is_empty() {
-        vec![]
-    } else {
-        thread_pool.spawn_with_handle(async { join_all(async_tasks).await }).unwrap().await
-    }
-}
