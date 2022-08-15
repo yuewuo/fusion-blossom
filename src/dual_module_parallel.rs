@@ -20,11 +20,12 @@ use crate::parking_lot::RwLock;
 use crate::serde_json;
 use serde::{Serialize, Deserialize};
 use crate::futures::executor::{block_on, ThreadPool};
+use crate::futures::future::FutureExt;
 use super::visualize::*;
 
 
 pub struct DualModuleParallel {
-    /// initializer, used for customized division
+    /// initializer, used for customized partition
     pub initializer: SolverInitializer,
     /// the basic wrapped serial modules at the beginning, afterwards the fused units are appended after them
     pub units: Vec<DualModuleParallelUnitPtr>,
@@ -43,14 +44,59 @@ pub struct DualModuleParallelConfig {
     /// enable async execution of dual operations
     #[serde(default = "dual_module_parallel_default_configs::thread_pool_size")]
     pub thread_pool_size: usize,
-    /// the number of divided serial modules; these are the units that that are preserved after it's cleared
-    #[serde(default = "dual_module_parallel_default_configs::division")]
-    pub division: usize,
+    /// detailed plan of partitioning serial modules: each serial module possesses a list of vertices, including all interface vertices
+    #[serde(default = "dual_module_parallel_default_configs::partitions")]
+    pub partitions: Vec<Vec<VertexIndex>>,
+    /// detailed plan of interfacing vertices
+    #[serde(default = "dual_module_parallel_default_configs::interfaces")]
+    pub interfaces: Vec<(usize, usize, Vec<VertexIndex>)>,
+}
+
+impl DualModuleParallelConfig {
+
+    pub fn partition_sanity_check(&self, initializer: &SolverInitializer) {
+        assert!(self.partitions.len() > 0, "at least one partition must exist");
+        // first verify that each vertex is only present in a single partition
+        let mut vertex_partitioned: Vec<Option<usize>> = (0..initializer.vertex_num).map(|_| None).collect();
+        for (partition_index, partition) in self.partitions.iter().enumerate() {
+            for vertex_index in partition.iter().cloned() {
+                assert!(vertex_index < initializer.vertex_num, "invalid vertex index {} in partitions", vertex_index);
+                assert!(vertex_partitioned[vertex_index].is_none(), "duplicate partition of vertex {}", vertex_index);
+                vertex_partitioned[vertex_index] = Some(partition_index);
+            }
+        }
+        let mut parents: Vec<Option<usize>> = (0..self.partitions.len() + self.interfaces.len()).map(|_| None).collect();
+        for (interface_index, (left_index, right_index, interface)) in self.interfaces.iter().enumerate() {
+            let unit_index = interface_index +  self.partitions.len();
+            assert!(*left_index < unit_index, "dependency wrong, {} depending on {}", unit_index, left_index);
+            assert!(*right_index < unit_index, "dependency wrong, {} depending on {}", unit_index, right_index);
+            assert!(parents[*left_index].is_none(), "cannot fuse {} twice", left_index);
+            assert!(parents[*right_index].is_none(), "cannot fuse {} twice", right_index);
+            parents[*left_index] = Some(unit_index);
+            parents[*right_index] = Some(unit_index);
+            for vertex_index in interface.iter().cloned() {
+                assert!(vertex_index < initializer.vertex_num, "invalid vertex index {} in partitions", vertex_index);
+                assert!(vertex_partitioned[vertex_index].is_none(), "duplicate partition of vertex {}", vertex_index);
+                vertex_partitioned[vertex_index] = Some(unit_index);
+            }
+        }
+        // check that all nodes except for the last one has been merged
+        for unit_index in 0..self.partitions.len() + self.interfaces.len() - 1 {
+            assert!(parents[unit_index].is_some(), "found unit {} without being fused", unit_index);
+        }
+    }
+
+}
+
+impl Default for DualModuleParallelConfig {
+    fn default() -> Self { serde_json::from_value(json!({})).unwrap() }
 }
 
 pub mod dual_module_parallel_default_configs {
+    use super::super::util::*;
     pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
-    pub fn division() -> usize { 1 }  // by default no division: a single unit contains all
+    pub fn partitions() -> Vec<Vec<VertexIndex>> { vec![] }  // by default, this field is optional, and when empty, it will have only 1 partition
+    pub fn interfaces() -> Vec<(usize, usize, Vec<VertexIndex>)> { vec![] }  // by default no interface
 }
 
 pub struct DualModuleParallelUnit {
@@ -78,16 +124,19 @@ create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleP
 impl DualModuleParallel {
 
     /// recommended way to create a new instance, given a customized configuration
-    pub fn new_config(initializer: &SolverInitializer, config: DualModuleParallelConfig) -> Self {
+    pub fn new_config(initializer: &SolverInitializer, mut config: DualModuleParallelConfig) -> Self {
         let mut thread_pool_builder = ThreadPool::builder();
         if config.thread_pool_size != 0 {
             thread_pool_builder.pool_size(config.thread_pool_size);
         }
         let thread_pool = thread_pool_builder.create().expect("creating thread pool failed");
-        assert!(config.division > 0, "0 division forbidden");
+        if config.partitions.len() == 0 {
+            config.partitions = vec![(0..initializer.vertex_num).collect()];
+        }
+        assert!(config.partitions.len() > 0, "0 partition forbidden");
         let mut units = vec![];
         let mut vertex_to_unit = Vec::with_capacity(initializer.vertex_num);
-        if config.division == 1 {  // no division
+        if config.partitions.len() == 1 {  // no partition
             let dual_module = DualModuleSerial::new(&initializer);
             let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
             let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, thread_pool.clone());
@@ -95,8 +144,50 @@ impl DualModuleParallel {
             for _ in 0..initializer.vertex_num {
                 vertex_to_unit.push(0);  // all vertices belongs to the only unit
             }
-        } else {  // exist division
-            unimplemented!()
+            assert!(config.interfaces.is_empty(), "don't specify `interfaces` if no partition");
+        } else {  // multiple partitions, do the initialization in parallel to take advantage of multiple cores
+            config.partition_sanity_check(initializer);
+            vertex_to_unit = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
+            for (partition_index, partition) in config.partitions.iter().enumerate() {
+                for vertex_index in partition.iter().cloned() {
+                    vertex_to_unit[vertex_index] = partition_index;
+                }
+            }
+            for (interface_index, (_, _, interface)) in config.interfaces.iter().enumerate() {
+                let unit_index = interface_index +  config.partitions.len();
+                for vertex_index in interface.iter().cloned() {
+                    vertex_to_unit[vertex_index] = unit_index;
+                }
+            }
+            let mut partitioned_initializers: Vec<SolverInitializer> = config.partitions.iter().map(|partition| {
+                SolverInitializer::new(partition.len(), vec![], vec![])  // note that all fields can be modified later
+            }).collect();
+            {  // copy async data
+                let config = Arc::new(config.clone());
+                let initializer = Arc::new(initializer.clone());
+                let vertex_to_unit = Arc::new(vertex_to_unit.clone());
+                block_on(async {
+                    let mut async_tasks = Vec::new();
+                    for partition_index in 0..config.partitions.len() {
+                        let config = config.clone();
+                        let initializer = initializer.clone();
+                        let vertex_to_unit = vertex_to_unit.clone();
+                        async_tasks.push(async move {
+                            let partition = &config.partitions[partition_index];
+                            let dual_module = DualModuleSerial::new(&initializer);
+                        }.boxed());
+                    }
+                    for interface_index in 0..config.interfaces.len() {
+                        let config = config.clone();
+                        let initializer = initializer.clone();
+                        async_tasks.push(async move {
+                            let (left, right, interface) = &config.interfaces[interface_index];
+                            println!("interface: {interface:?}");
+                        }.boxed());
+                    }
+                    thread_pool_join_all(&thread_pool, async_tasks).await;
+                });
+            }
         }
         Self {
             initializer: initializer.clone(),
@@ -113,8 +204,7 @@ impl DualModuleImpl for DualModuleParallel {
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
     fn new(initializer: &SolverInitializer) -> Self {
-        let config: DualModuleParallelConfig = serde_json::from_value(json!({})).unwrap();
-        Self::new_config(initializer, config)
+        Self::new_config(initializer, DualModuleParallelConfig::default())
     }
 
     /// clear all growth and existing dual nodes
@@ -124,7 +214,7 @@ impl DualModuleImpl for DualModuleParallel {
                 unit_ptr.clear().await;
                 let mut unit = unit_ptr.write();
                 unit.is_fused = false;  // everything is not fused at the beginning
-                unit.is_active = unit_idx < self.config.division;  // only divided serial modules are active at the beginning
+                unit.is_active = unit_idx < self.config.partitions.len();  // only partitioned serial modules are active at the beginning
             }
         })
     }
@@ -291,7 +381,7 @@ impl FusionVisualizer for DualModuleParallel {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         // do the sanity check first before taking snapshot
         // self.sanity_check().unwrap();
-        if self.config.division == 1 {
+        if self.config.partitions.len() == 1 {
             self.units[0].read_recursive().wrapped_module.as_ref().unwrap().read_recursive().snapshot(abbrev)
         } else {
             unimplemented!();
@@ -427,8 +517,9 @@ pub mod tests {
     use super::super::primal_module::*;
     use super::super::primal_module_serial::*;
 
-    pub fn dual_module_parallel_basic_standard_syndrome_optional_viz(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
-            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) {
+    pub fn dual_module_parallel_basic_standard_syndrome_optional_viz<F>(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>
+            , final_dual: Weight, partition_func: F)
+            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) where F: Fn(&SolverInitializer, &mut DualModuleParallelConfig) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
@@ -442,7 +533,9 @@ pub mod tests {
         };
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleParallel::new(&initializer);
+        let mut config = DualModuleParallelConfig::default();
+        partition_func(&initializer, &mut config);
+        let mut dual_module = DualModuleParallel::new_config(&initializer, config);
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
@@ -470,9 +563,10 @@ pub mod tests {
         (interface, primal_module, dual_module)
     }
 
-    pub fn dual_module_parallel_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
-            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) {
-        dual_module_parallel_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
+    pub fn dual_module_parallel_standard_syndrome<F>(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
+            , final_dual: Weight, partition_func: F)
+            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) where F: Fn(&SolverInitializer, &mut DualModuleParallelConfig) {
+        dual_module_parallel_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual, partition_func)
     }
 
     /// test a simple case
@@ -480,7 +574,27 @@ pub mod tests {
     fn dual_module_parallel_basic_1() {  // cargo test dual_module_parallel_basic_1 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_1.json");
         let syndrome_vertices = vec![39, 52, 63, 90, 100];
-        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9);
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |initializer, config| {
+            println!("initializer: {initializer:?}");
+            println!("config: {config:?}");
+        });
+    }
+
+    /// split into 2, with no syndrome vertex on the interface
+    #[test]
+    fn dual_module_parallel_basic_2() {  // cargo test dual_module_parallel_basic_2 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_basic_2.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |_initializer, config| {
+            config.partitions = vec![
+                (0..72).collect(),     // unit 0
+                (84..121).collect(),   // unit 1
+            ];
+            config.interfaces = vec![
+                (0, 1, (72..84).collect()),  // unit 2, by fusing 0 and 1
+            ];
+            println!("{config:?}");
+        });
     }
 
 }
