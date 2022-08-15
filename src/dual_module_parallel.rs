@@ -39,6 +39,41 @@ pub struct DualModuleParallel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct VertexRange {
+    pub range: [VertexIndex; 2],
+}
+
+impl VertexRange {
+    pub fn new(start: VertexIndex, end: VertexIndex) -> Self {
+        debug_assert!(end >= start, "invalid range [{}, {})", start, end);
+        Self { range: [start, end], }
+    }
+    pub fn iter(&self) -> std::ops::Range<VertexIndex> {
+        self.range[0].. self.range[1]
+    }
+    pub fn len(&self) -> usize {
+        self.range[1] - self.range[0]
+    }
+    pub fn start(&self) -> VertexIndex {
+        self.range[0]
+    }
+    pub fn end(&self) -> VertexIndex {
+        self.range[1]
+    }
+    pub fn sanity_check(&self) {
+        assert!(self.start() <= self.end(), "invalid vertex range {:?}", self);
+    }
+    /// fuse two ranges together, returning (the whole range, the interfacing range)
+    pub fn fuse(&self, other: &Self) -> (Self, Self) {
+        self.sanity_check();
+        other.sanity_check();
+        assert!(self.range[1] <= other.range[0], "only lower range can fuse higher range");
+        (Self::new(self.range[0], other.range[1]), Self::new(self.range[1], other.range[0]))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DualModuleParallelConfig {
     /// enable async execution of dual operations
@@ -46,44 +81,45 @@ pub struct DualModuleParallelConfig {
     pub thread_pool_size: usize,
     /// detailed plan of partitioning serial modules: each serial module possesses a list of vertices, including all interface vertices
     #[serde(default = "dual_module_parallel_default_configs::partitions")]
-    pub partitions: Vec<Vec<VertexIndex>>,
+    pub partitions: Vec<VertexRange>,
     /// detailed plan of interfacing vertices
-    #[serde(default = "dual_module_parallel_default_configs::interfaces")]
-    pub interfaces: Vec<(usize, usize, Vec<VertexIndex>)>,
+    #[serde(default = "dual_module_parallel_default_configs::fusions")]
+    pub fusions: Vec<(usize, usize)>,
 }
 
 impl DualModuleParallelConfig {
 
-    pub fn partition_sanity_check(&self, initializer: &SolverInitializer) {
+    pub fn partition_sanity_check(&self, initializer: &SolverInitializer) -> Vec<VertexRange> {
         assert!(self.partitions.len() > 0, "at least one partition must exist");
-        // first verify that each vertex is only present in a single partition
-        let mut vertex_partitioned: Vec<Option<usize>> = (0..initializer.vertex_num).map(|_| None).collect();
-        for (partition_index, partition) in self.partitions.iter().enumerate() {
-            for vertex_index in partition.iter().cloned() {
-                assert!(vertex_index < initializer.vertex_num, "invalid vertex index {} in partitions", vertex_index);
-                assert!(vertex_partitioned[vertex_index].is_none(), "duplicate partition of vertex {}", vertex_index);
-                vertex_partitioned[vertex_index] = Some(partition_index);
-            }
+        let mut unit_ranges = vec![];
+        for partition in self.partitions.iter() {
+            partition.sanity_check();
+            assert!(partition.end() <= initializer.vertex_num, "invalid vertex index {} in partitions", partition.end());
+            unit_ranges.push(partition.clone());
         }
-        let mut parents: Vec<Option<usize>> = (0..self.partitions.len() + self.interfaces.len()).map(|_| None).collect();
-        for (interface_index, (left_index, right_index, interface)) in self.interfaces.iter().enumerate() {
-            let unit_index = interface_index +  self.partitions.len();
+        let mut parents: Vec<Option<usize>> = (0..self.partitions.len() + self.fusions.len()).map(|_| None).collect();
+        for (fusion_index, (left_index, right_index)) in self.fusions.iter().enumerate() {
+            let unit_index = fusion_index + self.partitions.len();
             assert!(*left_index < unit_index, "dependency wrong, {} depending on {}", unit_index, left_index);
             assert!(*right_index < unit_index, "dependency wrong, {} depending on {}", unit_index, right_index);
             assert!(parents[*left_index].is_none(), "cannot fuse {} twice", left_index);
             assert!(parents[*right_index].is_none(), "cannot fuse {} twice", right_index);
             parents[*left_index] = Some(unit_index);
             parents[*right_index] = Some(unit_index);
-            for vertex_index in interface.iter().cloned() {
-                assert!(vertex_index < initializer.vertex_num, "invalid vertex index {} in partitions", vertex_index);
-                assert!(vertex_partitioned[vertex_index].is_none(), "duplicate partition of vertex {}", vertex_index);
-                vertex_partitioned[vertex_index] = Some(unit_index);
-            }
+            // fusing range
+            let (whole_range, interface_range) = unit_ranges[*left_index].fuse(&unit_ranges[*right_index]);
+            unit_ranges.push(whole_range);
         }
         // check that all nodes except for the last one has been merged
-        for unit_index in 0..self.partitions.len() + self.interfaces.len() - 1 {
+        for unit_index in 0..self.partitions.len() + self.fusions.len() - 1 {
             assert!(parents[unit_index].is_some(), "found unit {} without being fused", unit_index);
         }
+        // check that the final node has the full range
+        let last_unit_index = self.partitions.len() + self.fusions.len() - 1;
+        assert!(unit_ranges[last_unit_index].start() == 0, "final range not covering all vertices {:?}", unit_ranges[last_unit_index]);
+        assert!(unit_ranges[last_unit_index].end() == initializer.vertex_num, "final range not covering all vertices {:?}", unit_ranges[last_unit_index]);
+        // return the unit ranges
+        unit_ranges
     }
 
 }
@@ -93,10 +129,10 @@ impl Default for DualModuleParallelConfig {
 }
 
 pub mod dual_module_parallel_default_configs {
-    use super::super::util::*;
+    use super::*;
     pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
-    pub fn partitions() -> Vec<Vec<VertexIndex>> { vec![] }  // by default, this field is optional, and when empty, it will have only 1 partition
-    pub fn interfaces() -> Vec<(usize, usize, Vec<VertexIndex>)> { vec![] }  // by default no interface
+    pub fn partitions() -> Vec<VertexRange> { vec![] }  // by default, this field is optional, and when empty, it will have only 1 partition
+    pub fn fusions() -> Vec<(usize, usize)> { vec![] }  // by default no interface
 }
 
 pub struct DualModuleParallelUnit {
@@ -104,6 +140,8 @@ pub struct DualModuleParallelUnit {
     pub is_fused: bool,
     /// whether it's active or not; some units are "placeholder" units that are not active until they actually fuse their children
     pub is_active: bool,
+    /// the vertex range of this parallel unit
+    pub range: VertexRange,
     /// `Some(_)` only if this parallel dual module is a simple wrapper of a serial dual module
     pub wrapped_module: Option<DualModuleSerialPtr>,
     /// left and right children dual modules
@@ -115,6 +153,7 @@ pub struct DualModuleParallelUnit {
     /// interface ids (each dual module may have multiple interfaces, e.g. in case A-B, B-C, C-D, D-A,
     /// if ABC is in the same module, D is in another module, then there are two interfaces C-D, D-A between modules ABC and D)
     pub interfaces: Vec<Weak<Interface>>,
+
 }
 
 create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleParallelUnitWeak);
@@ -129,11 +168,12 @@ impl DualModuleParallel {
         }
         let thread_pool = thread_pool_builder.build().expect("creating thread pool failed");
         if config.partitions.len() == 0 {
-            config.partitions = vec![(0..initializer.vertex_num).collect()];
+            config.partitions = vec![VertexRange::new(0, initializer.vertex_num)];
         }
         assert!(config.partitions.len() > 0, "0 partition forbidden");
         let mut units = vec![];
         let mut vertex_to_unit = Vec::with_capacity(initializer.vertex_num);
+        let mut unit_ranges = config.partition_sanity_check(initializer);
         if config.partitions.len() == 1 {  // no partition
             let dual_module = DualModuleSerial::new(&initializer);
             let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
@@ -142,18 +182,11 @@ impl DualModuleParallel {
             for _ in 0..initializer.vertex_num {
                 vertex_to_unit.push(0);  // all vertices belongs to the only unit
             }
-            assert!(config.interfaces.is_empty(), "don't specify `interfaces` if no partition");
+            assert!(config.fusions.is_empty(), "should be no `fusions` with only 1 partition");
         } else {  // multiple partitions, do the initialization in parallel to take advantage of multiple cores
-            config.partition_sanity_check(initializer);
             vertex_to_unit = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
-            for (partition_index, partition) in config.partitions.iter().enumerate() {
-                for vertex_index in partition.iter().cloned() {
-                    vertex_to_unit[vertex_index] = partition_index;
-                }
-            }
-            for (interface_index, (_, _, interface)) in config.interfaces.iter().enumerate() {
-                let unit_index = interface_index +  config.partitions.len();
-                for vertex_index in interface.iter().cloned() {
+            for (unit_index, unit_range) in unit_ranges.iter().enumerate() {
+                for vertex_index in unit_range.iter() {
                     vertex_to_unit[vertex_index] = unit_index;
                 }
             }
@@ -161,22 +194,23 @@ impl DualModuleParallel {
                 SolverInitializer::new(partition.len(), vec![], vec![])  // note that all fields can be modified later
             }).collect();
             let mut partition_units = vec![];
-            let mut interface_units = vec![];
+            let mut fusion_units = vec![];
             thread_pool.scope(|s| {
                 s.spawn(|_| {
                     (0..config.partitions.len()).into_par_iter().map(|partition_index| {
                         let partition = &config.partitions[partition_index];
-                        let dual_module = DualModuleSerial::new(&initializer);
+                        let mut dual_module = DualModuleSerial::new(&partitioned_initializers[partition_index]);
+                        dual_module.vertex_index_bias = unit_ranges[partition_index].start();
                         println!("partition_index: {partition_index}");
                         std::thread::sleep(std::time::Duration::from_millis(1000));
                     }).collect_into_vec(&mut partition_units);
                 });
                 s.spawn(|_| {
-                    (0..config.interfaces.len()).into_par_iter().map(|interface_index| {
-                        let (left, right, interface) = &config.interfaces[interface_index];
-                        println!("interface_index: {interface_index}");
+                    (0..config.fusions.len()).into_par_iter().map(|fusion_index| {
+                        let (left, right) = &config.fusions[fusion_index];
+                        println!("fusion_index: {fusion_index}");
                         std::thread::sleep(std::time::Duration::from_millis(1000));
-                    }).collect_into_vec(&mut interface_units);
+                    }).collect_into_vec(&mut fusion_units);
                 });
             });
         }
@@ -200,91 +234,109 @@ impl DualModuleImpl for DualModuleParallel {
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
-        self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {
-            let mut unit = unit_ptr.write();
-            unit.clear();
-            unit.is_fused = false;  // everything is not fused at the beginning
-            unit.is_active = unit_idx < self.config.partitions.len();  // only partitioned serial modules are active at the beginning
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {
+                let mut unit = unit_ptr.write();
+                unit.clear();
+                unit.is_fused = false;  // everything is not fused at the beginning
+                unit.is_active = unit_idx < self.config.partitions.len();  // only partitioned serial modules are active at the beginning
+            });
+        })
     }
 
     // although not the intended way to use it, we do support these common APIs for compatibility with normal primal modules
 
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
-        self.units.par_iter().for_each(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return }
-            unit.add_dual_node(&dual_node_ptr);
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().for_each(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return }
+                unit.add_dual_node(&dual_node_ptr);
+            });
+        })
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
-        self.units.par_iter().for_each(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return }
-            unit.remove_blossom(dual_node_ptr.clone());
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().for_each(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return }
+                unit.remove_blossom(dual_node_ptr.clone());
+            });
+        })
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
-        self.units.par_iter().for_each(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return }
-            unit.set_grow_state(&dual_node_ptr, grow_state);
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().for_each(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return }
+                unit.set_grow_state(&dual_node_ptr, grow_state);
+            });
+        })
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
-        let results: Vec<_> = self.units.par_iter().filter_map(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return None }
-            Some(unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update))
-        }).collect();
-        let mut group_max_update_length = GroupMaxUpdateLength::new();
-        for max_update_length in results.into_iter() {
-            group_max_update_length.add(max_update_length);
-        }
-        match group_max_update_length {
-            GroupMaxUpdateLength::NonZeroGrow(weight) => MaxUpdateLength::NonZeroGrow(weight),
-            GroupMaxUpdateLength::Conflicts(mut conflicts) => conflicts.pop().unwrap(),  // just return the first conflict is fine
-        }
+        self.thread_pool.scope(|_| {
+            let results: Vec<_> = self.units.par_iter().filter_map(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return None }
+                Some(unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update))
+            }).collect();
+            let mut group_max_update_length = GroupMaxUpdateLength::new();
+            for max_update_length in results.into_iter() {
+                group_max_update_length.add(max_update_length);
+            }
+            match group_max_update_length {
+                GroupMaxUpdateLength::NonZeroGrow(weight) => MaxUpdateLength::NonZeroGrow(weight),
+                GroupMaxUpdateLength::Conflicts(mut conflicts) => conflicts.pop().unwrap(),  // just return the first conflict is fine
+            }
+        })
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
-        let results: Vec<_> = self.units.par_iter().filter_map(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return None }
-            Some(unit.compute_maximum_update_length())
-        }).collect();
-        let mut group_max_update_length = GroupMaxUpdateLength::new();
-        for local_group_max_update_length in results.into_iter() {
-            group_max_update_length.extend(local_group_max_update_length);
-        }
-        group_max_update_length
+        self.thread_pool.scope(|_| {
+            let results: Vec<_> = self.units.par_iter().filter_map(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return None }
+                Some(unit.compute_maximum_update_length())
+            }).collect();
+            let mut group_max_update_length = GroupMaxUpdateLength::new();
+            for local_group_max_update_length in results.into_iter() {
+                group_max_update_length.extend(local_group_max_update_length);
+            }
+            group_max_update_length
+        })
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
-        self.units.par_iter().for_each(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return }
-            unit.grow_dual_node(&dual_node_ptr, length);
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().for_each(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return }
+                unit.grow_dual_node(&dual_node_ptr, length);
+            });
+        })
     }
 
     fn grow(&mut self, length: Weight) {
-        self.units.par_iter().for_each(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return }
-            unit.grow(length);
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().for_each(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return }
+                unit.grow(length);
+            });
+        })
     }
 
     fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
-        self.units.par_iter().for_each(|unit_ptr| {
-            let mut unit = unit_ptr.write();
-            if !unit.is_active { return }
-            unit.load_edge_modifier(edge_modifier);
-        });
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().for_each(|unit_ptr| {
+                let mut unit = unit_ptr.write();
+                if !unit.is_active { return }
+                unit.load_edge_modifier(edge_modifier);
+            });
+        })
     }
 
 }
@@ -310,9 +362,14 @@ impl DualModuleParallelUnitPtr {
 
     /// create a simple wrapper over a serial dual module
     pub fn new_wrapper(dual_module_ptr: DualModuleSerialPtr) -> Self {
+        let range = {
+            let dual_module = dual_module_ptr.read_recursive();
+            VertexRange::new(dual_module.vertex_index_bias, dual_module.vertex_index_bias + dual_module.vertices.len())
+        };
         Self::new(DualModuleParallelUnit {
             is_active: true,
             is_fused: false,
+            range: range,
             wrapped_module: Some(dual_module_ptr),
             children: None,
             parent: None,
@@ -503,11 +560,11 @@ pub mod tests {
         let syndrome_vertices = vec![39, 52, 63, 90, 100];
         dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |_initializer, config| {
             config.partitions = vec![
-                (0..72).collect(),     // unit 0
-                (84..121).collect(),   // unit 1
+                VertexRange::new(0, 72),    // unit 0
+                VertexRange::new(84, 132),  // unit 1
             ];
-            config.interfaces = vec![
-                (0, 1, (72..84).collect()),  // unit 2, by fusing 0 and 1
+            config.fusions = vec![
+                (0, 1),  // unit 2, by fusing 0 and 1
             ];
             println!("{config:?}");
         });
