@@ -31,8 +31,28 @@ cfg_if::cfg_if! {
 
 #[derive(Debug, Clone)]
 pub struct SolverInitializer {
+    /// the number of vertices
     pub vertex_num: VertexIndex,
+    /// weighted edges, where vertex indices are within the range [0, vertex_num)
     pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
+    /// the virtual vertices
+    pub virtual_vertices: Vec<VertexIndex>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PartitionedSolverInitializer {
+    /// the number of vertices exclusively owned by this partition; this part must be a continuous range
+    pub vertex_num: VertexIndex,
+    /// this partition holding vertices starting from this index
+    pub vertex_index_bias: usize,
+    /// if applicable, parent interface comes first, then the grandparent interface, ... note that some ancestor might be skipped because it has no mirrored vertices;
+    /// we skip them because if the partition is in a chain, most of them would only have to know two interfaces on the left and on the right; nothing else necessary.
+    /// (unit_index, list of vertices owned by this ancestor unit and should be mirrored at this partition and whether it's virtual)
+    pub interfaces: Vec<(usize, Vec<(VertexIndex, bool)>)>,
+    /// weighted edges, where the first vertex index is within the range [vertex_index_bias, vertex_index_bias + vertex_num) and 
+    /// the second is either in [vertex_index_bias, vertex_index_bias + vertex_num) or inside 
+    pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
+    /// the virtual vertices
     pub virtual_vertices: Vec<VertexIndex>,
 }
 

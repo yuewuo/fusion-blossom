@@ -707,6 +707,11 @@ impl FastClear for Vertex {
 
 impl DualModuleSerial {
 
+    /// create a partitioned serial dual module to be used in the parallel dual module
+    pub fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
+        unimplemented!()
+    }
+
     /// hard clear all growth (manual call not recommended due to performance drawback)
     pub fn hard_clear_graph(&mut self) {
         for edge in self.edges.iter() {
