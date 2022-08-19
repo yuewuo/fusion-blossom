@@ -91,6 +91,25 @@ pub struct DualModuleParallelConfig {
     /// detailed plan of interfacing vertices
     #[serde(default = "dual_module_parallel_default_configs::fusions")]
     pub fusions: Vec<(usize, usize)>,
+    /// strategy of edges placement: if edges are placed in the fusion unit, it's good for software implementation because there are no duplicate
+    /// edges and no unnecessary vertices in the descendant units. On the other hand, it's not very favorable if implemented on hardware: the 
+    /// fusion unit usually contains a very small amount of vertices and edges for the interfacing between two blocks, but maintaining this small graph
+    /// may consume additional hardware resources and increase the decoding latency. I want the algorithm to finally work on the hardware efficiently
+    /// so I need to verify that it does work by holding all the fusion unit's owned vertices and edges in the descendants, although usually duplicated.
+    #[serde(default = "dual_module_parallel_default_configs::edges_in_fusion_unit")]
+    pub edges_in_fusion_unit: bool,
+}
+
+impl Default for DualModuleParallelConfig {
+    fn default() -> Self { serde_json::from_value(json!({})).unwrap() }
+}
+
+pub mod dual_module_parallel_default_configs {
+    use super::*;
+    pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
+    pub fn partitions() -> Vec<VertexRange> { vec![] }  // by default, this field is optional, and when empty, it will have only 1 partition
+    pub fn fusions() -> Vec<(usize, usize)> { vec![] }  // by default no interface
+    pub fn edges_in_fusion_unit() -> bool { true }  // by default use the software-friendly approach because of removing duplicate edges
 }
 
 #[derive(Debug, Clone)]
@@ -173,17 +192,6 @@ impl PartitionInfo {
 
 }
 
-impl Default for DualModuleParallelConfig {
-    fn default() -> Self { serde_json::from_value(json!({})).unwrap() }
-}
-
-pub mod dual_module_parallel_default_configs {
-    use super::*;
-    pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
-    pub fn partitions() -> Vec<VertexRange> { vec![] }  // by default, this field is optional, and when empty, it will have only 1 partition
-    pub fn fusions() -> Vec<(usize, usize)> { vec![] }  // by default no interface
-}
-
 pub struct DualModuleParallelUnit {
     /// fused module is not accessible globally: it must be accessed from its parent
     pub is_fused: bool,
@@ -259,17 +267,40 @@ impl DualModuleParallel {
                 }
                 while let Some(parent_index) = &partition_info[current_index].parent {
                     let mut mirror_vertices = vec![];
-                    for vertex_index in partition_info[*parent_index].owning_range.iter() {
-                        let mut is_incident = false;
-                        for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
-                            if owning_range.contains(peer_index) {
-                                is_incident = true;
+                    if config.edges_in_fusion_unit {
+                        for vertex_index in partition_info[*parent_index].owning_range.iter() {
+                            let mut is_incident = false;
+                            for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
+                                if owning_range.contains(peer_index) {
+                                    is_incident = true;
+                                    break
+                                }
+                            }
+                            if is_incident {
+                                mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
+                                contained_vertices.insert(vertex_index);
+                            }
+                        }
+                    } else {
+                        // first check if there EXISTS any vertex that's adjacent of it's contains vertex
+                        let mut has_incident = false;
+                        for vertex_index in partition_info[*parent_index].owning_range.iter() {
+                            for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
+                                if contained_vertices.contains(peer_index) {  // important diff: as long as it has an edge with contained vertex, add it
+                                    has_incident = true;
+                                    break
+                                }
+                            }
+                            if has_incident {
                                 break
                             }
                         }
-                        if is_incident {
-                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
-                            contained_vertices.insert(vertex_index);
+                        if has_incident {
+                            // add all vertices as mirrored
+                            for vertex_index in partition_info[*parent_index].owning_range.iter() {
+                                mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
+                                contained_vertices.insert(vertex_index);
+                            }
                         }
                     }
                     if !mirror_vertices.is_empty() {  // only add non-empty mirrored parents is enough
@@ -277,6 +308,7 @@ impl DualModuleParallel {
                     }
                     current_index = *parent_index;
                 }
+                println!("contained_vertices: {contained_vertices:?}");
                 contained_vertices_vec.push(contained_vertices);
                 PartitionedSolverInitializer {
                     vertex_num: owning_range.len(),
@@ -298,10 +330,36 @@ impl DualModuleParallel {
                 let is_j_ancestor = partition_info[j_unit_index].descendants.contains(&i_unit_index);
                 assert!(is_i_ancestor || is_j_ancestor || i_unit_index == j_unit_index, "violating edge ({}, {}) crossing two independent partitions {} and {}"
                     , i, j, i_unit_index, j_unit_index);
-                // let ancestor_unit_index = if is_i_ancestor { i_unit_index } else { j_unit_index };
+                let ancestor_unit_index = if is_i_ancestor { i_unit_index } else { j_unit_index };
                 let descendant_unit_index = if is_i_ancestor { j_unit_index } else { i_unit_index };
-                // the edge should be added to the descendant, and it's guaranteed that the descendant unit contains (although not necessarily owned) the vertex
-                partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight));
+                if config.edges_in_fusion_unit {
+                    // the edge should be added to the descendant, and it's guaranteed that the descendant unit contains (although not necessarily owned) the vertex
+                    partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight));
+                } else {
+                    // add edge to every unit from the descendant (including) and the ancestor (excluding) who mirrored the vertex
+                    if ancestor_unit_index < config.partitions.len() {
+                        // leaf unit holds every unit
+                        partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight));
+                    } else {
+                        // iterate every leaf unit of the `descendant_unit_index` to see if adding the edge or not
+                        fn dfs_add(unit_index: usize, config: &DualModuleParallelConfig, partition_info: &Vec<PartitionInfo>, i: VertexIndex, j: VertexIndex
+                                , weight: Weight, contained_vertices_vec: &Vec<BTreeSet<VertexIndex>>, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>) {
+                            if unit_index >= config.partitions.len() {
+                                let (left_index, right_index) = &partition_info[unit_index].children.expect("fusion unit must have children");
+                                dfs_add(*left_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers);
+                                dfs_add(*right_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers);
+                            } else {
+                                let contain_i = contained_vertices_vec[unit_index].contains(&i);
+                                let contain_j = contained_vertices_vec[unit_index].contains(&j);
+                                assert!(!(contain_i ^ contain_j), "{} and {} must either be both contained or not contained by {}", i, j, unit_index);
+                                if contain_i {
+                                    partitioned_initializers[unit_index].weighted_edges.push((i, j, weight));
+                                }
+                            }
+                        }
+                        dfs_add(descendant_unit_index, &config, &partition_info, i, j, weight, &contained_vertices_vec, &mut partitioned_initializers);
+                    }
+                }
             }
             println!("partitioned_initializers: {:?}", partitioned_initializers);
             let mut partition_units = vec![];
