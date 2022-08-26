@@ -3,6 +3,7 @@ use crate::rand_xoshiro::rand_core::RngCore;
 use std::sync::Arc;
 use crate::parking_lot::{RwLock, RawRwLock};
 use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
+use serde::{Serialize, Deserialize};
 
 
 cfg_if::cfg_if! {
@@ -39,12 +40,50 @@ pub struct SolverInitializer {
     pub virtual_vertices: Vec<VertexIndex>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct VertexRange {
+    pub range: [VertexIndex; 2],
+}
+
+impl VertexRange {
+    pub fn new(start: VertexIndex, end: VertexIndex) -> Self {
+        debug_assert!(end >= start, "invalid range [{}, {})", start, end);
+        Self { range: [start, end], }
+    }
+    pub fn iter(&self) -> std::ops::Range<VertexIndex> {
+        self.range[0].. self.range[1]
+    }
+    pub fn len(&self) -> usize {
+        self.range[1] - self.range[0]
+    }
+    pub fn start(&self) -> VertexIndex {
+        self.range[0]
+    }
+    pub fn end(&self) -> VertexIndex {
+        self.range[1]
+    }
+    pub fn sanity_check(&self) {
+        assert!(self.start() <= self.end(), "invalid vertex range {:?}", self);
+    }
+    pub fn contains(&self, vertex_index: &VertexIndex) -> bool {
+        *vertex_index >= self.start() && *vertex_index < self.end()
+    }
+    /// fuse two ranges together, returning (the whole range, the interfacing range)
+    pub fn fuse(&self, other: &Self) -> (Self, Self) {
+        self.sanity_check();
+        other.sanity_check();
+        assert!(self.range[1] <= other.range[0], "only lower range can fuse higher range");
+        (Self::new(self.range[0], other.range[1]), Self::new(self.range[1], other.range[0]))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PartitionedSolverInitializer {
-    /// the number of vertices exclusively owned by this partition; this part must be a continuous range
+    /// the number of all vertices
     pub vertex_num: VertexIndex,
-    /// this partition holding vertices starting from this index
-    pub vertex_index_bias: usize,
+    /// vertices exclusively owned by this partition; this part must be a continuous range
+    pub owning_range: VertexRange,
     /// if applicable, parent interface comes first, then the grandparent interface, ... note that some ancestor might be skipped because it has no mirrored vertices;
     /// we skip them because if the partition is in a chain, most of them would only have to know two interfaces on the left and on the right; nothing else necessary.
     /// (unit_index, list of vertices owned by this ancestor unit and should be mirrored at this partition and whether it's virtual)

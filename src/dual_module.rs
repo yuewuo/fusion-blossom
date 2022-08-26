@@ -262,7 +262,37 @@ impl DualNodePtr {
             secondary_ancestor = ancestor.clone();
             ancestor = new_ancestor;
         }
-    } 
+    }
+
+    fn __get_all_vertices(&self, pending_vec: &mut Vec<VertexIndex>) {
+        let dual_node = self.read_recursive();
+        match &dual_node.class {
+            DualNodeClass::Blossom { nodes_circle, .. } => {
+                for node_ptr in nodes_circle.iter() {
+                    node_ptr.upgrade_force().__get_all_vertices(pending_vec);
+                }
+            },
+            DualNodeClass::SyndromeVertex { syndrome_index } => {
+                pending_vec.push(*syndrome_index);
+            },
+        };
+    }
+
+    /// find all vertices that belongs to the dual node, i.e. any vertices inside a blossom
+    pub fn get_all_vertices(&self) -> Vec<VertexIndex> {
+        let mut pending_vec = vec![];
+        self.__get_all_vertices(&mut pending_vec);
+        pending_vec
+    }
+
+    /// find a representative vertex
+    pub fn get_representative_vertex(&self) -> VertexIndex {
+        let dual_node = self.read_recursive();
+        match &dual_node.class {
+            DualNodeClass::Blossom { nodes_circle, .. } => nodes_circle[0].upgrade_force().get_representative_vertex(),
+            DualNodeClass::SyndromeVertex { syndrome_index } => *syndrome_index,
+        }
+    }
 
 }
 

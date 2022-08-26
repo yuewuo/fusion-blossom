@@ -87,7 +87,11 @@ pub fn snapshot_combine_object_known_key(obj: &mut ObjectMap, obj_2: &mut Object
     match (obj.contains_key(key), obj_2.contains_key(key)) {
         (_, false) => { },  // do nothing
         (false, true) => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
-        (true, true) => { assert_eq!(obj[key], obj_2[key], "cannot combine different values: please make sure values don't conflict"); }
+        (true, true) => {
+            println!("{}: {:?} = {:?}", key, obj[key], obj_2[key]);
+            assert_eq!(obj[key], obj_2[key], "cannot combine different values: please make sure values don't conflict");
+            obj_2.remove(key).unwrap();
+        }
     }
 }
 
@@ -99,7 +103,10 @@ pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap
     for key in keys.iter() {
         match obj.contains_key(key) {
             false => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
-            true => { assert_eq!(obj[key], obj_2[key], "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function"); }
+            true => {
+                assert_eq!(obj[key], obj_2[key], "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function");
+                obj_2.remove(key).unwrap();
+            }
         }
     }
 }

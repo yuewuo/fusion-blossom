@@ -24,8 +24,10 @@ pub struct DualModuleSerial {
     pub edges: Vec<EdgePtr>,
     /// current timestamp
     pub active_timestamp: FastClearTimestamp,
-    /// bias of vertex index, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
-    pub vertex_index_bias: usize,
+    /// vertices exclusively owned by this module, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
+    pub owning_range: VertexRange,
+    /// the number of all vertices partitioned
+    pub vertex_num: usize,
     /// maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained;
     /// note that this list may contain deleted node as well as duplicate nodes
     pub active_list: Vec<DualNodeInternalWeak>,
@@ -216,7 +218,8 @@ impl DualModuleImpl for DualModuleSerial {
             nodes: vec![],
             edges: edges,
             active_timestamp: 0,
-            vertex_index_bias: 0,
+            owning_range: VertexRange::new(0, initializer.vertex_num),
+            vertex_num: initializer.vertex_num,
             active_list: vec![],
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
@@ -276,10 +279,8 @@ impl DualModuleImpl for DualModuleSerial {
                     }
                 },
                 DualNodeClass::SyndromeVertex { syndrome_index } => {
-                    assert!(*syndrome_index >= self.vertex_index_bias, "syndrome not belonging to this dual module");
-                    let vertex_idx = syndrome_index - self.vertex_index_bias;
-                    assert!(vertex_idx < self.vertices.len(), "syndrome not belonging to this dual module");
-                    let vertex_ptr = &self.vertices[vertex_idx];
+                    assert!(self.owning_range.contains(syndrome_index), "syndrome not belonging to this dual module");
+                    let vertex_ptr = &self.vertices[*syndrome_index - self.owning_range.start()];  // exclusively owned vertices are always placed in the front
                     vertex_ptr.dynamic_clear(active_timestamp);
                     let mut vertex = vertex_ptr.write(active_timestamp);
                     vertex.propagated_dual_node = Some(node_internal_ptr.downgrade());
@@ -709,7 +710,74 @@ impl DualModuleSerial {
 
     /// create a partitioned serial dual module to be used in the parallel dual module
     pub fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
-        unimplemented!()
+        println!("partitioned_initializer: {partitioned_initializer:?}");
+        let active_timestamp = 0;
+        // create vertices
+        let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new(Vertex {
+            vertex_index: vertex_index,
+            is_virtual: false,
+            is_syndrome: false,
+            edges: Vec::new(),
+            propagated_dual_node: None,
+            propagated_grandson_dual_node: None,
+            timestamp: active_timestamp,
+        })).collect();
+        // set virtual vertices
+        for &virtual_vertex in partitioned_initializer.virtual_vertices.iter() {
+            let mut vertex = vertices[virtual_vertex - partitioned_initializer.owning_range.start()].write(active_timestamp);
+            vertex.is_virtual = true;
+        }
+        // set edges
+        let mut edges = Vec::<EdgePtr>::new();
+        // for &(i, j, weight) in initializer.weighted_edges.iter() {
+        //     assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+        //     assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
+        //     assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
+        //     let left = usize::min(i, j);
+        //     let right = usize::max(i, j);
+        //     let edge_ptr = EdgePtr::new(Edge {
+        //         index: edges.len(),
+        //         weight: weight,
+        //         left: vertices[left].downgrade(),
+        //         right: vertices[right].downgrade(),
+        //         left_growth: 0,
+        //         right_growth: 0,
+        //         left_dual_node: None,
+        //         left_grandson_dual_node: None,
+        //         right_dual_node: None,
+        //         right_grandson_dual_node: None,
+        //         timestamp: 0,
+        //     });
+        //     for (a, b) in [(i, j), (j, i)] {
+        //         let mut vertex = vertices[a].write(active_timestamp);
+        //         debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge will take effect)
+        //             let mut no_duplicate = true;
+        //             for edge_weak in vertex.edges.iter() {
+        //                 let edge_ptr = edge_weak.upgrade_force();
+        //                 let edge = edge_ptr.read_recursive(active_timestamp);
+        //                 if edge.left == vertices[b].downgrade() || edge.right == vertices[b].downgrade() {
+        //                     no_duplicate = false;
+        //                     eprintln!("duplicated edge between {} and {} with weight w1 = {} and w2 = {}, consider merge them into a single edge", i, j, weight, edge.weight);
+        //                     break
+        //                 }
+        //             }
+        //             no_duplicate
+        //         });
+        //         vertex.edges.push(edge_ptr.downgrade());
+        //     }
+        //     edges.push(edge_ptr);
+        // }
+        Self {
+            vertices: vertices,
+            nodes: vec![],
+            edges: edges,
+            active_timestamp: 0,
+            owning_range: partitioned_initializer.owning_range,
+            vertex_num: partitioned_initializer.vertex_num,
+            active_list: vec![],
+            current_cycle: 0,
+            edge_modifier: EdgeWeightModifier::new(),
+        }
     }
 
     /// hard clear all growth (manual call not recommended due to performance drawback)
@@ -850,16 +918,16 @@ impl FusionVisualizer for DualModuleSerial {
         // do the sanity check first before taking snapshot
         self.sanity_check().unwrap();
         let active_timestamp = self.active_timestamp;
-        let mut vertices = Vec::<serde_json::Value>::new();
+        let mut vertices: Vec::<serde_json::Value> = (0..self.vertex_num).map(|_| json!({})).collect();
         for vertex_ptr in self.vertices.iter() {
             vertex_ptr.dynamic_clear(active_timestamp);
             let vertex = vertex_ptr.read_recursive(active_timestamp);
-            vertices.push(json!({
+            vertices[vertex.vertex_index] = json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
                 if abbrev { "p" } else { "propagated_dual_node" }: vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
                 if abbrev { "pg" } else { "propagated_grandson_dual_node" }: vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-            }));
+            });
         }
         let mut edges = Vec::<serde_json::Value>::new();
         for edge_ptr in self.edges.iter() {
@@ -877,24 +945,28 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "rgd" } else { "right_grandson_dual_node" }: edge.right_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
             }));
         }
-        let mut dual_nodes = Vec::<serde_json::Value>::new();
-        for node_ptr in self.nodes.iter() {
-            if let Some(node_ptr) = node_ptr.as_ref() {
-                let node = node_ptr.read_recursive();
-                dual_nodes.push(json!({
-                    if abbrev { "b" } else { "boundary" }: node.boundary.iter().map(|(is_left, edge_weak)|
-                        (*is_left, edge_weak.upgrade_force().read_recursive(active_timestamp).index)).collect::<Vec<(bool, usize)>>(),
-                    if abbrev { "d" } else { "dual_variable" }: node.dual_variable,
-                }));
-            } else {
-                dual_nodes.push(json!(null));
-            }
-        }
-        json!({
+        let mut value = json!({
             "vertices": vertices,
             "edges": edges,
-            "dual_nodes": dual_nodes,
-        })
+        });
+        // TODO: since each serial module only processes a part of the dual nodes, it's not feasible to list them in a reasonable vector now...
+        if self.owning_range.start() == 0 && self.owning_range.end() == self.vertex_num {
+            let mut dual_nodes = Vec::<serde_json::Value>::new();
+            for node_ptr in self.nodes.iter() {
+                if let Some(node_ptr) = node_ptr.as_ref() {
+                    let node = node_ptr.read_recursive();
+                    dual_nodes.push(json!({
+                        if abbrev { "b" } else { "boundary" }: node.boundary.iter().map(|(is_left, edge_weak)|
+                            (*is_left, edge_weak.upgrade_force().read_recursive(active_timestamp).index)).collect::<Vec<(bool, usize)>>(),
+                        if abbrev { "d" } else { "dual_variable" }: node.dual_variable,
+                    }));
+                } else {
+                    dual_nodes.push(json!(null));
+                }
+            }
+            value.as_object_mut().unwrap().insert(format!("dual_nodes"), json!(dual_nodes));
+        }
+        value
     }
 }
 
