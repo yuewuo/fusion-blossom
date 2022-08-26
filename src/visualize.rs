@@ -51,6 +51,7 @@ pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) 
     // fix vertices missing fields
     let vertices = value.get_mut("vertices").expect("missing unrecoverable field").as_array_mut().expect("vertices must be an array");
     for vertex in vertices {
+        if vertex.is_null() { continue }  // vertex not present, probably currently don't care
         let vertex = vertex.as_object_mut().expect("each vertex must be an object");
         let key_is_virtual = if abbrev { "v" } else { "is_virtual" };
         let key_is_syndrome = if abbrev { "s" } else { "is_syndrome" };
@@ -63,6 +64,7 @@ pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) 
     // fix edges missing fields
     let edges = value.get_mut("edges").expect("missing unrecoverable field").as_array_mut().expect("edges must be an array");
     for edge in edges {
+        if edge.is_null() { continue }  // edge not present, probably currently don't care
         let edge = edge.as_object_mut().expect("each edge must be an object");
         let key_weight = if abbrev { "w" } else { "weight" };
         let key_left = if abbrev { "l" } else { "left" };
@@ -88,7 +90,7 @@ pub fn snapshot_combine_object_known_key(obj: &mut ObjectMap, obj_2: &mut Object
         (_, false) => { },  // do nothing
         (false, true) => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
         (true, true) => {
-            println!("{}: {:?} = {:?}", key, obj[key], obj_2[key]);
+            // println!("[snapshot_combine_object_known_key] {}: {:?} == {:?}", key, obj[key], obj_2[key]);
             assert_eq!(obj[key], obj_2[key], "cannot combine different values: please make sure values don't conflict");
             obj_2.remove(key).unwrap();
         }
@@ -104,6 +106,7 @@ pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap
         match obj.contains_key(key) {
             false => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
             true => {
+                // println!("[snapshot_copy_remaining_fields] {}: {:?} == {:?}", key, obj[key], obj_2[key]);
                 assert_eq!(obj[key], obj_2[key], "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function");
                 obj_2.remove(key).unwrap();
             }
@@ -123,6 +126,8 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
             assert!(vertices.len() == vertices_2.len(), "vertices must be compatible");
             for (vertex_idx, vertex) in vertices.iter_mut().enumerate() {
                 let vertex_2 = &mut vertices_2[vertex_idx];
+                if vertex_2.is_null() { continue }
+                if vertex.is_null() { *vertex = vertex_2.clone(); continue }
                 let vertex = vertex.as_object_mut().expect("each vertex must be an object");
                 let vertex_2 = vertex_2.as_object_mut().expect("each vertex must be an object");
                 // list known keys
@@ -147,6 +152,8 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
             assert!(edges.len() == edges_2.len(), "edges must be compatible");
             for (edge_idx, edge) in edges.iter_mut().enumerate() {
                 let edge_2 = &mut edges_2[edge_idx];
+                if edge_2.is_null() { continue }
+                if edge.is_null() { *edge = edge_2.clone(); continue }
                 let edge = edge.as_object_mut().expect("each edge must be an object");
                 let edge_2 = edge_2.as_object_mut().expect("each edge must be an object");
                 // list known keys

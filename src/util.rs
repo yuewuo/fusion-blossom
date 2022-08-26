@@ -1,6 +1,6 @@
 use super::rand_xoshiro;
 use crate::rand_xoshiro::rand_core::RngCore;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use crate::parking_lot::{RwLock, RawRwLock};
 use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
 use serde::{Serialize, Deserialize};
@@ -78,19 +78,45 @@ impl VertexRange {
     }
 }
 
+/// a general partition unit that could contain mirrored vertices
+#[derive(Debug, Clone)]
+pub struct PartitionUnit {
+    /// unit index
+    pub unit_index: usize,
+    /// whether it's enabled; when disabled, the mirrored vertices behaves just like virtual vertices
+    pub enabled: bool,
+}
+
+create_ptr_types!(PartitionUnit, PartitionUnitPtr, PartitionUnitWeak);
+
+impl std::fmt::Debug for PartitionUnitPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let partition_unit = self.read_recursive();
+        write!(f, "{}{}", if partition_unit.enabled { "E" } else { "D" }, partition_unit.unit_index)
+    }
+}
+
+impl std::fmt::Debug for PartitionUnitWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PartitionedSolverInitializer {
-    /// the number of all vertices
-    pub vertex_num: VertexIndex,
+    /// the number of all vertices (including those partitioned into other serial modules)
+    pub vertex_num: usize,
+    /// the number of all edges (including those partitioned into other serial modules)
+    pub edge_num: usize,
     /// vertices exclusively owned by this partition; this part must be a continuous range
     pub owning_range: VertexRange,
     /// if applicable, parent interface comes first, then the grandparent interface, ... note that some ancestor might be skipped because it has no mirrored vertices;
     /// we skip them because if the partition is in a chain, most of them would only have to know two interfaces on the left and on the right; nothing else necessary.
     /// (unit_index, list of vertices owned by this ancestor unit and should be mirrored at this partition and whether it's virtual)
-    pub interfaces: Vec<(usize, Vec<(VertexIndex, bool)>)>,
+    pub interfaces: Vec<(PartitionUnitWeak, Vec<(VertexIndex, bool)>)>,
     /// weighted edges, where the first vertex index is within the range [vertex_index_bias, vertex_index_bias + vertex_num) and 
     /// the second is either in [vertex_index_bias, vertex_index_bias + vertex_num) or inside 
-    pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
+    pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight, EdgeIndex)>,
     /// the virtual vertices
     pub virtual_vertices: Vec<VertexIndex>,
 }

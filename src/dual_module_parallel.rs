@@ -170,6 +170,8 @@ impl PartitionInfo {
 }
 
 pub struct DualModuleParallelUnit {
+    /// information shared with serial module
+    pub partition_unit: PartitionUnitPtr,
     /// fused module is not accessible globally: it must be accessed from its parent
     pub is_fused: bool,
     /// whether it's active or not; some units are "placeholder" units that are not active until they actually fuse their children
@@ -214,7 +216,10 @@ impl DualModuleParallel {
             assert!(config.fusions.is_empty(), "should be no `fusions` with only 1 partition");
             let dual_module = DualModuleSerial::new(&initializer);
             let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
-            let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, &partition_info.units[0]);
+            let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, &partition_info.units[0], PartitionUnitPtr::new(PartitionUnit {
+                unit_index: 0,
+                enabled: true,
+            }));
             units.push(unit);
         } else {  // multiple partitions, do the initialization in parallel to take advantage of multiple cores
             let complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);  // build the graph to construct the NN data structure
@@ -223,6 +228,10 @@ impl DualModuleParallel {
             for virtual_vertex in initializer.virtual_vertices.iter() {
                 is_vertex_virtual[*virtual_vertex] = true;
             }
+            let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new(PartitionUnit {
+                unit_index: unit_index,
+                enabled: unit_index < config.partitions.len(),
+            })).collect();
             let mut partitioned_initializers: Vec<PartitionedSolverInitializer> = (0..unit_count).map(|unit_index| {
                 let mut interfaces = vec![];
                 let mut current_index = unit_index;
@@ -270,13 +279,14 @@ impl DualModuleParallel {
                         }
                     }
                     if !mirror_vertices.is_empty() {  // only add non-empty mirrored parents is enough
-                        interfaces.push((*parent_index, mirror_vertices));
+                        interfaces.push((partition_units[*parent_index].downgrade(), mirror_vertices));
                     }
                     current_index = *parent_index;
                 }
                 contained_vertices_vec.push(contained_vertices);
                 PartitionedSolverInitializer {
                     vertex_num: initializer.vertex_num,
+                    edge_num: initializer.weighted_edges.len(),
                     owning_range: owning_range.clone(),
                     weighted_edges: vec![],  // to be filled later
                     interfaces: interfaces,
@@ -284,7 +294,7 @@ impl DualModuleParallel {
                 }  // note that all fields can be modified later
             }).collect();
             // assign each edge to its unique partition
-            for &(i, j, weight) in initializer.weighted_edges.iter() {
+            for (edge_index, &(i, j, weight)) in initializer.weighted_edges.iter().enumerate() {
                 assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
                 assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
                 assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
@@ -299,30 +309,31 @@ impl DualModuleParallel {
                 let descendant_unit_index = if is_i_ancestor { j_unit_index } else { i_unit_index };
                 if config.edges_in_fusion_unit {
                     // the edge should be added to the descendant, and it's guaranteed that the descendant unit contains (although not necessarily owned) the vertex
-                    partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight));
+                    partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
                 } else {
                     // add edge to every unit from the descendant (including) and the ancestor (excluding) who mirrored the vertex
                     if ancestor_unit_index < config.partitions.len() {
                         // leaf unit holds every unit
-                        partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight));
+                        partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
                     } else {
                         // iterate every leaf unit of the `descendant_unit_index` to see if adding the edge or not
                         fn dfs_add(unit_index: usize, config: &DualModuleParallelConfig, partition_info: &PartitionInfo, i: VertexIndex, j: VertexIndex
-                                , weight: Weight, contained_vertices_vec: &Vec<BTreeSet<VertexIndex>>, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>) {
+                                , weight: Weight, contained_vertices_vec: &Vec<BTreeSet<VertexIndex>>, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>
+                                , edge_index: EdgeIndex) {
                             if unit_index >= config.partitions.len() {
                                 let (left_index, right_index) = &partition_info.units[unit_index].children.expect("fusion unit must have children");
-                                dfs_add(*left_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers);
-                                dfs_add(*right_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers);
+                                dfs_add(*left_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
+                                dfs_add(*right_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
                             } else {
                                 let contain_i = contained_vertices_vec[unit_index].contains(&i);
                                 let contain_j = contained_vertices_vec[unit_index].contains(&j);
                                 assert!(!(contain_i ^ contain_j), "{} and {} must either be both contained or not contained by {}", i, j, unit_index);
                                 if contain_i {
-                                    partitioned_initializers[unit_index].weighted_edges.push((i, j, weight));
+                                    partitioned_initializers[unit_index].weighted_edges.push((i, j, weight, edge_index));
                                 }
                             }
                         }
-                        dfs_add(descendant_unit_index, &config, &partition_info, i, j, weight, &contained_vertices_vec, &mut partitioned_initializers);
+                        dfs_add(descendant_unit_index, &config, &partition_info, i, j, weight, &contained_vertices_vec, &mut partitioned_initializers, edge_index);
                     }
                 }
             }
@@ -332,7 +343,7 @@ impl DualModuleParallel {
                     println!("unit_index: {unit_index}");
                     let dual_module = DualModuleSerial::new_partitioned(&partitioned_initializers[unit_index]);
                     let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
-                    let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, &partition_info.units[unit_index]);
+                    let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, &partition_info.units[unit_index], partition_units[unit_index].clone());
                     unit
                 }).collect_into_vec(&mut units);
             });
@@ -476,6 +487,7 @@ impl FusionVisualizer for DualModuleParallel {
         let mut value = json!({});
         for unit_ptr in self.units.iter() {
             let unit = unit_ptr.read_recursive();
+            if !unit.is_active { break }  // do not visualize inactive units
             let value_2 = unit.snapshot(abbrev);
             snapshot_combine_values(&mut value, value_2, abbrev);
         }
@@ -492,8 +504,9 @@ impl FusionVisualizer for DualModuleParallelUnit {
 impl DualModuleParallelUnitPtr {
 
     /// create a simple wrapper over a serial dual module
-    pub fn new_wrapper(dual_module_ptr: DualModuleSerialPtr, partition_unit_info: &PartitionUnitInfo) -> Self {
+    pub fn new_wrapper(dual_module_ptr: DualModuleSerialPtr, partition_unit_info: &PartitionUnitInfo, partition_unit: PartitionUnitPtr) -> Self {
         Self::new(DualModuleParallelUnit {
+            partition_unit: partition_unit,
             is_active: true,
             is_fused: false,
             whole_range: partition_unit_info.whole_range,

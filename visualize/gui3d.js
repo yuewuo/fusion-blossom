@@ -171,6 +171,12 @@ export const syndrome_vertex_material = new THREE.MeshStandardMaterial({
     transparent: true,
     side: THREE.FrontSide,
 })
+export const disabled_mirror_vertex_material = new THREE.MeshStandardMaterial({
+    color: 0x1e81b0,
+    opacity: 1,
+    transparent: true,
+    side: THREE.FrontSide,
+})
 export const real_vertex_material = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     opacity: 0.1,
@@ -332,19 +338,25 @@ export async function refresh_snapshot_data() {
         }
         // draw vertices
         for (let [i, vertex] of snapshot.vertices.entries()) {
+            if (vertex == null) {
+                continue
+            }
             let position = fusion_data.positions[i]
-            if (vertex_meshes.length <= i) {
-                const vertex_mesh = new THREE.Mesh( vertex_geometry, syndrome_vertex_material )
+            while (vertex_meshes.length <= i) {
+                const vertex_mesh = new THREE.Mesh( vertex_geometry, real_vertex_material )
+                vertex_mesh.visible = false
                 vertex_mesh.userData = {
                     type: "vertex",
-                    vertex_index: i,
+                    vertex_index: vertex_meshes.length,
                 }
                 scene.add( vertex_mesh )
                 vertex_meshes.push(vertex_mesh)
             }
             const vertex_mesh = vertex_meshes[i]
             load_position(vertex_mesh.position, position)
-            if (vertex.s) {
+            if (vertex.mi != null && vertex.me == 0) {
+                vertex_mesh.material = disabled_mirror_vertex_material
+            } else if (vertex.s) {
                 vertex_mesh.material = syndrome_vertex_material
             } else if (vertex.v) {
                 vertex_mesh.material = virtual_vertex_material
@@ -363,6 +375,9 @@ export async function refresh_snapshot_data() {
         }
         edge_caches = []  // clear cache
         for (let [i, edge] of snapshot.edges.entries()) {
+            if (edge == null) {
+                continue
+            }
             const left_position = fusion_data.positions[edge.l]
             const right_position = fusion_data.positions[edge.r]
             const relative = compute_vector3(right_position).add(compute_vector3(left_position).multiplyScalar(-1))
@@ -395,14 +410,15 @@ export async function refresh_snapshot_data() {
             // console.log(`${left_start}, ${left_end}, ${right_end}, ${right_start}`)
             for (let [start, end, edge_meshes, is_grown_part] of [[left_start, left_end, left_edge_meshes, true], [left_end, right_end, middle_edge_meshes, false]
                     , [right_end, right_start, right_edge_meshes, true]]) {
-                if (edge_meshes.length <= i) {
+                while (edge_meshes.length <= i) {
                     let two_edges = [null, null]
                     for (let j of [0, 1]) {
                         const edge_mesh = new THREE.Mesh( edge_geometry, is_grown_part ? grown_edge_material : edge_material )
                         edge_mesh.userData = {
                             type: "edge",
-                            edge_index: i,
+                            edge_index: edge_meshes.length,
                         }
+                        edge_mesh.visible = false
                         scene.add( edge_mesh )
                         two_edges[j] = edge_mesh
                     }
@@ -431,9 +447,13 @@ export async function refresh_snapshot_data() {
         }
         // draw vertex outlines
         for (let [i, vertex] of snapshot.vertices.entries()) {
+            if (vertex == null) {
+                continue
+            }
             let position = fusion_data.positions[i]
-            if (vertex_outline_meshes.length <= i) {
+            while (vertex_outline_meshes.length <= i) {
                 const vertex_outline_mesh = new THREE.Mesh( vertex_geometry, real_vertex_outline_material )
+                vertex_outline_mesh.visible = false
                 update_mesh_outline(vertex_outline_mesh)
                 scene.add( vertex_outline_mesh )
                 vertex_outline_meshes.push(vertex_outline_mesh)
@@ -462,27 +482,29 @@ export async function refresh_snapshot_data() {
             // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
             if (dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)) {  // no parent and (positive dual variable or it's a blossom)
                 let points = []
-                for (let [is_left, edge_index] of dual_node.b) {
-                    let cached_position = edge_caches[edge_index].position
-                    const edge = snapshot.edges[edge_index]
-                    if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
-                        continue  // do not draw this edge, this is an internal edge
-                    }
-                    if (is_left) {
-                        if (edge.lg == edge.w) {
-                            points.push(vertex_caches[edge.r].position.center.clone())
-                        } else if (edge.lg == 0) {
-                            points.push(vertex_caches[edge.l].position.center.clone())
-                        } else {
-                            points.push(cached_position.left_end.clone())
+                if (dual_node.b != null) {
+                    for (let [is_left, edge_index] of dual_node.b) {
+                        let cached_position = edge_caches[edge_index].position
+                        const edge = snapshot.edges[edge_index]
+                        if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
+                            continue  // do not draw this edge, this is an internal edge
                         }
-                    } else {
-                        if (edge.rg == edge.w) {
-                            points.push(vertex_caches[edge.l].position.center.clone())
-                        } else if (edge.rg == 0) {
-                            points.push(vertex_caches[edge.r].position.center.clone())
+                        if (is_left) {
+                            if (edge.lg == edge.w) {
+                                points.push(vertex_caches[edge.r].position.center.clone())
+                            } else if (edge.lg == 0) {
+                                points.push(vertex_caches[edge.l].position.center.clone())
+                            } else {
+                                points.push(cached_position.left_end.clone())
+                            }
                         } else {
-                            points.push(cached_position.right_end.clone())
+                            if (edge.rg == edge.w) {
+                                points.push(vertex_caches[edge.l].position.center.clone())
+                            } else if (edge.rg == 0) {
+                                points.push(vertex_caches[edge.r].position.center.clone())
+                            } else {
+                                points.push(cached_position.right_end.clone())
+                            }
                         }
                     }
                 }
@@ -544,6 +566,8 @@ watch(sizes, () => {  // move render configuration GUI to 3D canvas
 const conf = {
     syndrome_vertex_color: syndrome_vertex_material.color,
     syndrome_vertex_opacity: syndrome_vertex_material.opacity,
+    disabled_mirror_vertex_color: disabled_mirror_vertex_material.color,
+    disabled_mirror_vertex_opacity: disabled_mirror_vertex_material.opacity,
     real_vertex_color: real_vertex_material.color,
     real_vertex_opacity: real_vertex_material.opacity,
     virtual_vertex_color: virtual_vertex_material.color,
@@ -570,6 +594,8 @@ export const controller = {}
 window.controller = controller
 controller.syndrome_vertex_color = vertex_folder.addColor( conf, 'syndrome_vertex_color' ).onChange( function ( value ) { syndrome_vertex_material.color = value } )
 controller.syndrome_vertex_opacity = vertex_folder.add( conf, 'syndrome_vertex_opacity', 0, 1 ).onChange( function ( value ) { syndrome_vertex_material.opacity = Number(value) } )
+controller.disabled_mirror_vertex_color = vertex_folder.addColor( conf, 'disabled_mirror_vertex_color' ).onChange( function ( value ) { disabled_mirror_vertex_material.color = value } )
+controller.disabled_mirror_vertex_opacity = vertex_folder.add( conf, 'disabled_mirror_vertex_opacity', 0, 1 ).onChange( function ( value ) { disabled_mirror_vertex_material.opacity = Number(value) } )
 controller.real_vertex_color = vertex_folder.addColor( conf, 'real_vertex_color' ).onChange( function ( value ) { real_vertex_material.color = value } )
 controller.real_vertex_opacity = vertex_folder.add( conf, 'real_vertex_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_material.opacity = Number(value) } )
 controller.virtual_vertex_color = vertex_folder.addColor( conf, 'virtual_vertex_color' ).onChange( function ( value ) { virtual_vertex_material.color = value } )

@@ -14,6 +14,8 @@ use std::sync::{Arc, Weak};
 use crate::parking_lot::RwLock;
 use super::dual_module::*;
 use super::visualize::*;
+use std::collections::BTreeMap;
+
 
 pub struct DualModuleSerial {
     /// all vertices including virtual ones
@@ -24,10 +26,12 @@ pub struct DualModuleSerial {
     pub edges: Vec<EdgePtr>,
     /// current timestamp
     pub active_timestamp: FastClearTimestamp,
+    /// the number of all vertices (including those partitioned into other serial modules)
+    pub vertex_num: usize,
+    /// the number of all edges (including those partitioned into other serial modules)
+    pub edge_num: usize,
     /// vertices exclusively owned by this module, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
     pub owning_range: VertexRange,
-    /// the number of all vertices partitioned
-    pub vertex_num: usize,
     /// maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained;
     /// note that this list may contain deleted node as well as duplicate nodes
     pub active_list: Vec<DualNodeInternalWeak>,
@@ -82,6 +86,8 @@ pub struct Vertex {
     pub is_virtual: bool,
     /// if a vertex is syndrome, then [`Vertex::propagated_dual_node`] always corresponds to that root
     pub is_syndrome: bool,
+    /// if it's a mirrored vertex, then this is the parallel unit that exclusively owns it
+    pub mirror_unit: Option<PartitionUnitWeak>,
     /// all neighbor edges, in surface code this should be constant number of edges
     #[derivative(Debug="ignore")]
     pub edges: Vec<EdgeWeak>,
@@ -112,8 +118,8 @@ impl std::fmt::Debug for VertexWeak {
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct Edge {
-    /// local index, to find myself in [`DualModuleSerial::edges`]
-    index: EdgeIndex,
+    /// global edge index, not necessary the index in [`DualModuleSerial::edges`]
+    pub edge_index: EdgeIndex,
     /// total weight of this edge
     pub weight: Weight,
     /// left vertex (always with smaller index for consistency)
@@ -143,7 +149,7 @@ create_fast_clear_ptr_types!(Edge, EdgePtr, EdgeWeak);
 impl std::fmt::Debug for EdgePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let edge = self.read_recursive_force();
-        write!(f, "{}", edge.index)
+        write!(f, "{}", edge.edge_index)
     }
 }
 
@@ -163,6 +169,7 @@ impl DualModuleImpl for DualModuleSerial {
             vertex_index: vertex_index,
             is_virtual: false,
             is_syndrome: false,
+            mirror_unit: None,
             edges: Vec::new(),
             propagated_dual_node: None,
             propagated_grandson_dual_node: None,
@@ -182,7 +189,7 @@ impl DualModuleImpl for DualModuleSerial {
             let left = usize::min(i, j);
             let right = usize::max(i, j);
             let edge_ptr = EdgePtr::new(Edge {
-                index: edges.len(),
+                edge_index: edges.len(),
                 weight: weight,
                 left: vertices[left].downgrade(),
                 right: vertices[right].downgrade(),
@@ -218,8 +225,9 @@ impl DualModuleImpl for DualModuleSerial {
             nodes: vec![],
             edges: edges,
             active_timestamp: 0,
-            owning_range: VertexRange::new(0, initializer.vertex_num),
             vertex_num: initializer.vertex_num,
+            edge_num: initializer.weighted_edges.len(),
+            owning_range: VertexRange::new(0, initializer.vertex_num),
             active_list: vec![],
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
@@ -490,7 +498,7 @@ impl DualModuleImpl for DualModuleSerial {
                                 edge.left.upgrade_force()
                             };
                             let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
-                            if peer_vertex.is_virtual {
+                            if peer_vertex.is_virtual || peer_vertex.is_mirror_blocked() {
                                 let grandson_ptr = if is_left {
                                     edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
                                 } else {
@@ -706,6 +714,21 @@ impl FastClear for Vertex {
 
 }
 
+impl Vertex {
+
+    /// if this vertex is a mirrored vertex and it's disabled, it can be temporarily matched just like a virtual vertex
+    pub fn is_mirror_blocked(&self) -> bool {
+        if let Some(ref mirror_unit_ptr) = self.mirror_unit {
+            let mirror_unit_ptr = mirror_unit_ptr.upgrade_force();
+            let mirror_unit = mirror_unit_ptr.read_recursive();
+            !mirror_unit.enabled
+        } else {
+            false
+        }
+    }
+
+}
+
 impl DualModuleSerial {
 
     /// create a partitioned serial dual module to be used in the parallel dual module
@@ -717,6 +740,7 @@ impl DualModuleSerial {
             vertex_index: vertex_index,
             is_virtual: false,
             is_syndrome: false,
+            mirror_unit: None,
             edges: Vec::new(),
             propagated_dual_node: None,
             propagated_grandson_dual_node: None,
@@ -727,53 +751,81 @@ impl DualModuleSerial {
             let mut vertex = vertices[virtual_vertex - partitioned_initializer.owning_range.start()].write(active_timestamp);
             vertex.is_virtual = true;
         }
+        // add interface vertices
+        let mut mirrored_vertices = BTreeMap::<usize, usize>::new();  // all mirrored vertices mapping to their local indices
+        for (mirror_unit, interface_vertices) in partitioned_initializer.interfaces.iter() {
+            for (vertex_index, is_virtual) in interface_vertices.iter() {
+                mirrored_vertices.insert(*vertex_index, vertices.len());
+                vertices.push(VertexPtr::new(Vertex {
+                    vertex_index: *vertex_index,
+                    is_virtual: *is_virtual,  // interface vertices are always virtual at the beginning
+                    is_syndrome: false,
+                    mirror_unit: Some(mirror_unit.clone()),
+                    edges: Vec::new(),
+                    propagated_dual_node: None,
+                    propagated_grandson_dual_node: None,
+                    timestamp: active_timestamp,
+                }))
+            }
+        }
         // set edges
         let mut edges = Vec::<EdgePtr>::new();
-        // for &(i, j, weight) in initializer.weighted_edges.iter() {
-        //     assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
-        //     assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
-        //     assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
-        //     let left = usize::min(i, j);
-        //     let right = usize::max(i, j);
-        //     let edge_ptr = EdgePtr::new(Edge {
-        //         index: edges.len(),
-        //         weight: weight,
-        //         left: vertices[left].downgrade(),
-        //         right: vertices[right].downgrade(),
-        //         left_growth: 0,
-        //         right_growth: 0,
-        //         left_dual_node: None,
-        //         left_grandson_dual_node: None,
-        //         right_dual_node: None,
-        //         right_grandson_dual_node: None,
-        //         timestamp: 0,
-        //     });
-        //     for (a, b) in [(i, j), (j, i)] {
-        //         let mut vertex = vertices[a].write(active_timestamp);
-        //         debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge will take effect)
-        //             let mut no_duplicate = true;
-        //             for edge_weak in vertex.edges.iter() {
-        //                 let edge_ptr = edge_weak.upgrade_force();
-        //                 let edge = edge_ptr.read_recursive(active_timestamp);
-        //                 if edge.left == vertices[b].downgrade() || edge.right == vertices[b].downgrade() {
-        //                     no_duplicate = false;
-        //                     eprintln!("duplicated edge between {} and {} with weight w1 = {} and w2 = {}, consider merge them into a single edge", i, j, weight, edge.weight);
-        //                     break
-        //                 }
-        //             }
-        //             no_duplicate
-        //         });
-        //         vertex.edges.push(edge_ptr.downgrade());
-        //     }
-        //     edges.push(edge_ptr);
-        // }
+        for &(i, j, weight, edge_index) in partitioned_initializer.weighted_edges.iter() {
+            assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+            assert!(partitioned_initializer.owning_range.contains(&i) || mirrored_vertices.contains_key(&i), "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
+            assert!(partitioned_initializer.owning_range.contains(&j) || mirrored_vertices.contains_key(&j), "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
+            let left = usize::min(i, j);
+            let right = usize::max(i, j);
+            let left_index = if partitioned_initializer.owning_range.contains(&left) {
+                left - partitioned_initializer.owning_range.start()
+            } else {
+                mirrored_vertices[&left]
+            };
+            let right_index = if partitioned_initializer.owning_range.contains(&right) {
+                right - partitioned_initializer.owning_range.start()
+            } else {
+                mirrored_vertices[&right]
+            };
+            let edge_ptr = EdgePtr::new(Edge {
+                edge_index: edge_index,
+                weight: weight,
+                left: vertices[left_index].downgrade(),
+                right: vertices[right_index].downgrade(),
+                left_growth: 0,
+                right_growth: 0,
+                left_dual_node: None,
+                left_grandson_dual_node: None,
+                right_dual_node: None,
+                right_grandson_dual_node: None,
+                timestamp: 0,
+            });
+            for (a, b) in [(left_index, right_index), (right_index, left_index)] {
+                let mut vertex = vertices[a].write(active_timestamp);
+                debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge will take effect)
+                    let mut no_duplicate = true;
+                    for edge_weak in vertex.edges.iter() {
+                        let edge_ptr = edge_weak.upgrade_force();
+                        let edge = edge_ptr.read_recursive(active_timestamp);
+                        if edge.left == vertices[b].downgrade() || edge.right == vertices[b].downgrade() {
+                            no_duplicate = false;
+                            eprintln!("duplicated edge between {} and {} with weight w1 = {} and w2 = {}, consider merge them into a single edge", i, j, weight, edge.weight);
+                            break
+                        }
+                    }
+                    no_duplicate
+                });
+                vertex.edges.push(edge_ptr.downgrade());
+            }
+            edges.push(edge_ptr);
+        }
         Self {
             vertices: vertices,
             nodes: vec![],
             edges: edges,
             active_timestamp: 0,
-            owning_range: partitioned_initializer.owning_range,
             vertex_num: partitioned_initializer.vertex_num,
+            edge_num: partitioned_initializer.edge_num,
+            owning_range: partitioned_initializer.owning_range,
             active_list: vec![],
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
@@ -918,32 +970,53 @@ impl FusionVisualizer for DualModuleSerial {
         // do the sanity check first before taking snapshot
         self.sanity_check().unwrap();
         let active_timestamp = self.active_timestamp;
-        let mut vertices: Vec::<serde_json::Value> = (0..self.vertex_num).map(|_| json!({})).collect();
+        let mut vertices: Vec::<serde_json::Value> = (0..self.vertex_num).map(|_| serde_json::Value::Null).collect();
         for vertex_ptr in self.vertices.iter() {
             vertex_ptr.dynamic_clear(active_timestamp);
             let vertex = vertex_ptr.read_recursive(active_timestamp);
             vertices[vertex.vertex_index] = json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
-                if abbrev { "p" } else { "propagated_dual_node" }: vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-                if abbrev { "pg" } else { "propagated_grandson_dual_node" }: vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
             });
+            if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+                vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "p" } else { "propagated_dual_node" }).to_string(), json!(value));
+            }
+            if let Some(value) = vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+                vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "pg" } else { "propagated_grandson_dual_node" }).to_string(), json!(value));
+            }
+            if let Some(mirror_unit_ptr) = vertex.mirror_unit.as_ref() {
+                let mirror_unit_ptr = mirror_unit_ptr.upgrade_force();
+                let mirror_unit = mirror_unit_ptr.read_recursive();
+                vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "mi" } else { "mirror_unit_index" }).to_string()
+                    , json!(mirror_unit.unit_index));
+                vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "me" } else { "mirror_enabled" }).to_string()
+                    , json!(if mirror_unit.enabled { 1 } else { 0 }));
+            }
         }
-        let mut edges = Vec::<serde_json::Value>::new();
+        let mut edges: Vec::<serde_json::Value> = (0..self.edge_num).map(|_| serde_json::Value::Null).collect();
         for edge_ptr in self.edges.iter() {
             edge_ptr.dynamic_clear(active_timestamp);
             let edge = edge_ptr.read_recursive(active_timestamp);
-            edges.push(json!({
+            edges[edge.edge_index] = json!({
                 if abbrev { "w" } else { "weight" }: edge.weight,
                 if abbrev { "l" } else { "left" }: edge.left.upgrade_force().read_recursive(active_timestamp).vertex_index,
                 if abbrev { "r" } else { "right" }: edge.right.upgrade_force().read_recursive(active_timestamp).vertex_index,
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
-                if abbrev { "ld" } else { "left_dual_node" }: edge.left_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-                if abbrev { "lgd" } else { "left_grandson_dual_node" }: edge.left_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-                if abbrev { "rd" } else { "right_dual_node" }: edge.right_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-                if abbrev { "rgd" } else { "right_grandson_dual_node" }: edge.right_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index),
-            }));
+            });
+            if let Some(value) = edge.left_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+                edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "ld" } else { "left_dual_node" }).to_string(), json!(value));
+            }
+            if let Some(value) = edge.left_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+                edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "lgd" } else { "left_grandson_dual_node" }).to_string(), json!(value));
+            }
+            if let Some(value) = edge.right_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+                edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "rd" } else { "right_dual_node" }).to_string(), json!(value));
+            }
+            if let Some(value) = edge.right_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+                edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "rgd" } else { "right_grandson_dual_node" }).to_string(), json!(value));
+            }
+            
         }
         let mut value = json!({
             "vertices": vertices,
@@ -957,7 +1030,7 @@ impl FusionVisualizer for DualModuleSerial {
                     let node = node_ptr.read_recursive();
                     dual_nodes.push(json!({
                         if abbrev { "b" } else { "boundary" }: node.boundary.iter().map(|(is_left, edge_weak)|
-                            (*is_left, edge_weak.upgrade_force().read_recursive(active_timestamp).index)).collect::<Vec<(bool, usize)>>(),
+                            (*is_left, edge_weak.upgrade_force().read_recursive(active_timestamp).edge_index)).collect::<Vec<(bool, usize)>>(),
                         if abbrev { "d" } else { "dual_variable" }: node.dual_variable,
                     }));
                 } else {
@@ -1012,7 +1085,7 @@ impl DualModuleSerial {
                     // to avoid already occupied node being propagated
                     peer_vertex_ptr.dynamic_clear(active_timestamp);
                     let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
-                    if peer_vertex.is_virtual {  // virtual node is never propagated, so keep this edge in the boundary
+                    if peer_vertex.is_virtual || peer_vertex.is_mirror_blocked() {  // virtual node is never propagated, so keep this edge in the boundary
                         updated_boundary.push((is_left, edge_weak.clone()));
                     } else {
                         assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");

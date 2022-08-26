@@ -186,6 +186,9 @@ const App = {
                 // fetch edge list
                 let neighbor_edges = []
                 for (let [edge_index, edge] of this.snapshot.edges.entries()) {
+                    if (edge == null) {
+                        continue
+                    }
                     if (edge.l == vertex_index) {
                         const [translated_left_grown, translated_right_grown] = gui3d.translate_edge(edge.lg, edge.rg, edge.w)
                         const translated_unexplored = edge.w - translated_left_grown - translated_right_grown
