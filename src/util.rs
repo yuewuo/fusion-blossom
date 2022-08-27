@@ -42,31 +42,38 @@ pub struct SolverInitializer {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct VertexRange {
-    pub range: [VertexIndex; 2],
+pub struct IndexRange<IndexType> {
+    pub range: [IndexType; 2],
 }
 
-impl VertexRange {
-    pub fn new(start: VertexIndex, end: VertexIndex) -> Self {
+pub type VertexRange = IndexRange<VertexIndex>;
+pub type NodeRange = IndexRange<NodeIndex>;
+
+impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output=IndexType> + std::convert::Into<usize> + Copy
+        + std::ops::Add<Output=IndexType>> IndexRange<IndexType> {
+    pub fn new(start: IndexType, end: IndexType) -> Self {
         debug_assert!(end >= start, "invalid range [{}, {})", start, end);
         Self { range: [start, end], }
     }
-    pub fn iter(&self) -> std::ops::Range<VertexIndex> {
+    pub fn iter(&self) -> std::ops::Range<IndexType> {
         self.range[0].. self.range[1]
     }
     pub fn len(&self) -> usize {
-        self.range[1] - self.range[0]
+        (self.range[1] - self.range[0]).into()
     }
-    pub fn start(&self) -> VertexIndex {
+    pub fn start(&self) -> IndexType {
         self.range[0]
     }
-    pub fn end(&self) -> VertexIndex {
+    pub fn end(&self) -> IndexType {
         self.range[1]
+    }
+    pub fn append_by(&mut self, append_count: IndexType) {
+        self.range[1] = self.range[1] + append_count;
     }
     pub fn sanity_check(&self) {
         assert!(self.start() <= self.end(), "invalid vertex range {:?}", self);
     }
-    pub fn contains(&self, vertex_index: &VertexIndex) -> bool {
+    pub fn contains(&self, vertex_index: &IndexType) -> bool {
         *vertex_index >= self.start() && *vertex_index < self.end()
     }
     /// fuse two ranges together, returning (the whole range, the interfacing range)

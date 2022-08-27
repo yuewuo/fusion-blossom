@@ -32,6 +32,8 @@ pub struct DualModuleSerial {
     pub edge_num: usize,
     /// vertices exclusively owned by this module, useful when partitioning the decoding graph into multiple [`DualModuleSerial`]
     pub owning_range: VertexRange,
+    /// module information when used as a component in the partitioned dual module
+    pub unit_module_info: Option<UnitModuleInfo>,
     /// maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained;
     /// note that this list may contain deleted node as well as duplicate nodes
     pub active_list: Vec<DualNodeInternalWeak>,
@@ -39,6 +41,12 @@ pub struct DualModuleSerial {
     current_cycle: usize,
     /// remember the edges that's modified by erasures
     pub edge_modifier: EdgeWeightModifier,
+}
+
+/// records information only available when used as a unit in the partitioned dual module
+pub struct UnitModuleInfo {
+    /// owned dual nodes range
+    pub owning_dual_range: VertexRange,
 }
 
 create_ptr_types!(DualModuleSerial, DualModuleSerialPtr, DualModuleSerialWeak);
@@ -228,6 +236,7 @@ impl DualModuleImpl for DualModuleSerial {
             vertex_num: initializer.vertex_num,
             edge_num: initializer.weighted_edges.len(),
             owning_range: VertexRange::new(0, initializer.vertex_num),
+            unit_module_info: None,  // disabled
             active_list: vec![],
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
@@ -251,8 +260,20 @@ impl DualModuleImpl for DualModuleSerial {
     /// add a new dual node from dual module root
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
         let active_timestamp = self.active_timestamp;
-        let mut node = dual_node_ptr.write();
-        assert!(node.internal.is_none(), "dual node has already been created, do not call twice");
+        let node = dual_node_ptr.read_recursive();
+        if let Some(unit_module_info) = self.unit_module_info.as_mut() {
+            if unit_module_info.owning_dual_range.len() == 0 {  // set the range instead of inserting into the lookup table, to minimize table lookup
+                unit_module_info.owning_dual_range = VertexRange::new(node.index, node.index);
+            }
+            if unit_module_info.owning_dual_range.end() == node.index {
+                // it's able to append into the owning range, minimizing table lookup and thus better performance
+                unit_module_info.owning_dual_range.append_by(1);
+            } else {
+                unimplemented!("insert into the lookup table");
+            }
+        } else {
+            assert!(self.nodes.len() == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
+        }
         let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
             origin: dual_node_ptr.downgrade(),
             index: self.nodes.len(),
@@ -312,7 +333,6 @@ impl DualModuleImpl for DualModuleSerial {
                 },
             }
         }
-        node.internal = Some(self.nodes.len());
         self.active_list.push(node_internal_ptr.downgrade());
         self.nodes.push(Some(node_internal_ptr));
     }
@@ -826,6 +846,9 @@ impl DualModuleSerial {
             vertex_num: partitioned_initializer.vertex_num,
             edge_num: partitioned_initializer.edge_num,
             owning_range: partitioned_initializer.owning_range,
+            unit_module_info: Some(UnitModuleInfo {
+                owning_dual_range: VertexRange::new(0, 0),
+            }),
             active_list: vec![],
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
@@ -1051,8 +1074,7 @@ impl DualModuleSerial {
 
     pub fn get_dual_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
         let dual_node = dual_node_ptr.read_recursive();
-        let dual_node_idx = dual_node.internal.as_ref().expect("must first register the dual node using `create_dual_node`");
-        let dual_node_internal_ptr = self.nodes[*dual_node_idx].as_ref().expect("internal dual node must exists");
+        let dual_node_internal_ptr = self.nodes[dual_node.index].as_ref().expect("internal dual node must exists");
         debug_assert!(dual_node_ptr == &dual_node_internal_ptr.read_recursive().origin.upgrade_force(), "dual node and dual internal node must corresponds to each other");
         dual_node_internal_ptr.clone()
     }

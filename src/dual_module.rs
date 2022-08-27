@@ -322,7 +322,7 @@ pub trait DualModuleImpl {
     /// clear all growth and existing dual nodes, prepared for the next decoding
     fn clear(&mut self);
 
-    /// add corresponding dual node, note that [`DualNode.internal`] must be None, i.e. each dual node must be created exactly once
+    /// add corresponding dual node
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
 
     #[inline(always)]
@@ -633,7 +633,6 @@ impl DualModuleInterface {
                     let dual_node = dual_node_ptr.read_recursive();
                     sum_individual_dual_variable += dual_node.get_dual_variable(self);
                     if dual_node.index != index { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
-                    if dual_node.internal.is_none() { return Err(format!("the dual node {} is not connected to an concrete implementation of dual module", dual_node.index)) }
                     match &dual_node.class {
                         DualNodeClass::Blossom { nodes_circle, touching_children } => {
                             for (idx, circle_node_weak) in nodes_circle.iter().enumerate() {
