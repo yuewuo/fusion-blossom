@@ -303,7 +303,7 @@ macro_rules! create_ptr_types {
 
         impl Clone for $weak_name {
             fn clone(&self) -> Self {
-            Self { ptr: self.ptr.clone() }
+                Self { ptr: self.ptr.clone() }
             }
         }
 
@@ -312,6 +312,26 @@ macro_rules! create_ptr_types {
         }
 
         impl Eq for $weak_name { }
+
+        impl std::ops::Deref for $ptr_name {
+            type Target = RwLock<$struct_name>;
+            fn deref(&self) -> &Self::Target {
+                &self.ptr
+            }
+        }
+
+        impl weak_table::traits::WeakElement for $weak_name {
+            type Strong = $ptr_name;
+            fn new(view: &Self::Strong) -> Self {
+                view.downgrade()
+            }
+            fn view(&self) -> Option<Self::Strong> {
+                self.upgrade()
+            }
+            fn clone(view: &Self::Strong) -> Self::Strong {
+                view.clone()
+            }
+        }
 
     }
 }
@@ -353,7 +373,7 @@ macro_rules! create_fast_clear_ptr_types {
 
         impl Clone for $weak_name {
             fn clone(&self) -> Self {
-            Self { ptr: self.ptr.clone() }
+                Self { ptr: self.ptr.clone() }
             }
         }
 

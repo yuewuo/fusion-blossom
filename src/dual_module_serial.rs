@@ -15,6 +15,7 @@ use crate::parking_lot::RwLock;
 use super::dual_module::*;
 use super::visualize::*;
 use std::collections::BTreeMap;
+use crate::weak_table::PtrWeakKeyHashMap;
 
 
 pub struct DualModuleSerial {
@@ -51,6 +52,8 @@ pub struct UnitModuleInfo {
     pub unit_index: usize,
     /// owned dual nodes range
     pub owning_dual_range: VertexRange,
+    /// hash table for mapping [`DualNodePtr`] to internal [`DualNodeInternalPtr`]
+    pub dual_node_pointers: PtrWeakKeyHashMap<DualNodeWeak, usize>,
 }
 
 create_ptr_types!(DualModuleSerial, DualModuleSerialPtr, DualModuleSerialWeak);
@@ -258,6 +261,10 @@ impl DualModuleImpl for DualModuleSerial {
         }
         self.clear_graph();
         self.nodes.clear();
+        if let Some(unit_module_info) = self.unit_module_info.as_mut() {
+            unit_module_info.owning_dual_range = VertexRange::new(0, 0);
+            unit_module_info.dual_node_pointers = PtrWeakKeyHashMap::<DualNodeWeak, usize>::new();
+        }
         self.active_list.clear();
     }
 
@@ -273,7 +280,7 @@ impl DualModuleImpl for DualModuleSerial {
                 // it's able to append into the owning range, minimizing table lookup and thus better performance
                 unit_module_info.owning_dual_range.append_by(1);
             } else {
-                unimplemented!("insert into the lookup table");
+                unit_module_info.dual_node_pointers.insert(dual_node_ptr.clone(), self.nodes.len());
             }
         } else {
             assert!(self.nodes.len() == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
@@ -853,6 +860,7 @@ impl DualModuleSerial {
             unit_module_info: Some(UnitModuleInfo {
                 unit_index: partitioned_initializer.unit_index,
                 owning_dual_range: VertexRange::new(0, 0),
+                dual_node_pointers: PtrWeakKeyHashMap::<DualNodeWeak, usize>::new(),
             }),
             active_list: vec![],
             current_cycle: 0,
@@ -1077,18 +1085,26 @@ Implement internal helper functions that maintains the state of dual clusters
 
 impl DualModuleSerial {
 
-    pub fn get_dual_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
+    pub fn get_dual_node_index(&self, dual_node_ptr: &DualNodePtr) -> Option<usize> {
         let dual_node = dual_node_ptr.read_recursive();
-        let dual_node_index = if let Some(unit_module_info) = self.unit_module_info.as_ref() {
+        if let Some(unit_module_info) = self.unit_module_info.as_ref() {
             if unit_module_info.owning_dual_range.contains(&dual_node.index) {
-                dual_node.index - unit_module_info.owning_dual_range.start()
+                Some(dual_node.index - unit_module_info.owning_dual_range.start())
             } else {
                 println!("from unit {:?}, dual_node: {}", self.unit_module_info, dual_node.index);
-                unimplemented!()
+                unit_module_info.dual_node_pointers.get(dual_node_ptr).map(|x| *x)
             }
         } else {
-            dual_node.index
-        };
+            Some(dual_node.index)
+        }
+    }
+
+    pub fn contains_dual_node(&self, dual_node_ptr: &DualNodePtr) -> bool {
+        self.get_dual_node_index(dual_node_ptr).is_some()
+    }
+
+    pub fn get_dual_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
+        let dual_node_index = self.get_dual_node_index(dual_node_ptr).unwrap();
         let dual_node_internal_ptr = self.nodes[dual_node_index].as_ref().expect("internal dual node must exists");
         debug_assert!(dual_node_ptr == &dual_node_internal_ptr.read_recursive().origin.upgrade_force(), "dual node and dual internal node must corresponds to each other");
         dual_node_internal_ptr.clone()

@@ -9,6 +9,7 @@ extern crate chrono;
 extern crate derivative;
 extern crate urlencoding;
 extern crate rayon;
+extern crate weak_table;
 
 pub mod blossom_v;
 pub mod util;
