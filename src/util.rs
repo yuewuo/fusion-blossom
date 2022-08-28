@@ -111,6 +111,8 @@ impl std::fmt::Debug for PartitionUnitWeak {
 
 #[derive(Debug, Clone)]
 pub struct PartitionedSolverInitializer {
+    /// unit index
+    pub unit_index: usize,
     /// the number of all vertices (including those partitioned into other serial modules)
     pub vertex_num: usize,
     /// the number of all edges (including those partitioned into other serial modules)

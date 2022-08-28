@@ -299,6 +299,7 @@ impl DualModuleParallel {
                 }
                 contained_vertices_vec.push(contained_vertices);
                 PartitionedSolverInitializer {
+                    unit_index: unit_index,
                     vertex_num: initializer.vertex_num,
                     edge_num: initializer.weighted_edges.len(),
                     owning_range: owning_range.clone(),
@@ -414,7 +415,7 @@ impl DualModuleParallel {
                 assert!(left_child.is_active && right_child.is_active, "children must be active at the same time if fusing all together");
                 drop(left_child);  // unlock
                 drop(right_child);  // unlock
-                unit.activate();  // activate the unit by fusing its children together
+                unit.static_activate();  // activate the unit by fusing its children together
             }
         }
     }
@@ -541,14 +542,19 @@ impl FusionVisualizer for DualModuleParallel {
 
 impl FusionVisualizer for DualModuleParallelUnit {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
-        self.serial_module.read_recursive().snapshot(abbrev)
+        let mut value = self.serial_module.read_recursive().snapshot(abbrev);
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            snapshot_combine_values(&mut value, left_child_weak.upgrade_force().read_recursive().snapshot(abbrev), abbrev);
+            snapshot_combine_values(&mut value, right_child_weak.upgrade_force().read_recursive().snapshot(abbrev), abbrev);
+        }
+        value
     }
 }
 
 impl DualModuleParallelUnit {
 
-    /// active a unit by fusing its children together
-    pub fn activate(&mut self) {
+    /// active a unit by fusing its children together, only valid when no dynamic creation of dual nodes are applied are syndrome is loaded
+    pub fn static_activate(&mut self) {
         assert!(!self.is_active, "unit already activated");
         self.is_active = true;
         {  // deactivate two children
@@ -606,12 +612,32 @@ impl DualModuleImpl for DualModuleParallelUnit {
         // judge whether I'm the unit that owns the dual node
         let representative_vertex = dual_node_ptr.get_representative_vertex();
         let is_owning_dual_node = self.owning_range.contains(&representative_vertex);
+        let mut major_path = vec![];
         if is_owning_dual_node {
             let mut serial_module = self.serial_module.write();
             serial_module.add_dual_node(dual_node_ptr);
         } else {
             // find the one that owns it and add the dual node, and then add the serial_module
-            unimplemented!()
+            if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+                let mut child_ptr = if representative_vertex < self.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() };
+                let mut is_owning_dual_node = false;
+                while !is_owning_dual_node {
+                    let child = child_ptr.read_recursive();
+                    debug_assert!(child.whole_range.contains(&representative_vertex), "selected child must contains the vertex");
+                    is_owning_dual_node = child.owning_range.contains(&representative_vertex);
+                    major_path.push(child_ptr.clone());
+                    if !is_owning_dual_node {  // search for the grandsons
+                        let grandson_ptr = if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+                            if representative_vertex < child.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() }
+                        } else { unreachable!() };
+                        drop(child);
+                        child_ptr = grandson_ptr;
+                    }
+                }
+                let child = child_ptr.read_recursive();
+                let mut serial_module = child.serial_module.write();
+                serial_module.add_dual_node(dual_node_ptr);
+            } else { unreachable!() }
         }
         // TODO: find all units that own other vertices or mirroring dual nodes of the children nodes in the blossom, and then elevate them 
         println!("is_owning_dual_node: {is_owning_dual_node}");
@@ -622,7 +648,22 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
-        self.serial_module.write().set_grow_state(dual_node_ptr, grow_state)
+        // println!("unit {} set_grow_state {:?} {:?}", self.unit_index, dual_node_ptr, grow_state);
+        // find the path towards the owning unit of this dual node, and also try paths towards the elevated
+        let representative_vertex = dual_node_ptr.get_representative_vertex();
+        debug_assert!(self.whole_range.contains(&representative_vertex), "cannot set growth state of dual node outside of the scope");
+        if self.owning_range.contains(&representative_vertex) {
+            self.serial_module.write().set_grow_state(dual_node_ptr, grow_state);
+        } else {
+            if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+                if left_child_weak.upgrade_force().read_recursive().whole_range.contains(&representative_vertex) {
+                    left_child_weak.upgrade_force().read_recursive().serial_module.write().set_grow_state(dual_node_ptr, grow_state);
+                } else {
+                    debug_assert!(right_child_weak.upgrade_force().read_recursive().whole_range.contains(&representative_vertex));
+                    right_child_weak.upgrade_force().read_recursive().serial_module.write().set_grow_state(dual_node_ptr, grow_state);
+                }
+            } else { unreachable!() }
+        }
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
@@ -630,7 +671,12 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
-        self.serial_module.write().compute_maximum_update_length()
+        let mut group_max_update_length = self.serial_module.write().compute_maximum_update_length();
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            group_max_update_length.extend(left_child_weak.upgrade_force().read_recursive().serial_module.write().compute_maximum_update_length());
+            group_max_update_length.extend(right_child_weak.upgrade_force().read_recursive().serial_module.write().compute_maximum_update_length());
+        }
+        group_max_update_length
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
@@ -638,7 +684,11 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn grow(&mut self, length: Weight) {
-        self.serial_module.write().grow(length)
+        self.serial_module.write().grow(length);
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().read_recursive().serial_module.write().grow(length);
+            right_child_weak.upgrade_force().read_recursive().serial_module.write().grow(length);
+        }
     }
 
     fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {

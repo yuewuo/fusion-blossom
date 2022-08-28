@@ -44,7 +44,11 @@ pub struct DualModuleSerial {
 }
 
 /// records information only available when used as a unit in the partitioned dual module
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct UnitModuleInfo {
+    /// unit index
+    pub unit_index: usize,
     /// owned dual nodes range
     pub owning_dual_range: VertexRange,
 }
@@ -847,6 +851,7 @@ impl DualModuleSerial {
             edge_num: partitioned_initializer.edge_num,
             owning_range: partitioned_initializer.owning_range,
             unit_module_info: Some(UnitModuleInfo {
+                unit_index: partitioned_initializer.unit_index,
                 owning_dual_range: VertexRange::new(0, 0),
             }),
             active_list: vec![],
@@ -1074,7 +1079,17 @@ impl DualModuleSerial {
 
     pub fn get_dual_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
         let dual_node = dual_node_ptr.read_recursive();
-        let dual_node_internal_ptr = self.nodes[dual_node.index].as_ref().expect("internal dual node must exists");
+        let dual_node_index = if let Some(unit_module_info) = self.unit_module_info.as_ref() {
+            if unit_module_info.owning_dual_range.contains(&dual_node.index) {
+                dual_node.index - unit_module_info.owning_dual_range.start()
+            } else {
+                println!("from unit {:?}, dual_node: {}", self.unit_module_info, dual_node.index);
+                unimplemented!()
+            }
+        } else {
+            dual_node.index
+        };
+        let dual_node_internal_ptr = self.nodes[dual_node_index].as_ref().expect("internal dual node must exists");
         debug_assert!(dual_node_ptr == &dual_node_internal_ptr.read_recursive().origin.upgrade_force(), "dual node and dual internal node must corresponds to each other");
         dual_node_internal_ptr.clone()
     }
