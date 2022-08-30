@@ -288,21 +288,9 @@ impl DualModuleImpl for DualModuleSerial {
 
     /// add a new dual node from dual module root
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
+        self.register_dual_node_ptr(dual_node_ptr);
         let active_timestamp = self.active_timestamp;
         let node = dual_node_ptr.read_recursive();
-        if let Some(unit_module_info) = self.unit_module_info.as_mut() {
-            if unit_module_info.owning_dual_range.len() == 0 {  // set the range instead of inserting into the lookup table, to minimize table lookup
-                unit_module_info.owning_dual_range = VertexRange::new(node.index, node.index);
-            }
-            if unit_module_info.owning_dual_range.end() == node.index {
-                // it's able to append into the owning range, minimizing table lookup and thus better performance
-                unit_module_info.owning_dual_range.append_by(1);
-            } else {
-                unit_module_info.dual_node_pointers.insert(dual_node_ptr.clone(), self.nodes.len());
-            }
-        } else {
-            assert!(self.nodes.len() == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
-        }
         let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
             origin: dual_node_ptr.downgrade(),
             index: self.nodes.len(),
@@ -1042,10 +1030,10 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
                 if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
             });
-            if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+            if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "p" } else { "propagated_dual_node" }).to_string(), json!(value));
             }
-            if let Some(value) = vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+            if let Some(value) = vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "pg" } else { "propagated_grandson_dual_node" }).to_string(), json!(value));
             }
             if let Some(mirror_unit_ptr) = vertex.mirror_unit.as_ref() {
@@ -1068,16 +1056,16 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "lg" } else { "left_growth" }: edge.left_growth,
                 if abbrev { "rg" } else { "right_growth" }: edge.right_growth,
             });
-            if let Some(value) = edge.left_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+            if let Some(value) = edge.left_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "ld" } else { "left_dual_node" }).to_string(), json!(value));
             }
-            if let Some(value) = edge.left_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+            if let Some(value) = edge.left_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "lgd" } else { "left_grandson_dual_node" }).to_string(), json!(value));
             }
-            if let Some(value) = edge.right_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+            if let Some(value) = edge.right_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "rd" } else { "right_dual_node" }).to_string(), json!(value));
             }
-            if let Some(value) = edge.right_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().index) {
+            if let Some(value) = edge.right_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 edges[edge.edge_index].as_object_mut().unwrap().insert((if abbrev { "rgd" } else { "right_grandson_dual_node" }).to_string(), json!(value));
             }
             
@@ -1112,6 +1100,27 @@ Implement internal helper functions that maintains the state of dual clusters
 */
 
 impl DualModuleSerial {
+
+    /// register a new dual node ptr, but not creating the internal dual node
+    fn register_dual_node_ptr(&mut self, dual_node_ptr: &DualNodePtr) {
+        // println!("unit {:?}, register_dual_node_ptr: {:?}", self.unit_module_info, dual_node_ptr);
+        let node = dual_node_ptr.read_recursive();
+        if let Some(unit_module_info) = self.unit_module_info.as_mut() {
+            if unit_module_info.owning_dual_range.len() == 0 {  // set the range instead of inserting into the lookup table, to minimize table lookup
+                unit_module_info.owning_dual_range = VertexRange::new(node.index, node.index);
+            }
+            if unit_module_info.owning_dual_range.end() == node.index && self.nodes.len() == unit_module_info.owning_dual_range.len() {
+                // it's able to append into the owning range, minimizing table lookup and thus better performance
+                unit_module_info.owning_dual_range.append_by(1);
+            } else {
+                // will be inserted at this place
+                unit_module_info.dual_node_pointers.insert(dual_node_ptr.clone(), self.nodes.len());
+            }
+        } else {
+            assert!(self.nodes.len() == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
+        }
+        // println!("unit {:?}, register_dual_node_ptr: {:?}", self.unit_module_info, dual_node_ptr);
+    }
 
     pub fn get_dual_node_index(&self, dual_node_ptr: &DualNodePtr) -> Option<usize> {
         let dual_node = dual_node_ptr.read_recursive();
@@ -1150,11 +1159,12 @@ impl DualModuleSerial {
     pub fn get_otherwise_add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
         let dual_node_index = self.get_dual_node_index(&dual_node_ptr).unwrap_or_else(|| {
             // add a new internal dual node corresponding to the dual_node_ptr
+            self.register_dual_node_ptr(dual_node_ptr);
             let dual_node_index = self.nodes.len();
             let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
                 origin: dual_node_ptr.downgrade(),
                 index: dual_node_index,
-                dual_variable: 0,
+                dual_variable: 0,  // TODO: need dual variable
                 boundary: Vec::new(),
                 overgrown_stack: Vec::new(),
                 last_visit_cycle: 0,
@@ -1187,6 +1197,7 @@ impl DualModuleSerial {
             // to the closest grandson, it may happen that sync event will conflict on the grandson...
             // this conflict doesn't matter anyway: any grandson is good
             // assert_eq!(vertex.propagated_grandson_dual_node, propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()));
+            vertex.propagated_grandson_dual_node = propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade());
         } else {  // conflict with existing value, action needed
             // first vacate the vertex, recovering dual node boundaries accordingly
             if let Some(dual_node_internal_weak) = vertex.propagated_dual_node.as_ref() {
@@ -1389,6 +1400,11 @@ impl DualModuleSerial {
                         let vertex_ptr = vertex_weak.upgrade_force();
                         // push the surrounding edges back to the boundary
                         let mut vertex = vertex_ptr.write(active_timestamp);
+                        println!("vertex: {}", vertex.vertex_index);
+                        if vertex.propagated_dual_node != Some(dual_node_internal_ptr.downgrade()) {
+                            println!("vertex.propagated_dual_node: {:?}", vertex.propagated_dual_node);
+                            println!("dual_node_internal_ptr: {}", dual_node_internal.index);
+                        }
                         debug_assert!(vertex.propagated_dual_node == Some(dual_node_internal_ptr.downgrade()), "overgrown vertex must be propagated by the original dual node");
                         vertex.propagated_dual_node = None;
                         vertex.propagated_grandson_dual_node = None;

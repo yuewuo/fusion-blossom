@@ -107,6 +107,8 @@ pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap
             false => { obj.insert(key.to_string(), obj_2.remove(key).unwrap()); }
             true => {
                 // println!("[snapshot_copy_remaining_fields] {}: {:?} == {:?}", key, obj[key], obj_2[key]);
+                // println!("obj: {obj:?}");
+                // println!("obj_2: {obj_2:?}");
                 assert_eq!(obj[key], obj_2[key], "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function");
                 obj_2.remove(key).unwrap();
             }
@@ -128,6 +130,7 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                 let vertex_2 = &mut vertices_2[vertex_idx];
                 if vertex_2.is_null() { continue }
                 if vertex.is_null() { *vertex = vertex_2.clone(); continue }
+                // println!("vertex_idx: {vertex_idx}");
                 let vertex = vertex.as_object_mut().expect("each vertex must be an object");
                 let vertex_2 = vertex_2.as_object_mut().expect("each vertex must be an object");
                 // list known keys

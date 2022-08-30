@@ -23,6 +23,7 @@ use super::visualize::*;
 use crate::rayon::prelude::*;
 use std::collections::{BTreeSet, BTreeMap, HashSet};
 use super::complete_graph::CompleteGraph;
+use crate::weak_table::PtrWeakHashSet;
 
 
 pub struct DualModuleParallel {
@@ -190,7 +191,8 @@ pub struct DualModuleParallelUnit {
     pub children: Option<(DualModuleParallelUnitWeak, DualModuleParallelUnitWeak)>,
     /// parent dual module
     pub parent: Option<DualModuleParallelUnitWeak>,
-
+    /// elevated dual nodes: whose descendent not on the representative path of a dual node
+    pub elevated_dual_nodes: PtrWeakHashSet<DualNodeWeak>,
 }
 
 create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleParallelUnitWeak);
@@ -461,6 +463,7 @@ impl DualModuleImpl for DualModuleParallel {
                 unit.clear();
                 unit.is_active = unit_idx < self.config.partitions.len();  // only partitioned serial modules are active at the beginning
                 unit.partition_unit.write().enabled = false;
+                unit.elevated_dual_nodes.clear();
             });
         })
     }
@@ -628,8 +631,15 @@ impl DualModuleParallelUnit {
         // update on my serial module
         let mut serial_module = self.serial_module.write();
         if serial_module.contains_vertex(sync_event.vertex_index) {
-            println!("update: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+            // println!("update: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
             serial_module.execute_sync_event(sync_event);
+        }
+        // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
+        // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
+        if !self.whole_range.contains(&sync_event.vertex_index) {
+            if let Some(propagated_dual_node_weak) = sync_event.propagated_dual_node.as_ref() {
+                self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
+            }
         }
     }
 
@@ -659,6 +669,24 @@ impl DualModuleParallelUnit {
         }
     }
 
+    /// iteratively set grow state
+    fn iterative_set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState, representative_vertex: VertexIndex) {
+        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
+            return  // no descendant related to this dual node
+        }
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            for child_weak in [left_child_weak, right_child_weak] {
+                let child_ptr = child_weak.upgrade_force();
+                let mut child = child_ptr.write();
+                child.iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
+            }
+        }
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
+            self.serial_module.write().set_grow_state(dual_node_ptr, grow_state);
+        }
+    }
+
 }
 
 impl DualModuleParallelUnitPtr {
@@ -677,6 +705,7 @@ impl DualModuleParallelUnitPtr {
             serial_module: dual_module_ptr,
             children: None,  // to be filled later
             parent: None,  // to be filled later
+            elevated_dual_nodes: PtrWeakHashSet::new(),
         })
     }
 
@@ -740,18 +769,7 @@ impl DualModuleImpl for DualModuleParallelUnit {
         // find the path towards the owning unit of this dual node, and also try paths towards the elevated
         let representative_vertex = dual_node_ptr.get_representative_vertex();
         debug_assert!(self.whole_range.contains(&representative_vertex), "cannot set growth state of dual node outside of the scope");
-        if self.owning_range.contains(&representative_vertex) {
-            self.serial_module.write().set_grow_state(dual_node_ptr, grow_state);
-        } else {
-            if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-                if left_child_weak.upgrade_force().read_recursive().whole_range.contains(&representative_vertex) {
-                    left_child_weak.upgrade_force().read_recursive().serial_module.write().set_grow_state(dual_node_ptr, grow_state);
-                } else {
-                    debug_assert!(right_child_weak.upgrade_force().read_recursive().whole_range.contains(&representative_vertex));
-                    right_child_weak.upgrade_force().read_recursive().serial_module.write().set_grow_state(dual_node_ptr, grow_state);
-                }
-            } else { unreachable!() }
-        }
+        self.iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
