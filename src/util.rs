@@ -119,6 +119,8 @@ pub struct PartitionedSolverInitializer {
     pub edge_num: usize,
     /// vertices exclusively owned by this partition; this part must be a continuous range
     pub owning_range: VertexRange,
+    /// applicable when all the owning vertices are partitioned (i.e. this belongs to a fusion unit)
+    pub owning_interface: Option<PartitionUnitWeak>,
     /// if applicable, parent interface comes first, then the grandparent interface, ... note that some ancestor might be skipped because it has no mirrored vertices;
     /// we skip them because if the partition is in a chain, most of them would only have to know two interfaces on the left and on the right; nothing else necessary.
     /// (unit_index, list of vertices owned by this ancestor unit and should be mirrored at this partition and whether it's virtual)

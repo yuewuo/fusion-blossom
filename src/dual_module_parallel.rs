@@ -21,7 +21,7 @@ use crate::serde_json;
 use serde::{Serialize, Deserialize};
 use super::visualize::*;
 use crate::rayon::prelude::*;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, BTreeMap, HashSet};
 use super::complete_graph::CompleteGraph;
 
 
@@ -182,15 +182,14 @@ pub struct DualModuleParallelUnit {
     pub whole_range: VertexRange,
     /// the vertices owned by this unit, note that owning_range is a subset of whole_range
     pub owning_range: VertexRange,
+    /// the vertices that are mirrored outside of whole_range, in order to propagate a vertex's sync event to every unit that mirrors it
+    pub extra_descendant_mirrored_vertices: HashSet<VertexIndex>,
     /// `Some(_)` only if this parallel dual module is a simple wrapper of a serial dual module
     pub serial_module: DualModuleSerialPtr,
     /// left and right children dual modules
     pub children: Option<(DualModuleParallelUnitWeak, DualModuleParallelUnitWeak)>,
     /// parent dual module
     pub parent: Option<DualModuleParallelUnitWeak>,
-    /// interface ids (each dual module may have multiple interfaces, e.g. in case A-B, B-C, C-D, D-A,
-    /// if ABC is in the same module, D is in another module, then there are two interfaces C-D, D-A between modules ABC and D)
-    pub interfaces: Vec<Weak<Interface>>,
 
 }
 
@@ -303,6 +302,7 @@ impl DualModuleParallel {
                     vertex_num: initializer.vertex_num,
                     edge_num: initializer.weighted_edges.len(),
                     owning_range: owning_range.clone(),
+                    owning_interface: if unit_index < config.partitions.len() { None } else { Some(partition_units[unit_index].downgrade()) },
                     weighted_edges: vec![],  // to be filled later
                     interfaces: interfaces,
                     virtual_vertices: owning_range.iter().filter(|vertex_index| is_vertex_virtual[*vertex_index]).collect(),
@@ -371,6 +371,30 @@ impl DualModuleParallel {
                 if let Some(parent_index) = &partition_info.units[unit_index].parent {
                     unit.parent = Some(units[*parent_index].downgrade());
                 }
+            }
+            // fill in the extra_descendant_mirrored_vertices
+            for unit_index in 0..unit_count {
+                let mut unit = units[unit_index].write();
+                let serial_module_ptr = unit.serial_module.clone();
+                let whole_range = unit.whole_range.clone();
+                let serial_module = serial_module_ptr.read_recursive();
+                for i in serial_module.owning_range.len()..serial_module.vertices.len() {
+                    let vertex_index = serial_module.vertices[i].read_recursive_force().vertex_index;
+                    if !whole_range.contains(&vertex_index) {
+                        unit.extra_descendant_mirrored_vertices.insert(vertex_index);
+                    }
+                }
+                if let Some((left_children_weak, right_children_weak)) = unit.children.clone() {
+                    for child_weak in [left_children_weak, right_children_weak] {
+                        // note: although iterating over HashSet is not performance optimal, this only happens at initialization and thus it's fine
+                        for vertex_index in child_weak.upgrade_force().read_recursive().extra_descendant_mirrored_vertices.iter() {
+                            if !whole_range.contains(&vertex_index) {
+                                unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
+                            }
+                        }
+                    }
+                }
+                // println!("{} extra_descendant_mirrored_vertices: {:?}", unit.unit_index, unit.extra_descendant_mirrored_vertices);
             }
         }
         Self {
@@ -571,6 +595,70 @@ impl DualModuleParallelUnit {
 
     }
 
+    pub fn sync_prepare_growth_append_sync_requests(&mut self, sync_requests: &mut Vec<SyncRequest>) {
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().write().sync_prepare_growth_append_sync_requests(sync_requests);
+            right_child_weak.upgrade_force().write().sync_prepare_growth_append_sync_requests(sync_requests);
+        }
+        // my serial module
+        let mut serial_module = self.serial_module.write();
+        assert!(serial_module.unit_module_info.as_ref().unwrap().sync_requests.is_empty(), "must start with empty sync requests");
+        serial_module.prepare_all_growth();
+        let local_sync_requests = &mut serial_module.unit_module_info.as_mut().unwrap().sync_requests;
+        sync_requests.append(local_sync_requests);
+    }
+
+    /// if any descendant unit mirror or own the vertex
+    pub fn is_vertex_in_descendant(&self, vertex_index: VertexIndex) -> bool {
+        self.whole_range.contains(&vertex_index) || self.extra_descendant_mirrored_vertices.contains(&vertex_index)
+    }
+
+    pub fn sync_prepare_growth_update_sync_event(&mut self, sync_event: &SyncRequest) {
+        // if the vertex is not hold by any descendant, simply return
+        if !self.is_vertex_in_descendant(sync_event.vertex_index) {
+            return
+        }
+        // println!("sync_prepare_growth_update_sync_event: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().write().sync_prepare_growth_update_sync_event(sync_event);
+            right_child_weak.upgrade_force().write().sync_prepare_growth_update_sync_event(sync_event);
+        }
+        // update on my serial module
+        let mut serial_module = self.serial_module.write();
+        if serial_module.contains_vertex(sync_event.vertex_index) {
+            println!("update: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+            serial_module.execute_sync_event(sync_event);
+        }
+    }
+
+    /// prepare the growth of all children and synchronize them
+    pub fn sync_prepare_growth(&mut self) {
+        if self.children.is_none() {
+            // don't do anything, not even prepare the growth because it will be done in the serial module
+        } else {
+            let mut sync_requests = vec![];
+            self.sync_prepare_growth_append_sync_requests(&mut sync_requests);
+            // println!("sync_requests: {sync_requests:?}");
+            // collect all sync requests, merging those on the same vertex (choosing any one is ok)
+            let mut sync_events = BTreeMap::<VertexIndex, &SyncRequest>::new();
+            for sync_request in sync_requests.iter() {
+                if let Some(sync_event) = sync_events.get(&sync_request.vertex_index) {
+                    assert_eq!(sync_event.propagated_dual_node.is_some(), sync_request.propagated_dual_node.is_some(), 
+                        "it's only possible to conflict on setting the propagated nodes, not possible if someone is setting and others are resetting");
+                } else {
+                    sync_events.insert(sync_request.vertex_index, &sync_request);
+                }
+            }
+            // iterate over sync_events to update on all associated vertices
+            println!("sync_events: {sync_events:?}");
+            for (_, sync_event) in sync_events.iter() {
+                self.sync_prepare_growth_update_sync_event(sync_event);
+            }
+        }
+    }
+
 }
 
 impl DualModuleParallelUnitPtr {
@@ -585,10 +673,10 @@ impl DualModuleParallelUnitPtr {
             is_active: partition_unit_info.children.is_none(),  // only activate the leaves in the dependency tree
             whole_range: partition_unit_info.whole_range,
             owning_range: partition_unit_info.owning_range,
+            extra_descendant_mirrored_vertices: HashSet::new(),  // to be filled later
             serial_module: dual_module_ptr,
             children: None,  // to be filled later
             parent: None,  // to be filled later
-            interfaces: vec![],  // to be filled later
         })
     }
 
@@ -671,6 +759,9 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
+        // first prepare all dual node for growth and shrink accordingly and synchronize them
+        self.sync_prepare_growth();
+        // them do the functions independently
         let mut group_max_update_length = self.serial_module.write().compute_maximum_update_length();
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             group_max_update_length.extend(left_child_weak.upgrade_force().read_recursive().serial_module.write().compute_maximum_update_length());
