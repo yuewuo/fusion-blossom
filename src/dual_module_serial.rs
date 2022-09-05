@@ -754,7 +754,6 @@ impl DualModuleSerial {
 
     /// create a partitioned serial dual module to be used in the parallel dual module
     pub fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
-        println!("partitioned_initializer: {partitioned_initializer:?}");
         let active_timestamp = 0;
         // create vertices
         let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new(Vertex {
