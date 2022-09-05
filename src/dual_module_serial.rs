@@ -330,8 +330,8 @@ impl DualModuleImpl for DualModuleSerial {
                     }
                 },
                 DualNodeClass::SyndromeVertex { syndrome_index } => {
-                    assert!(self.owning_range.contains(syndrome_index), "syndrome not belonging to this dual module");
-                    let vertex_ptr = &self.vertices[*syndrome_index - self.owning_range.start()];  // exclusively owned vertices are always placed in the front
+                    let vertex_index = self.get_vertex_index(*syndrome_index).expect("syndrome not belonging to this dual module");
+                    let vertex_ptr = &self.vertices[vertex_index];
                     vertex_ptr.dynamic_clear(active_timestamp);
                     let mut vertex = vertex_ptr.write(active_timestamp);
                     vertex.propagated_dual_node = Some(node_internal_ptr.downgrade());
@@ -1060,8 +1060,11 @@ impl FusionVisualizer for DualModuleSerial {
             let vertex = vertex_ptr.read_recursive(active_timestamp);
             vertices[vertex.vertex_index] = json!({
                 if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
-                if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
             });
+            if self.owning_range.contains(&vertex.vertex_index) {  // otherwise I don't know whether it's syndrome or not
+                vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "s" } else { "is_syndrome" }).to_string(),
+                    json!(if vertex.is_syndrome { 1 } else { 0 }));
+            }
             if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "p" } else { "propagated_dual_node" }).to_string(), json!(value));
             }
@@ -2010,5 +2013,5 @@ mod tests {
             visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
         }
     }
-    
+
 }

@@ -13,9 +13,12 @@ use super::util::*;
 use std::collections::HashMap;
 use crate::serde_json;
 use crate::rand_xoshiro::rand_core::SeedableRng;
+use crate::derivative::Derivative;
 
 
 /// Vertex corresponds to a stabilizer measurement bit
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct CodeVertex {
     /// position helps to visualize
     pub position: VisualizePosition,
@@ -28,6 +31,8 @@ pub struct CodeVertex {
 }
 
 /// Edge flips the measurement result of two vertices
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct CodeEdge {
     /// the two vertices incident to this edge
     pub vertices: (usize, usize),
@@ -54,6 +59,15 @@ impl CodeEdge {
 pub fn weight_of_p(p: f64) -> f64 {
     assert!(p >= 0. && p <= 0.5, "p must be a reasonable value between 0 and 50%");
     ((1. - p) / p).ln()
+}
+
+fn build_old_to_new(sequential_vertices: &Vec<VertexIndex>) -> Vec<Option<usize>> {
+    let mut old_to_new: Vec<Option<usize>> = (0..sequential_vertices.len()).map(|_| None).collect();
+    for (new_index, old_index) in sequential_vertices.iter().enumerate() {
+        assert_eq!(old_to_new[*old_index], None, "duplicate vertex found {}", old_index);
+        old_to_new[*old_index] = Some(new_index);
+    }
+    old_to_new
 }
 
 pub trait ExampleCode {
@@ -246,6 +260,29 @@ pub trait ExampleCode {
     fn is_syndrome(&self, vertex_idx: usize) -> bool {
         let (vertices, _edges) = self.immutable_vertices_edges();
         vertices[vertex_idx].is_syndrome
+    }
+
+    /// reorder the vertices such that new vertices (the indices of the old order) is sequential
+    fn reorder_vertices(&mut self, sequential_vertices: &Vec<VertexIndex>) {
+        let (vertices, edges) = self.vertices_edges();
+        assert_eq!(vertices.len(), sequential_vertices.len(), "amount of vertices must be same");
+        let old_to_new = build_old_to_new(sequential_vertices);
+        // change the vertices numbering
+        *vertices = (0..vertices.len()).map(|new_index| {
+            vertices[sequential_vertices[new_index]].clone()
+        }).collect();
+        for edge in edges.iter_mut() {
+            let (old_left, old_right) = edge.vertices;
+            edge.vertices = (old_to_new[old_left].unwrap(), old_to_new[old_right].unwrap());
+        }
+    }
+
+    /// translate syndrome into the current new index
+    fn translated_syndrome_to_reordered(&self, sequential_vertices: &Vec<VertexIndex>, old_syndrome_vertices: Vec<VertexIndex>) -> Vec<VertexIndex> {
+        let old_to_new = build_old_to_new(sequential_vertices);
+        old_syndrome_vertices.iter().map(|old_index| {
+            old_to_new[*old_index].unwrap()
+        }).collect()
     }
 
 }

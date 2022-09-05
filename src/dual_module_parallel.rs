@@ -193,6 +193,8 @@ pub struct DualModuleParallelUnit {
     pub parent: Option<DualModuleParallelUnitWeak>,
     /// elevated dual nodes: whose descendent not on the representative path of a dual node
     pub elevated_dual_nodes: PtrWeakHashSet<DualNodeWeak>,
+    /// pending dual nodes to be added when activate
+    pub pending_dual_node_ptrs: Vec<DualNodePtr>,
 }
 
 create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleParallelUnitWeak);
@@ -472,9 +474,21 @@ impl DualModuleImpl for DualModuleParallel {
 
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
         self.thread_pool.scope(|_| {
-            let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+            let unit_ptr = match dual_node_ptr.read_recursive().class {
+                DualNodeClass::Blossom{ .. } => {
+                    self.find_active_ancestor(&dual_node_ptr)
+                },
+                DualNodeClass::SyndromeVertex{ syndrome_index } => {
+                    let owning_unit_index = self.partition_info.vertex_to_owning_unit[syndrome_index];
+                    self.units[owning_unit_index].clone()
+                },
+            };
             let mut unit = unit_ptr.write();
-            unit.add_dual_node(&dual_node_ptr);
+            if unit.is_active {
+                unit.add_dual_node(&dual_node_ptr);
+            } else {
+                unit.pending_dual_node_ptrs.push(dual_node_ptr.clone());
+            }
         })
     }
 
@@ -592,6 +606,15 @@ impl DualModuleParallelUnit {
         {  // set partition unit as enabled
             let mut partition_unit = self.partition_unit.write();
             partition_unit.enabled = true;
+        }
+        {  // activate all dual nodes of this interface in children as well
+            if !self.pending_dual_node_ptrs.is_empty() {
+                let mut pending_dual_node_ptrs = vec![];
+                std::mem::swap(&mut self.pending_dual_node_ptrs, &mut pending_dual_node_ptrs);
+                for dual_node_ptr in pending_dual_node_ptrs.into_iter() {
+                    self.add_dual_node(&dual_node_ptr);
+                }
+            }
         }
         // TODO: steal the dual module list from the left child, presumably the larger one;
         // and then renumber the dual nodes from fusion unit and the right child, presumably the smaller ones.
@@ -746,6 +769,29 @@ impl DualModuleParallelUnit {
         }
     }
 
+    pub fn iterative_add_syndrome_node(&mut self, dual_node_ptr: &DualNodePtr, vertex_index: VertexIndex) {
+        // if the vertex is not hold by any descendant, simply return
+        if !self.is_vertex_in_descendant(vertex_index) {
+            return
+        }
+        // println!("sync_prepare_growth_update_sync_event: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().write().iterative_add_syndrome_node(dual_node_ptr, vertex_index);
+            right_child_weak.upgrade_force().write().iterative_add_syndrome_node(dual_node_ptr, vertex_index);
+        }
+        // update on my serial module
+        let mut serial_module = self.serial_module.write();
+        if serial_module.contains_vertex(vertex_index) {
+            serial_module.add_syndrome_node(dual_node_ptr);
+        }
+        // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
+        // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
+        if !self.whole_range.contains(&vertex_index) {
+            self.elevated_dual_nodes.insert(dual_node_ptr.clone());
+        }
+    }
+
 }
 
 impl DualModuleParallelUnitPtr {
@@ -765,6 +811,7 @@ impl DualModuleParallelUnitPtr {
             children: None,  // to be filled later
             parent: None,  // to be filled later
             elevated_dual_nodes: PtrWeakHashSet::new(),
+            pending_dual_node_ptrs: vec![],
         })
     }
 
@@ -788,10 +835,9 @@ impl DualModuleImpl for DualModuleParallelUnit {
         let representative_vertex = dual_node_ptr.get_representative_vertex();
         match &dual_node_ptr.read_recursive().class {
             // fast path: if dual node is a single vertex, then only add to the owning node; single vertex dual node can only add when dual variable = 0
-            DualNodeClass::SyndromeVertex { .. } => {
+            DualNodeClass::SyndromeVertex { syndrome_index } => {
                 if self.owning_range.contains(&representative_vertex) {  // fast path: the most common one
-                    let mut serial_module = self.serial_module.write();
-                    serial_module.add_dual_node(dual_node_ptr);
+                    self.iterative_add_syndrome_node(dual_node_ptr, *syndrome_index);
                 } else {
                     // find the one that owns it and add the dual node, and then add the serial_module
                     if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
@@ -809,11 +855,11 @@ impl DualModuleImpl for DualModuleParallelUnit {
                                 child_ptr = grandson_ptr;
                             }
                         }
-                        let child = child_ptr.read_recursive();
-                        let mut serial_module = child.serial_module.write();
-                        serial_module.add_dual_node(dual_node_ptr);
+                        let mut child = child_ptr.write();
+                        child.iterative_add_syndrome_node(dual_node_ptr, *syndrome_index);
                     } else { unreachable!() }
                 }
+                // if it's children mirrors this vertex as well, then it's necessary to add this dual node to those children as well
             },
             // this is a blossom, meaning it's children dual nodes may reside on any path
             DualNodeClass::Blossom { nodes_circle, .. } => {
@@ -896,12 +942,16 @@ pub mod tests {
     use super::super::primal_module::*;
     use super::super::primal_module_serial::*;
 
-    pub fn dual_module_parallel_basic_standard_syndrome_optional_viz<F>(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>
-            , final_dual: Weight, partition_func: F)
+    pub fn dual_module_parallel_basic_standard_syndrome_optional_viz<F>(d: usize, visualize_filename: Option<String>, mut syndrome_vertices: Vec<VertexIndex>
+            , final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
             -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) where F: Fn(&SolverInitializer, &mut DualModuleParallelConfig) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
+        if let Some(reordered_vertices) = &reordered_vertices {
+            code.reorder_vertices(reordered_vertices);
+            syndrome_vertices = code.translated_syndrome_to_reordered(reordered_vertices, syndrome_vertices);
+        }
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
                 let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
@@ -914,6 +964,7 @@ pub mod tests {
         let initializer = code.get_initializer();
         let mut config = DualModuleParallelConfig::default();
         partition_func(&initializer, &mut config);
+        println!("config: {config:?}");
         let mut dual_module = DualModuleParallel::new_config(&initializer, config);
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(&initializer);
@@ -944,9 +995,9 @@ pub mod tests {
     }
 
     pub fn dual_module_parallel_standard_syndrome<F>(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
-            , final_dual: Weight, partition_func: F)
+            , final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
             -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel) where F: Fn(&SolverInitializer, &mut DualModuleParallelConfig) {
-        dual_module_parallel_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual, partition_func)
+        dual_module_parallel_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual, partition_func, reordered_vertices)
     }
 
     /// test a simple case
@@ -956,8 +1007,7 @@ pub mod tests {
         let syndrome_vertices = vec![39, 52, 63, 90, 100];
         dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |initializer, config| {
             println!("initializer: {initializer:?}");
-            println!("config: {config:?}");
-        });
+        }, None);
     }
 
     /// split into 2, with no syndrome vertex on the interface
@@ -973,8 +1023,84 @@ pub mod tests {
             config.fusions = vec![
                 (0, 1),  // unit 2, by fusing 0 and 1
             ];
-            println!("{config:?}");
-        });
+        }, None);
+    }
+
+    /// split into 2, with a syndrome vertex on the interface
+    #[test]
+    fn dual_module_parallel_basic_3() {  // cargo test dual_module_parallel_basic_3 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_basic_3.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |_initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, 60),    // unit 0
+                VertexRange::new(72, 132),  // unit 1
+            ];
+            config.fusions = vec![
+                (0, 1),  // unit 2, by fusing 0 and 1
+            ];
+        }, None);
+    }
+
+    /// split into 4, with no syndrome vertex on the interface
+    #[test]
+    fn dual_module_parallel_basic_4() {  // cargo test dual_module_parallel_basic_4 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_basic_4.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |_initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, 36),
+                VertexRange::new(42, 72),
+                VertexRange::new(84, 108),
+                VertexRange::new(112, 132),
+            ];
+            config.fusions = vec![
+                (0, 1),
+                (2, 3),
+                (4, 5),
+            ];
+        }, Some((|| {
+            let mut reordered_vertices = vec![];
+            for i in 0..6 {  // left-top block
+                for j in 0..5 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in 0..6 {  // interface between the left-top block and the right-top block
+                reordered_vertices.push(i * 12 + 5);
+            }
+            for i in 0..6 {  // right-top block
+                for j in 0..4 {
+                    reordered_vertices.push(i * 12 + j + 6);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            {  // the big interface between top and bottom
+                for j in 0..10 {
+                    reordered_vertices.push(72 + j);
+                }
+                reordered_vertices.push(82);
+                reordered_vertices.push(83);
+            }
+            for i in 0..4 {  // left-bottom block
+                for j in 0..5 {
+                    reordered_vertices.push(i * 12 + j + 84);
+                }
+                reordered_vertices.push(i * 12 + 95);
+            }
+            for i in 0..4 {  // interface between the left-bottom block and the right-bottom block
+                reordered_vertices.push(i * 12 + 89);
+            }
+            for i in 0..4 {  // right-bottom block
+                for j in 0..4 {
+                    reordered_vertices.push(i * 12 + j + 90);
+                }
+                reordered_vertices.push(i * 12 + 94);
+            }
+            reordered_vertices
+        })()));
     }
 
 }
