@@ -792,6 +792,24 @@ impl DualModuleParallelUnit {
         }
     }
 
+    pub fn iterative_compute_maximum_update_length(&mut self, group_max_update_length: &mut GroupMaxUpdateLength) {
+        // TODO: early terminate if no active dual nodes anywhere in the descendant
+        group_max_update_length.extend(self.serial_module.write().compute_maximum_update_length());
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
+            right_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
+        }
+    }
+
+    pub fn iterative_grow(&mut self, length: Weight) {
+        // TODO: early terminate if no active dual nodes anywhere in the descendant
+        self.serial_module.write().grow(length);
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().write().iterative_grow(length);
+            right_child_weak.upgrade_force().write().iterative_grow(length);
+        }
+    }
+
 }
 
 impl DualModuleParallelUnitPtr {
@@ -872,6 +890,7 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
+        // TODO: execute on all nodes that handles this dual node
         self.serial_module.write().remove_blossom(dual_node_ptr)
     }
 
@@ -884,6 +903,7 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
+        // TODO: execute on all nodes that handles this dual node
         self.serial_module.write().compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update)
     }
 
@@ -892,26 +912,22 @@ impl DualModuleImpl for DualModuleParallelUnit {
         self.sync_prepare_growth();
         // them do the functions independently
         let mut group_max_update_length = self.serial_module.write().compute_maximum_update_length();
-        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            group_max_update_length.extend(left_child_weak.upgrade_force().read_recursive().serial_module.write().compute_maximum_update_length());
-            group_max_update_length.extend(right_child_weak.upgrade_force().read_recursive().serial_module.write().compute_maximum_update_length());
-        }
+        self.iterative_compute_maximum_update_length(&mut group_max_update_length);
         group_max_update_length
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
+        // TODO: execute on all nodes that handles this dual node
         self.serial_module.write().grow_dual_node(dual_node_ptr, length)
     }
 
     fn grow(&mut self, length: Weight) {
-        self.serial_module.write().grow(length);
-        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            left_child_weak.upgrade_force().read_recursive().serial_module.write().grow(length);
-            right_child_weak.upgrade_force().read_recursive().serial_module.write().grow(length);
-        }
+        self.iterative_grow(length);
     }
 
     fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+        // TODO: split the edge modifier and then load them to individual descendant units
+        // hint: each edge could appear in any unit that mirrors the two vertices
         self.serial_module.write().load_edge_modifier(edge_modifier)
     }
 
@@ -1005,7 +1021,7 @@ pub mod tests {
     fn dual_module_parallel_basic_1() {  // cargo test dual_module_parallel_basic_1 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_1.json");
         let syndrome_vertices = vec![39, 52, 63, 90, 100];
-        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |initializer, config| {
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |initializer, _config| {
             println!("initializer: {initializer:?}");
         }, None);
     }
@@ -1062,43 +1078,106 @@ pub mod tests {
             ];
         }, Some((|| {
             let mut reordered_vertices = vec![];
-            for i in 0..6 {  // left-top block
-                for j in 0..5 {
+            let split_horizontal = 6;
+            let split_vertical = 5;
+            for i in 0..split_horizontal {  // left-top block
+                for j in 0..split_vertical {
                     reordered_vertices.push(i * 12 + j);
                 }
                 reordered_vertices.push(i * 12 + 11);
             }
-            for i in 0..6 {  // interface between the left-top block and the right-top block
-                reordered_vertices.push(i * 12 + 5);
+            for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
+                reordered_vertices.push(i * 12 + split_vertical);
             }
-            for i in 0..6 {  // right-top block
-                for j in 0..4 {
-                    reordered_vertices.push(i * 12 + j + 6);
+            for i in 0..split_horizontal {  // right-top block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
                 }
                 reordered_vertices.push(i * 12 + 10);
             }
             {  // the big interface between top and bottom
-                for j in 0..10 {
-                    reordered_vertices.push(72 + j);
+                for j in 0..12 {
+                    reordered_vertices.push(split_horizontal * 12 + j);
                 }
-                reordered_vertices.push(82);
-                reordered_vertices.push(83);
             }
-            for i in 0..4 {  // left-bottom block
-                for j in 0..5 {
-                    reordered_vertices.push(i * 12 + j + 84);
+            for i in (split_horizontal+1)..11 {  // left-bottom block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
                 }
-                reordered_vertices.push(i * 12 + 95);
+                reordered_vertices.push(i * 12 + 11);
             }
-            for i in 0..4 {  // interface between the left-bottom block and the right-bottom block
-                reordered_vertices.push(i * 12 + 89);
+            for i in (split_horizontal+1)..11 {  // interface between the left-bottom block and the right-bottom block
+                reordered_vertices.push(i * 12 + split_vertical);
             }
-            for i in 0..4 {  // right-bottom block
-                for j in 0..4 {
-                    reordered_vertices.push(i * 12 + j + 90);
+            for i in (split_horizontal+1)..11 {  // right-bottom block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
                 }
-                reordered_vertices.push(i * 12 + 94);
+                reordered_vertices.push(i * 12 + 10);
             }
+            println!("reordered_vertices: {:?}", reordered_vertices);
+            reordered_vertices
+        })()));
+    }
+
+    /// split into 4, with 2 syndrome vertices on parent interfaces
+    #[test]
+    fn dual_module_parallel_basic_5() {  // cargo test dual_module_parallel_basic_5 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_basic_5.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        dual_module_parallel_standard_syndrome(11, visualize_filename, syndrome_vertices, 9, |_initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, 25),
+                VertexRange::new(30, 60),
+                VertexRange::new(72, 97),
+                VertexRange::new(102, 132),
+            ];
+            config.fusions = vec![
+                (0, 1),
+                (2, 3),
+                (4, 5),
+            ];
+        }, Some((|| {
+            let mut reordered_vertices = vec![];
+            let split_horizontal = 5;
+            let split_vertical = 4;
+            for i in 0..split_horizontal {  // left-top block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
+                reordered_vertices.push(i * 12 + split_vertical);
+            }
+            for i in 0..split_horizontal {  // right-top block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            {  // the big interface between top and bottom
+                for j in 0..12 {
+                    reordered_vertices.push(split_horizontal * 12 + j);
+                }
+            }
+            for i in (split_horizontal+1)..11 {  // left-bottom block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in (split_horizontal+1)..11 {  // interface between the left-bottom block and the right-bottom block
+                reordered_vertices.push(i * 12 + split_vertical);
+            }
+            for i in (split_horizontal+1)..11 {  // right-bottom block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            println!("reordered_vertices: {:?}", reordered_vertices);
             reordered_vertices
         })()));
     }
