@@ -26,6 +26,10 @@ pub enum DualNodeClass {
     },
 }
 
+impl DualNodeClass {
+    pub fn is_blossom(&self) -> bool { matches!(self, Self::Blossom{ .. }) }
+}
+
 /// Three possible states: Grow (+1), Stay (+0), Shrink (-1)
 #[derive(Derivative, PartialEq, Clone, Copy)]
 #[derivative(Debug)]

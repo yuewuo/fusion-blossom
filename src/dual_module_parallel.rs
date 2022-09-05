@@ -643,6 +643,29 @@ impl DualModuleParallelUnit {
         }
     }
 
+    // collect all sync requests, merging those on the same vertex (choosing any one is ok)
+    pub fn dedup_sync_events(sync_requests: &Vec<SyncRequest>) -> BTreeMap<VertexIndex, &SyncRequest> {
+        let mut sync_events = BTreeMap::<VertexIndex, &SyncRequest>::new();
+        for sync_request in sync_requests.iter() {
+            if let Some(sync_event) = sync_events.get(&sync_request.vertex_index) {
+                assert_eq!(sync_event.propagated_dual_node.is_some(), sync_request.propagated_dual_node.is_some(), 
+                    "it's only possible to conflict on setting the propagated nodes, not possible if someone is setting and others are resetting");
+            } else {
+                sync_events.insert(sync_request.vertex_index, &sync_request);
+            }
+        }
+        sync_events
+    }
+
+    pub fn dedup_sync_events_execute(&mut self, sync_requests: &Vec<SyncRequest>) {
+        let sync_events = Self::dedup_sync_events(&sync_requests);
+        // iterate over sync_events to update on all associated vertices
+        println!("sync_events: {sync_events:?}");
+        for (_, sync_event) in sync_events.iter() {
+            self.sync_prepare_growth_update_sync_event(sync_event);
+        }
+    }
+
     /// prepare the growth of all children and synchronize them
     pub fn sync_prepare_growth(&mut self) {
         if self.children.is_none() {
@@ -651,22 +674,9 @@ impl DualModuleParallelUnit {
             let mut sync_requests = vec![];
             self.sync_prepare_growth_append_sync_requests(&mut sync_requests);
             // println!("sync_requests: {sync_requests:?}");
-            // collect all sync requests, merging those on the same vertex (choosing any one is ok)
-            let mut sync_events = BTreeMap::<VertexIndex, &SyncRequest>::new();
-            for sync_request in sync_requests.iter() {
-                if let Some(sync_event) = sync_events.get(&sync_request.vertex_index) {
-                    assert_eq!(sync_event.propagated_dual_node.is_some(), sync_request.propagated_dual_node.is_some(), 
-                        "it's only possible to conflict on setting the propagated nodes, not possible if someone is setting and others are resetting");
-                } else {
-                    sync_events.insert(sync_request.vertex_index, &sync_request);
-                }
-            }
-            // iterate over sync_events to update on all associated vertices
-            println!("sync_events: {sync_events:?}");
-            for (_, sync_event) in sync_events.iter() {
-                self.sync_prepare_growth_update_sync_event(sync_event);
-            }
+            self.dedup_sync_events_execute(&sync_requests);
         }
+        // TODO: what if a 0-weighted chain go across multiple units? iteratively run this when happens
     }
 
     /// iteratively set grow state
@@ -684,6 +694,55 @@ impl DualModuleParallelUnit {
         }
         if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
             self.serial_module.write().set_grow_state(dual_node_ptr, grow_state);
+        }
+    }
+
+    pub fn elevated_dual_nodes_contains_any(&self, nodes: &Vec<DualNodePtr>) -> bool {
+        for node_ptr in nodes.iter() {
+            if self.elevated_dual_nodes.contains(node_ptr) {
+                return true
+            }
+        }
+        false
+    }
+
+    // prepare the initial shrink of a blossom
+    pub fn sync_prepare_blossom_initial_shrink_append_sync_requests(&mut self, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex, sync_requests: &mut Vec<SyncRequest>) {
+        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
+            return  // no descendant related to this dual node
+        }
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            for child_weak in [left_child_weak, right_child_weak] {
+                let child_ptr = child_weak.upgrade_force();
+                let mut child = child_ptr.write();
+                child.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, representative_vertex, sync_requests);
+            }
+        }
+        self.serial_module.write().prepare_blossom_initial_shrink(nodes_circle);
+    }
+
+    pub fn sync_prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex) {
+        let mut sync_requests = vec![];
+        self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, representative_vertex, &mut sync_requests);
+        // println!("sync_requests: {sync_requests:?}");
+        self.dedup_sync_events_execute(&sync_requests);
+    }
+
+    pub fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex) {
+        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
+            return  // no descendant related to this dual node
+        }
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            for child_weak in [left_child_weak, right_child_weak] {
+                let child_ptr = child_weak.upgrade_force();
+                let mut child = child_ptr.write();
+                child.iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex);
+            }
+        }
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_nodes_any(nodes_circle) {
+            self.serial_module.write().add_blossom(blossom_ptr);
         }
     }
 
@@ -726,38 +785,44 @@ impl DualModuleImpl for DualModuleParallelUnit {
 
     /// add a new dual node from dual module root
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
-        // judge whether I'm the unit that owns the dual node
         let representative_vertex = dual_node_ptr.get_representative_vertex();
-        let is_owning_dual_node = self.owning_range.contains(&representative_vertex);
-        let mut major_path = vec![];
-        if is_owning_dual_node {
-            let mut serial_module = self.serial_module.write();
-            serial_module.add_dual_node(dual_node_ptr);
-        } else {
-            // find the one that owns it and add the dual node, and then add the serial_module
-            if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-                let mut child_ptr = if representative_vertex < self.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() };
-                let mut is_owning_dual_node = false;
-                while !is_owning_dual_node {
-                    let child = child_ptr.read_recursive();
-                    debug_assert!(child.whole_range.contains(&representative_vertex), "selected child must contains the vertex");
-                    is_owning_dual_node = child.owning_range.contains(&representative_vertex);
-                    major_path.push(child_ptr.clone());
-                    if !is_owning_dual_node {  // search for the grandsons
-                        let grandson_ptr = if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-                            if representative_vertex < child.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() }
-                        } else { unreachable!() };
-                        drop(child);
-                        child_ptr = grandson_ptr;
-                    }
+        match &dual_node_ptr.read_recursive().class {
+            // fast path: if dual node is a single vertex, then only add to the owning node; single vertex dual node can only add when dual variable = 0
+            DualNodeClass::SyndromeVertex { .. } => {
+                if self.owning_range.contains(&representative_vertex) {  // fast path: the most common one
+                    let mut serial_module = self.serial_module.write();
+                    serial_module.add_dual_node(dual_node_ptr);
+                } else {
+                    // find the one that owns it and add the dual node, and then add the serial_module
+                    if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+                        let mut child_ptr = if representative_vertex < self.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() };
+                        let mut is_owning_dual_node = false;
+                        while !is_owning_dual_node {
+                            let child = child_ptr.read_recursive();
+                            debug_assert!(child.whole_range.contains(&representative_vertex), "selected child must contains the vertex");
+                            is_owning_dual_node = child.owning_range.contains(&representative_vertex);
+                            if !is_owning_dual_node {  // search for the grandsons
+                                let grandson_ptr = if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+                                    if representative_vertex < child.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() }
+                                } else { unreachable!() };
+                                drop(child);
+                                child_ptr = grandson_ptr;
+                            }
+                        }
+                        let child = child_ptr.read_recursive();
+                        let mut serial_module = child.serial_module.write();
+                        serial_module.add_dual_node(dual_node_ptr);
+                    } else { unreachable!() }
                 }
-                let child = child_ptr.read_recursive();
-                let mut serial_module = child.serial_module.write();
-                serial_module.add_dual_node(dual_node_ptr);
-            } else { unreachable!() }
+            },
+            // this is a blossom, meaning it's children dual nodes may reside on any path
+            DualNodeClass::Blossom { nodes_circle, .. } => {
+                // first set all children dual nodes as shrinking, to be safe
+                let nodes_circle_ptrs: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force()).collect();
+                self.sync_prepare_blossom_initial_shrink(&nodes_circle_ptrs, representative_vertex);
+                self.iterative_add_blossom(dual_node_ptr, &nodes_circle_ptrs, representative_vertex);
+            },
         }
-        // TODO: find all units that own other vertices or mirroring dual nodes of the children nodes in the blossom, and then elevate them 
-        println!("is_owning_dual_node: {is_owning_dual_node}");
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
