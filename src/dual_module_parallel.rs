@@ -730,8 +730,8 @@ impl DualModuleParallelUnit {
     }
 
     // prepare the initial shrink of a blossom
-    pub fn sync_prepare_blossom_initial_shrink_append_sync_requests(&mut self, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex, sync_requests: &mut Vec<SyncRequest>) {
-        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
+    pub fn sync_prepare_blossom_initial_shrink_append_sync_requests(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>, sync_requests: &mut Vec<SyncRequest>) {
+        if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
         }
         // depth-first search
@@ -739,15 +739,15 @@ impl DualModuleParallelUnit {
             for child_weak in [left_child_weak, right_child_weak] {
                 let child_ptr = child_weak.upgrade_force();
                 let mut child = child_ptr.write();
-                child.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, representative_vertex, sync_requests);
+                child.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, sync_requests);
             }
         }
         self.serial_module.write().prepare_blossom_initial_shrink(nodes_circle);
     }
 
-    pub fn sync_prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex) {
+    pub fn sync_prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>) {
         let mut sync_requests = vec![];
-        self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, representative_vertex, &mut sync_requests);
+        self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, &mut sync_requests);
         // println!("sync_requests: {sync_requests:?}");
         self.dedup_sync_events_execute(&sync_requests);
     }
@@ -921,8 +921,8 @@ impl DualModuleImpl for DualModuleParallelUnit {
             DualNodeClass::Blossom { nodes_circle, .. } => {
                 // first set all children dual nodes as shrinking, to be safe
                 let nodes_circle_ptrs: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force()).collect();
-                self.sync_prepare_blossom_initial_shrink(&nodes_circle_ptrs, representative_vertex);
                 let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force().get_representative_vertex()).collect();
+                self.sync_prepare_blossom_initial_shrink(&nodes_circle_ptrs, &nodes_circle_vertices);
                 self.iterative_add_blossom(dual_node_ptr, &nodes_circle_ptrs, representative_vertex, &nodes_circle_vertices);
             },
         }
@@ -1344,5 +1344,22 @@ pub mod tests {
         let syndrome_vertices = vec![60, 61, 72, 74, 84, 85, 109];  // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(11, visualize_filename, syndrome_vertices, 6);
     }
-    
+
+    /// infinite loop at group_max_update_length: Conflicts(([Conflicting((12, 4), (15, 5))], {}))
+    /// reason: I falsely use representative_vertex of the blossom instead of the representative vertices in the nodes circle in sync_prepare_blossom_initial_shrink
+    #[test]
+    fn dual_module_parallel_debug_10() {  // cargo test dual_module_parallel_debug_10 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_10.json");
+        let syndrome_vertices = vec![145, 146, 165, 166, 183, 185, 203, 204, 205, 225, 264];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 11);
+    }
+
+    /// panicked at 'dual node of edge should be none', src/dual_module_serial.rs:400:25
+    #[test]
+    fn dual_module_parallel_debug_11() {  // cargo test dual_module_parallel_debug_11 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_11.json");
+        let syndrome_vertices = vec![0, 1, 3, 16, 23, 27, 31, 32, 36, 40, 41, 42, 46, 47, 60, 63, 66, 73, 74, 81, 84, 88, 101, 109, 123, 132, 133, 140, 141, 143, 147, 152, 153, 154, 168, 171, 175, 176, 181, 187, 188, 191, 192, 193, 194, 195, 196, 197, 201, 203, 212, 214, 216, 217, 222, 232, 233, 236, 246, 252, 254, 257, 261, 262, 266, 269, 271, 287, 292, 294, 304, 306, 315, 321, 324, 325, 327, 329, 330, 337, 344, 361, 364, 369, 370, 371, 372, 373, 374, 375, 376];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 11);
+    }
+
 }

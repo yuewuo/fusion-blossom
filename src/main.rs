@@ -91,7 +91,7 @@ pub fn main() {
                         let mut dual_module = dual_module_serial::DualModuleSerial::new(&initializer);
                         // create primal module
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(&initializer);
-                        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+                        primal_module.debug_resolve_only_one = false;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 0..total_rounds {
                             dual_module.clear();
@@ -250,7 +250,7 @@ pub fn main() {
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(&initializer);
                         primal_module.debug_resolve_only_one = true;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
-                        for round in 0..total_rounds {
+                        for round in 82..total_rounds {
                             dual_module.clear();
                             primal_module.clear();
                             pb.set(round);
