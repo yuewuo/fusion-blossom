@@ -386,17 +386,20 @@ impl DualModuleImpl for DualModuleSerial {
         if let DualNodeClass::Blossom{ nodes_circle, .. } = &node.class {
             for circle_dual_node_weak in nodes_circle.iter() {
                 let circle_dual_node_ptr = circle_dual_node_weak.upgrade_force();
-                let circle_dual_node_internal_ptr = self.get_dual_node_internal_ptr(&circle_dual_node_ptr);
-                let circle_dual_node_internal = circle_dual_node_internal_ptr.read_recursive();
-                for (is_left, edge_weak) in circle_dual_node_internal.boundary.iter() {
-                    let edge_ptr = edge_weak.upgrade_force();
-                    let mut edge = edge_ptr.write(active_timestamp);
-                    assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
-                    if *is_left {
-                        edge.left_dual_node = Some(circle_dual_node_internal_ptr.downgrade());
-                    } else {
-                        edge.right_dual_node = Some(circle_dual_node_internal_ptr.downgrade());
+                if let Some(circle_dual_node_internal_ptr) = self.get_dual_node_internal_ptr_optional(&circle_dual_node_ptr) {
+                    let circle_dual_node_internal = circle_dual_node_internal_ptr.read_recursive();
+                    for (is_left, edge_weak) in circle_dual_node_internal.boundary.iter() {
+                        let edge_ptr = edge_weak.upgrade_force();
+                        let mut edge = edge_ptr.write(active_timestamp);
+                        assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
+                        if *is_left {
+                            edge.left_dual_node = Some(circle_dual_node_internal_ptr.downgrade());
+                        } else {
+                            edge.right_dual_node = Some(circle_dual_node_internal_ptr.downgrade());
+                        }
                     }
+                } else {
+                    assert!(self.unit_module_info.is_some(), "only happens if partitioned");
                 }
             }
         } else {
@@ -855,9 +858,12 @@ impl DualModuleSerial {
     pub fn prepare_all_growth(&mut self) {
         for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
-                let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                dual_node_internal.origin.upgrade_force()
+                if let Some(internal_dual_node_ptr) = self.active_list[i].upgrade() {
+                    let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                    dual_node_internal.origin.upgrade_force()
+                } else {
+                    continue  // a blossom could be in the active list even after it's been removed
+                }
             };
             let dual_node = dual_node_ptr.read_recursive();
             match dual_node.grow_state {
@@ -868,9 +874,12 @@ impl DualModuleSerial {
         }
         for i in 0..self.active_list.len() {
             let dual_node_ptr = {
-                let internal_dual_node_ptr = self.active_list[i].upgrade_force();
-                let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                dual_node_internal.origin.upgrade_force()
+                if let Some(internal_dual_node_ptr) = self.active_list[i].upgrade() {
+                    let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                    dual_node_internal.origin.upgrade_force()
+                } else {
+                    continue  // a blossom could be in the active list even after it's been removed
+                }
             };
             let dual_node = dual_node_ptr.read_recursive();
             match dual_node.grow_state {

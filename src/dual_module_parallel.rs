@@ -832,6 +832,22 @@ impl DualModuleParallelUnit {
         }
     }
 
+    pub fn iterative_remove_blossom(&mut self, dual_node_ptr: DualNodePtr, representative_vertex: VertexIndex) {
+        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(&dual_node_ptr) {
+            return  // no descendant related to this dual node
+        }
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            for child_weak in [left_child_weak, right_child_weak] {
+                let child_ptr = child_weak.upgrade_force();
+                let mut child = child_ptr.write();
+                child.iterative_remove_blossom(dual_node_ptr.clone(), representative_vertex);
+            }
+        }
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(&dual_node_ptr) {
+            self.serial_module.write().remove_blossom(dual_node_ptr);
+        }
+    }
+
 }
 
 impl DualModuleParallelUnitPtr {
@@ -913,8 +929,8 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
-        // TODO: execute on all nodes that handles this dual node
-        self.serial_module.write().remove_blossom(dual_node_ptr)
+        let representative_vertex = dual_node_ptr.get_representative_vertex();
+        self.iterative_remove_blossom(dual_node_ptr, representative_vertex);
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
@@ -1207,24 +1223,24 @@ pub mod tests {
         })()));
     }
 
-    fn dual_module_parallel_debug_123_common(visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    fn dual_module_parallel_debug_repetition_code_common(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |_initializer, config| {
+        let split_vertical = (d + 1) / 2;
+        dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(d, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |initializer, config| {
             config.partitions = vec![
-                VertexRange::new(0, 7),
-                VertexRange::new(8, 12),
+                VertexRange::new(0, split_vertical + 1),
+                VertexRange::new(split_vertical + 2, initializer.vertex_num),
             ];
             config.fusions = vec![
                 (0, 1),
             ];
         }, Some((|| {
             let mut reordered_vertices = vec![];
-            let split_vertical = 6;
             for j in 0..split_vertical {
                 reordered_vertices.push(j);
             }
-            reordered_vertices.push(11);
-            for j in split_vertical..11 {
+            reordered_vertices.push(d);
+            for j in split_vertical..d {
                 reordered_vertices.push(j);
             }
             reordered_vertices
@@ -1236,7 +1252,7 @@ pub mod tests {
     fn dual_module_parallel_debug_1() {  // cargo test dual_module_parallel_debug_1 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_1.json");
         let syndrome_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
-        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 5);
     }
 
     /// debug 'internal error: entered unreachable code: VertexShrinkStop conflict cannot be solved by primal module
@@ -1249,7 +1265,7 @@ pub mod tests {
     fn dual_module_parallel_debug_2() {  // cargo test dual_module_parallel_debug_2 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_2.json");
         let syndrome_vertices = vec![5, 6, 7];  // indices are before the reorder
-        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 4);
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 4);
     }
 
     /// the reason for this bug is that I forgot to set dual_variable correctly, leading to false VertexShrinkStop event at the 
@@ -1257,7 +1273,7 @@ pub mod tests {
     fn dual_module_parallel_debug_3() {  // cargo test dual_module_parallel_debug_3 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_3.json");
         let syndrome_vertices = vec![3, 5, 7];  // indices are before the reorder
-        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 5);
     }
 
     /// incorrect final result
@@ -1266,7 +1282,15 @@ pub mod tests {
     fn dual_module_parallel_debug_4() {  // cargo test dual_module_parallel_debug_4 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_4.json");
         let syndrome_vertices = vec![2, 3, 5, 6, 7];  // indices are before the reorder
-        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 5);
+    }
+
+    /// unwrap fail on dual node to internal dual node
+    #[test]
+    fn dual_module_parallel_debug_5() {  // cargo test dual_module_parallel_debug_5 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_5.json");
+        let syndrome_vertices = vec![0, 4, 7, 8, 9, 11];  // indices are before the reorder
+        dual_module_parallel_debug_repetition_code_common(15, visualize_filename, syndrome_vertices, 7);
     }
 
 }

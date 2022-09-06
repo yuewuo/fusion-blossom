@@ -181,10 +181,8 @@ pub fn main() {
                     let mut codes = Vec::<(String, (Box<dyn ExampleCode>, Box<dyn Fn(&SolverInitializer, &mut dual_module_parallel::DualModuleParallelConfig)>))>::new();
                     let total_rounds = 1000;
                     let max_half_weight: Weight = 500;
-                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
-                    //     for d in [7, 11, 15, 19] {
-                    for p in [0.3] {
-                        for d in [11] {
+                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                        for d in [7, 11, 15, 19] {
                             let mut reordered_vertices = vec![];
                             let split_vertical = (d + 1) / 2;
                             for j in 0..split_vertical {
@@ -212,11 +210,28 @@ pub fn main() {
                             )));
                         }
                     }
-                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
-                    //     for d in [3, 7, 11, 15, 19] {
-                    //         codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
-                    //     }
-                    // }
+                    // simple partition into top and bottom
+                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                        for d in [7, 11, 15, 19] {
+                            let split_horizontal = (d + 1) / 2;
+                            let row_count = d + 1;
+                            codes.push((format!("planar {d} {p}"), (
+                                Box::new((|| {
+                                    let code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
+                                    code
+                                })()),
+                                Box::new(move |initializer, config| {
+                                    config.partitions = vec![
+                                        VertexRange::new(0, split_horizontal * row_count),
+                                        VertexRange::new((split_horizontal + 1) * row_count, initializer.vertex_num),
+                                    ];
+                                    config.fusions = vec![
+                                        (0, 1),
+                                    ];
+                                }),
+                            )));
+                        }
+                    }
                     if enable_visualizer {  // print visualizer file path only once
                         print_visualize_link(&static_visualize_data_filename());
                     }
@@ -246,7 +261,7 @@ pub fn main() {
                             }
                             // try to work on a simple syndrome
                             code.set_syndrome(&syndrome_vertices);
-                            println!("syndrome_vertices: {syndrome_vertices:?}");
+                            // println!("syndrome_vertices: {syndrome_vertices:?}");
                             // println!("erasures: {erasures:?}");
                             let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
                             dual_module.fuse_all();
