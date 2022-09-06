@@ -1337,11 +1337,12 @@ pub mod tests {
     }
 
     /// panicked at 'dual node of edge should be some', src/dual_module_serial.rs:379:13
+    /// reason: blossom's boundary has duplicate edges, solved by adding dedup functionality to edges
     #[test]
     fn dual_module_parallel_debug_9() {  // cargo test dual_module_parallel_debug_9 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_9.json");
-        let syndrome_vertices = vec![1, 7, 19, 31, 38, 43, 53, 54, 60, 61, 64, 65, 72, 74, 75, 76, 84, 85, 86, 87, 88, 89, 92, 93, 109, 129];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(11, visualize_filename, syndrome_vertices, 13);
+        let syndrome_vertices = vec![60, 61, 72, 74, 84, 85, 109];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(11, visualize_filename, syndrome_vertices, 6);
     }
     
 }
