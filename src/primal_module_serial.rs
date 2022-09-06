@@ -130,9 +130,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
 
     fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
         debug_assert!(!group_max_update_length.is_empty() && group_max_update_length.get_none_zero_growth().is_none());
-        let conflicts = group_max_update_length.get_conflicts();
         let mut current_conflict_index = 0;
-        while let Some(conflict) = conflicts.pop() {
+        while let Some(conflict) = group_max_update_length.pop() {
             current_conflict_index += 1;
             if self.debug_resolve_only_one && current_conflict_index > 1 {  // debug mode
                 break
@@ -1039,7 +1038,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
             } else {
-                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
             }
@@ -1134,6 +1133,15 @@ pub mod tests {
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 9);
     }
 
+    /// debug a case of deadlock after changing the strategy of detecting conflicts around VertexShrinkStop;
+    /// reason: forget to check whether conflicting nodes are growing: only growing one should be reported
+    #[test]
+    fn primal_module_serial_basic_11() {  // cargo test primal_module_serial_basic_11 -- --nocapture
+        let visualize_filename = format!("primal_module_serial_basic_11.json");
+        let syndrome_vertices = vec![13, 29, 52, 53, 58, 60, 71, 74, 76, 87, 96, 107, 112, 118, 121, 122, 134, 137, 141, 145, 152, 153, 154, 156, 157, 169, 186, 202, 203, 204, 230, 231];
+        primal_module_serial_basic_standard_syndrome(15, visualize_filename, syndrome_vertices, 20);
+    }
+
     /// debug a case where it disagree with blossom V library, mine reports 11866, blossom V reports 12284
     #[test]
     fn primal_module_debug_1() {  // cargo test primal_module_debug_1 -- --nocapture
@@ -1173,7 +1181,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                // let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                // let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
@@ -1236,7 +1244,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                // let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                // let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
@@ -1301,7 +1309,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                // let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                // let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
@@ -1366,7 +1374,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
@@ -1430,7 +1438,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }
@@ -1510,7 +1518,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
             } else {
-                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
             }

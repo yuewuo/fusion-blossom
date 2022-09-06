@@ -1003,7 +1003,7 @@ pub mod tests {
                 interface.grow(length, &mut dual_module);
                 visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
             } else {
-                let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                 primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                 visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
             }
@@ -1188,14 +1188,9 @@ pub mod tests {
         })()));
     }
 
-    /// debug blossom not growing properly
-    #[test]
-    fn dual_module_parallel_debug_1() {  // cargo test dual_module_parallel_debug_1 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_1.json");
-        // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
+    fn dual_module_parallel_debug_123_common(visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 5 * half_weight, |_initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |_initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, 7),
                 VertexRange::new(8, 12),
@@ -1215,6 +1210,34 @@ pub mod tests {
             }
             reordered_vertices
         })()));
+    }
+
+    /// debug blossom not growing properly
+    #[test]
+    fn dual_module_parallel_debug_1() {  // cargo test dual_module_parallel_debug_1 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_1.json");
+        let syndrome_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
+        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
+    }
+
+    /// debug 'internal error: entered unreachable code: VertexShrinkStop conflict cannot be solved by primal module
+    /// the reason of this bug is that a shrinking node on the interface is sandwiched by two growing nodes resides on different children units
+    /// for the serial implementation, this event can be easily handled by doing special configs
+    /// but for the fused units, how to do it?
+    /// This is the benefit of using software to develop first; if directly working on the hardware implementation, one would have to add more interface
+    /// to support it, which could be super time-consuming
+    #[test]
+    fn dual_module_parallel_debug_2() {  // cargo test dual_module_parallel_debug_2 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_2.json");
+        let syndrome_vertices = vec![5, 6, 7];  // indices are before the reorder
+        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 4);
+    }
+
+    #[test]
+    fn dual_module_parallel_debug_3() {  // cargo dual_module_parallel_debug_3 dual_module_parallel_debug_2 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_3.json");
+        let syndrome_vertices = vec![3, 5, 7];  // indices are before the reorder
+        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 4);
     }
 
 }

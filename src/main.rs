@@ -121,7 +121,7 @@ pub fn main() {
                                     interface.grow(length, &mut dual_module);
                                     visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
                                 } else {
-                                    let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                                    let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                                     primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                                     visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
                                 }
@@ -183,7 +183,7 @@ pub fn main() {
                     let max_half_weight: Weight = 500;
                     // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                     //     for d in [7, 11, 15, 19] {
-                    for p in [0.1] {
+                    for p in [0.3] {
                         for d in [11] {
                             let mut reordered_vertices = vec![];
                             let split_vertical = (d + 1) / 2;
@@ -233,7 +233,7 @@ pub fn main() {
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(&initializer);
                         primal_module.debug_resolve_only_one = true;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
-                        for round in 736..total_rounds {
+                        for round in 0..total_rounds {
                             dual_module.clear();
                             primal_module.clear();
                             pb.set(round);
@@ -262,7 +262,7 @@ pub fn main() {
                                     interface.grow(length, &mut dual_module);
                                     visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
                                 } else {
-                                    let first_conflict = format!("{:?}", group_max_update_length.get_conflicts().peek().unwrap());
+                                    let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
                                     primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
                                     visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
                                 }

@@ -426,7 +426,40 @@ impl DualModuleImpl for DualModuleSerial {
                 let dual_node = dual_node_ptr.read_recursive();
                 match dual_node.class {
                     DualNodeClass::Blossom { .. } => { return MaxUpdateLength::BlossomNeedExpand(dual_node_ptr.downgrade()) }
-                    DualNodeClass::SyndromeVertex { .. } => { return MaxUpdateLength::VertexShrinkStop(dual_node_ptr.downgrade()) }
+                    DualNodeClass::SyndromeVertex { syndrome_index } => {
+                        // try to report Conflicting event or give a VertexShrinkStop with potential conflicting node
+                        let vertex_index = self.get_vertex_index(syndrome_index).expect("a zero dual node has to possess the syndrome index");
+                        let vertex_ptr = &self.vertices[vertex_index];
+                        let vertex = vertex_ptr.read_recursive(active_timestamp);
+                        let mut potential_conflict: Option<(DualNodeWeak, DualNodeWeak)> = None;
+                        for edge_weak in vertex.edges.iter() {
+                            let edge_ptr = edge_weak.upgrade_force();
+                            let edge = edge_ptr.read_recursive(active_timestamp);
+                            let is_left = vertex_ptr.downgrade() == edge.left;
+                            let remaining_length = edge.weight - edge.left_growth - edge.right_growth;
+                            if remaining_length == 0 {
+                                let peer_dual_node = if is_left { &edge.right_dual_node } else { &edge.left_dual_node };
+                                if let Some(peer_dual_node_ptr) = peer_dual_node {
+                                    let peer_grandson_dual_node = if is_left { &edge.right_grandson_dual_node } else { &edge.left_grandson_dual_node };
+                                    let peer_dual_node_weak = peer_dual_node_ptr.upgrade_force().read_recursive().origin.clone();
+                                    let peer_grandson_dual_node_weak = peer_grandson_dual_node.as_ref().unwrap().upgrade_force().read_recursive().origin.clone();
+                                    if peer_dual_node_weak.upgrade_force().read_recursive().grow_state == DualNodeGrowState::Grow {
+                                        if let Some((other_dual_node_ptr, other_grandson_dual_node)) = &potential_conflict {
+                                            if &peer_dual_node_weak != other_dual_node_ptr {
+                                                return MaxUpdateLength::Conflicting(
+                                                    (other_dual_node_ptr.clone(), other_grandson_dual_node.clone()),
+                                                    (peer_dual_node_weak, peer_grandson_dual_node_weak)
+                                                )
+                                            }
+                                        } else {
+                                            potential_conflict = Some((peer_dual_node_weak, peer_grandson_dual_node_weak));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return MaxUpdateLength::VertexShrinkStop((dual_node_ptr.downgrade(), potential_conflict))
+                    }
                 }
             }
             if dual_node_internal.overgrown_stack.len() > 0 {
@@ -462,51 +495,7 @@ impl DualModuleImpl for DualModuleSerial {
                                     remaining_length / 2
                                 },
                                 DualNodeGrowState::Shrink => {
-                                    // special case: if peer is a syndrome vertex and it's dual variable is already 0, 
-                                    // then we need to determine if some other growing nodes are conflicting with me
-                                    if remaining_length == 0 && matches!(peer_dual_node.class, DualNodeClass::SyndromeVertex{ .. }) && peer_dual_node_internal.dual_variable == 0 {
-                                        for (peer_is_left, peer_edge_weak) in peer_dual_node_internal.boundary.iter() {
-                                            let peer_edge_ptr = peer_edge_weak.upgrade_force();
-                                            let peer_edge = peer_edge_ptr.read_recursive(active_timestamp);
-                                            if peer_edge.left_growth + peer_edge.right_growth == peer_edge.weight {
-                                                let peer_is_left = *peer_is_left;
-                                                let far_peer_dual_node_internal_ptr: Option<DualNodeInternalPtr> = if peer_is_left {
-                                                    peer_edge.right_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
-                                                } else {
-                                                    peer_edge.left_dual_node.as_ref().map(|ptr| ptr.upgrade_force())
-                                                };
-                                                match far_peer_dual_node_internal_ptr {
-                                                    Some(far_peer_dual_node_internal_ptr) => {
-                                                        let far_peer_dual_node_internal = far_peer_dual_node_internal_ptr.read_recursive();
-                                                        let far_peer_dual_node_ptr = far_peer_dual_node_internal.origin.upgrade_force();
-                                                        if &far_peer_dual_node_ptr != dual_node_ptr {
-                                                            let far_peer_dual_node = far_peer_dual_node_ptr.read_recursive();
-                                                            match far_peer_dual_node.grow_state {
-                                                                DualNodeGrowState::Grow => {
-                                                                    let far_peer_grandson_ptr = if peer_is_left {
-                                                                        peer_edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
-                                                                    } else {
-                                                                        peer_edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
-                                                                    };
-                                                                    let grandson_ptr = if is_left {
-                                                                        edge.left_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
-                                                                    } else {
-                                                                        edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.clone()
-                                                                    };
-                                                                    return MaxUpdateLength::Conflicting(
-                                                                        (far_peer_dual_node_ptr.downgrade(), far_peer_grandson_ptr), 
-                                                                        (dual_node_ptr.downgrade(), grandson_ptr)
-                                                                    );
-                                                                },
-                                                                _ => { }
-                                                            }
-                                                        }
-                                                    },
-                                                    None => { }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    // Yue 2022.9.5: remove Conflicting event detection here, move it to the 0-dual syndrome node
                                     continue
                                 },
                                 DualNodeGrowState::Stay => { remaining_length }
@@ -1109,6 +1098,7 @@ impl FusionVisualizer for DualModuleSerial {
             "edges": edges,
         });
         // TODO: since each serial module only processes a part of the dual nodes, it's not feasible to list them in a reasonable vector now...
+        // update the visualizer to be able to join multiple dual nodes
         if self.owning_range.start() == 0 && self.owning_range.end() == self.vertex_num {
             let mut dual_nodes = Vec::<serde_json::Value>::new();
             for node_ptr in self.nodes.iter() {
@@ -1220,7 +1210,7 @@ impl DualModuleSerial {
             let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
                 origin: dual_node_ptr.downgrade(),
                 index: dual_node_index,
-                dual_variable: 0,  // TODO: need dual variable
+                dual_variable: 0,
                 boundary: Vec::new(),
                 overgrown_stack: Vec::new(),
                 last_visit_cycle: 0,
@@ -1729,7 +1719,7 @@ mod tests {
         visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_19_ptr, &dual_node_25_ptr), "unexpected: {:?}", group_max_update_length);
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_19_ptr, &dual_node_25_ptr), "unexpected: {:?}", group_max_update_length);
     }
 
     #[test]
@@ -1761,14 +1751,14 @@ mod tests {
         visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
-            || group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
+            || group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
         interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
         interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
         interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
@@ -1781,7 +1771,7 @@ mod tests {
         visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
         let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], vec![], &mut dual_module);
         // grow the maximum
@@ -1798,8 +1788,8 @@ mod tests {
         visualizer.snapshot_combined(format!("grow blossom"), vec![&interface, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
-            || group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
+        assert!(group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
+            || group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
         interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
@@ -1821,7 +1811,7 @@ mod tests {
         visualizer.snapshot_combined(format!("shrink blossom"), vec![&interface, &dual_module]).unwrap();
         // cannot shrink anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.downgrade())
+        assert!(group_max_update_length.peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.downgrade())
             , "unexpected: {:?}", group_max_update_length);
         // expand blossom
         interface.expand_blossom(dual_node_blossom, &mut dual_module);
@@ -1860,14 +1850,14 @@ mod tests {
         assert_eq!(interface.sum_dual_variables, 3 * half_weight);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
-            || group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
+            || group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
         interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
         interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
         interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
@@ -1879,7 +1869,7 @@ mod tests {
         assert_eq!(interface.sum_dual_variables, 4 * half_weight);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
+        assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
         let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], vec![], &mut dual_module);
         // grow the maximum
@@ -1892,8 +1882,8 @@ mod tests {
         interface.grow(2 * half_weight, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
-            || group_max_update_length.get_conflicts_immutable().peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
+        assert!(group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
+            || group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
         interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
@@ -1911,7 +1901,7 @@ mod tests {
         interface.grow(2 * half_weight, &mut dual_module);
         // cannot shrink anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
-        assert!(group_max_update_length.get_conflicts_immutable().peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.downgrade())
+        assert!(group_max_update_length.peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.downgrade())
             , "unexpected: {:?}", group_max_update_length);
         // expand blossom
         interface.expand_blossom(dual_node_blossom, &mut dual_module);
