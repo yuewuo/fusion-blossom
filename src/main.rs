@@ -213,7 +213,7 @@ pub fn main() {
                     // simple partition into top and bottom
                     // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                     //     for d in [7, 11, 15, 19] {
-                    for p in [0.03] {
+                    for p in [0.1] {
                         for d in [7] {
                             let split_horizontal = (d + 1) / 2;
                             let row_count = d + 1;

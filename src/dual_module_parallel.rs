@@ -1319,4 +1319,13 @@ pub mod tests {
         dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 5);
     }
 
+    /// panic 'one cannot conflict with itself, double check to avoid deadlock'
+    /// reason: when comparing the pointers of two `VertexShrinkStop` events, only compare their conflicting dual node, not the touching dual node
+    #[test]
+    fn dual_module_parallel_debug_7() {  // cargo test dual_module_parallel_debug_7 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_7.json");
+        let syndrome_vertices = vec![3, 12, 21, 24, 27, 28, 33, 35, 36, 43, 50, 51];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 10);
+    }
+
 }
