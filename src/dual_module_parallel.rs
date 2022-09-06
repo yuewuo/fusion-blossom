@@ -1286,11 +1286,37 @@ pub mod tests {
     }
 
     /// unwrap fail on dual node to internal dual node
+    /// the reason is I forgot to implement the remove_blossom API...
     #[test]
     fn dual_module_parallel_debug_5() {  // cargo test dual_module_parallel_debug_5 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_5.json");
         let syndrome_vertices = vec![0, 4, 7, 8, 9, 11];  // indices are before the reorder
         dual_module_parallel_debug_repetition_code_common(15, visualize_filename, syndrome_vertices, 7);
+    }
+
+    fn dual_module_parallel_debug_planar_code_common(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+        let half_weight = 500;
+        let split_horizontal = (d + 1) / 2;
+        let row_count = d + 1;
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(d, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, split_horizontal * row_count),
+                VertexRange::new((split_horizontal + 1) * row_count, initializer.vertex_num),
+            ];
+            config.fusions = vec![
+                (0, 1),
+            ];
+        }, None);
+    }
+
+    /// panic 'one cannot conflict with itself, double check to avoid deadlock'
+    /// reason: when merging two `VertexShrinkStop` events into a single `Conflicting` event, I forget to check whether the two pointers are the same;
+    /// if so, I should simply ignore it
+    #[test]
+    fn dual_module_parallel_debug_6() {  // cargo test dual_module_parallel_debug_6 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_6.json");
+        let syndrome_vertices = vec![10, 11, 13, 32, 36, 37, 40, 44];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 5);
     }
 
 }

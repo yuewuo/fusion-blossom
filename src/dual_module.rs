@@ -89,9 +89,11 @@ impl GroupMaxUpdateLength {
             if let Some(existing_length) = pending_stops.get(&vertex_index) {
                 if let MaxUpdateLength::VertexShrinkStop((_, Some(weak_pair))) = &max_update_length {  // otherwise don't update
                     if let MaxUpdateLength::VertexShrinkStop((_, Some(existing_weak_pair))) = existing_length {
-                        // two such conflicts form a Conflicting event
-                        heap.push(MaxUpdateLength::Conflicting(weak_pair.clone(), existing_weak_pair.clone()));
-                        pending_stops.remove(&vertex_index);
+                        if weak_pair != existing_weak_pair {
+                            // two such conflicts form a Conflicting event
+                            heap.push(MaxUpdateLength::Conflicting(weak_pair.clone(), existing_weak_pair.clone()));
+                            pending_stops.remove(&vertex_index);
+                        }
                     } else {
                         pending_stops.insert(vertex_index, max_update_length.clone());  // update the entry
                     }
