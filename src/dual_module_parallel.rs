@@ -660,7 +660,7 @@ impl DualModuleParallelUnit {
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
         if !self.whole_range.contains(&sync_event.vertex_index) {
-            if let Some(propagated_dual_node_weak) = sync_event.propagated_dual_node.as_ref() {
+            if let Some((propagated_dual_node_weak, _)) = sync_event.propagated_dual_node.as_ref() {
                 self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
             }
         }
@@ -1233,11 +1233,12 @@ pub mod tests {
         dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 4);
     }
 
+    /// the reason for this bug is that I forgot to set dual_variable correctly, leading to false VertexShrinkStop event at the 
     #[test]
     fn dual_module_parallel_debug_3() {  // cargo dual_module_parallel_debug_3 dual_module_parallel_debug_2 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_3.json");
         let syndrome_vertices = vec![3, 5, 7];  // indices are before the reorder
-        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 4);
+        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
     }
 
 }

@@ -52,10 +52,11 @@ pub struct SyncRequest {
     pub mirror_unit_weak: PartitionUnitWeak,
     /// the vertex index to be synchronized
     pub vertex_index: VertexIndex,
-    /// propagated dual node index
-    pub propagated_dual_node: Option<DualNodeWeak>,
+    /// propagated dual node index and the dual variable of the propagated dual node;
+    /// this field is necessary to differentiate between normal shrink and the one that needs to report VertexShrinkStop event, when the syndrome is on the interface
+    pub propagated_dual_node: Option<(DualNodeWeak, Weight)>,
     /// propagated grandson node: must be a syndrome node
-    pub propagated_grandson_dual_node: Option<DualNodeWeak>,
+    pub propagated_grandson_dual_node: Option<(DualNodeWeak, Weight)>,
 }
 
 /// records information only available when used as a unit in the partitioned dual module
@@ -428,37 +429,40 @@ impl DualModuleImpl for DualModuleSerial {
                     DualNodeClass::Blossom { .. } => { return MaxUpdateLength::BlossomNeedExpand(dual_node_ptr.downgrade()) }
                     DualNodeClass::SyndromeVertex { syndrome_index } => {
                         // try to report Conflicting event or give a VertexShrinkStop with potential conflicting node
-                        let vertex_index = self.get_vertex_index(syndrome_index).expect("a zero dual node has to possess the syndrome index");
-                        let vertex_ptr = &self.vertices[vertex_index];
-                        let vertex = vertex_ptr.read_recursive(active_timestamp);
-                        let mut potential_conflict: Option<(DualNodeWeak, DualNodeWeak)> = None;
-                        for edge_weak in vertex.edges.iter() {
-                            let edge_ptr = edge_weak.upgrade_force();
-                            let edge = edge_ptr.read_recursive(active_timestamp);
-                            let is_left = vertex_ptr.downgrade() == edge.left;
-                            let remaining_length = edge.weight - edge.left_growth - edge.right_growth;
-                            if remaining_length == 0 {
-                                let peer_dual_node = if is_left { &edge.right_dual_node } else { &edge.left_dual_node };
-                                if let Some(peer_dual_node_ptr) = peer_dual_node {
-                                    let peer_grandson_dual_node = if is_left { &edge.right_grandson_dual_node } else { &edge.left_grandson_dual_node };
-                                    let peer_dual_node_weak = peer_dual_node_ptr.upgrade_force().read_recursive().origin.clone();
-                                    let peer_grandson_dual_node_weak = peer_grandson_dual_node.as_ref().unwrap().upgrade_force().read_recursive().origin.clone();
-                                    if peer_dual_node_weak.upgrade_force().read_recursive().grow_state == DualNodeGrowState::Grow {
-                                        if let Some((other_dual_node_ptr, other_grandson_dual_node)) = &potential_conflict {
-                                            if &peer_dual_node_weak != other_dual_node_ptr {
-                                                return MaxUpdateLength::Conflicting(
-                                                    (other_dual_node_ptr.clone(), other_grandson_dual_node.clone()),
-                                                    (peer_dual_node_weak, peer_grandson_dual_node_weak)
-                                                )
+                        if let Some(vertex_index) = self.get_vertex_index(syndrome_index) {  // since propagated node is never removed, this event could happen with no vertex
+                            let vertex_ptr = &self.vertices[vertex_index];
+                            let vertex = vertex_ptr.read_recursive(active_timestamp);
+                            let mut potential_conflict: Option<(DualNodeWeak, DualNodeWeak)> = None;
+                            for edge_weak in vertex.edges.iter() {
+                                let edge_ptr = edge_weak.upgrade_force();
+                                let edge = edge_ptr.read_recursive(active_timestamp);
+                                let is_left = vertex_ptr.downgrade() == edge.left;
+                                let remaining_length = edge.weight - edge.left_growth - edge.right_growth;
+                                if remaining_length == 0 {
+                                    let peer_dual_node = if is_left { &edge.right_dual_node } else { &edge.left_dual_node };
+                                    if let Some(peer_dual_node_ptr) = peer_dual_node {
+                                        let peer_grandson_dual_node = if is_left { &edge.right_grandson_dual_node } else { &edge.left_grandson_dual_node };
+                                        let peer_dual_node_weak = peer_dual_node_ptr.upgrade_force().read_recursive().origin.clone();
+                                        let peer_grandson_dual_node_weak = peer_grandson_dual_node.as_ref().unwrap().upgrade_force().read_recursive().origin.clone();
+                                        if peer_dual_node_weak.upgrade_force().read_recursive().grow_state == DualNodeGrowState::Grow {
+                                            if let Some((other_dual_node_ptr, other_grandson_dual_node)) = &potential_conflict {
+                                                if &peer_dual_node_weak != other_dual_node_ptr {
+                                                    return MaxUpdateLength::Conflicting(
+                                                        (other_dual_node_ptr.clone(), other_grandson_dual_node.clone()),
+                                                        (peer_dual_node_weak, peer_grandson_dual_node_weak)
+                                                    )
+                                                }
+                                            } else {
+                                                potential_conflict = Some((peer_dual_node_weak, peer_grandson_dual_node_weak));
                                             }
-                                        } else {
-                                            potential_conflict = Some((peer_dual_node_weak, peer_grandson_dual_node_weak));
                                         }
                                     }
                                 }
                             }
+                            return MaxUpdateLength::VertexShrinkStop((dual_node_ptr.downgrade(), potential_conflict))
+                        } else {
+                            return MaxUpdateLength::VertexShrinkStop((dual_node_ptr.downgrade(), None))
                         }
-                        return MaxUpdateLength::VertexShrinkStop((dual_node_ptr.downgrade(), potential_conflict))
                     }
                 }
             }
@@ -1193,7 +1197,7 @@ impl DualModuleSerial {
         self.get_dual_node_internal_ptr_optional(dual_node_ptr).unwrap()
     }
 
-    // dual node ptr may not hold in this module
+    /// dual node ptr may not hold in this module
     pub fn get_dual_node_internal_ptr_optional(&self, dual_node_ptr: &DualNodePtr) -> Option<DualNodeInternalPtr> {
         self.get_dual_node_index(dual_node_ptr).map(|dual_node_index| {
             let dual_node_internal_ptr = self.nodes[dual_node_index].as_ref().expect("internal dual node must exists");
@@ -1202,7 +1206,8 @@ impl DualModuleSerial {
         })
     }
 
-    pub fn get_otherwise_add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
+    /// possibly add dual node only when sync_event is provided
+    pub fn get_otherwise_add_dual_node(&mut self, dual_node_ptr: &DualNodePtr, dual_variable: Weight) -> DualNodeInternalPtr {
         let dual_node_index = self.get_dual_node_index(&dual_node_ptr).unwrap_or_else(|| {
             // add a new internal dual node corresponding to the dual_node_ptr
             self.register_dual_node_ptr(dual_node_ptr);
@@ -1210,7 +1215,7 @@ impl DualModuleSerial {
             let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
                 origin: dual_node_ptr.downgrade(),
                 index: dual_node_index,
-                dual_variable: 0,
+                dual_variable: dual_variable,
                 boundary: Vec::new(),
                 overgrown_stack: Vec::new(),
                 last_visit_cycle: 0,
@@ -1228,11 +1233,11 @@ impl DualModuleSerial {
     pub fn execute_sync_event(&mut self, sync_event: &SyncRequest) {
         let active_timestamp = self.active_timestamp;
         debug_assert!(self.contains_vertex(sync_event.vertex_index));
-        let propagated_dual_node_internal_ptr = sync_event.propagated_dual_node.as_ref().map(|dual_node_weak| {
-            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force())
+        let propagated_dual_node_internal_ptr = sync_event.propagated_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
+            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
         });
-        let propagated_grandson_dual_node_internal_ptr = sync_event.propagated_grandson_dual_node.as_ref().map(|dual_node_weak| {
-            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force())
+        let propagated_grandson_dual_node_internal_ptr = sync_event.propagated_grandson_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
+            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
         });
         let local_vertex_index = self.get_vertex_index(sync_event.vertex_index).expect("cannot synchronize at a non-existing vertex");
         let vertex_ptr = &self.vertices[local_vertex_index];
@@ -1388,8 +1393,16 @@ impl DualModuleSerial {
                         unit_module_info.sync_requests.push(SyncRequest {
                             mirror_unit_weak: mirror_unit_weak.clone(),
                             vertex_index: vertex.vertex_index,
-                            propagated_dual_node: vertex.propagated_dual_node.clone().map(|weak| weak.upgrade_force().read_recursive().origin.clone()),
-                            propagated_grandson_dual_node: vertex.propagated_grandson_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.clone()),
+                            propagated_dual_node: vertex.propagated_dual_node.clone().map(|weak| {
+                                let dual_node_ptr = weak.upgrade_force();
+                                let dual_node = dual_node_ptr.read_recursive();
+                                (dual_node.origin.clone(), dual_node.dual_variable)
+                            }),
+                            propagated_grandson_dual_node: vertex.propagated_grandson_dual_node.as_ref().map(|weak| {
+                                let dual_node_ptr = weak.upgrade_force();
+                                let dual_node = dual_node_ptr.read_recursive();
+                                (dual_node.origin.clone(), dual_node.dual_variable)
+                            }),
                         });
                     }
                     let mut count_newly_propagated_edge = 0;
