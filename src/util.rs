@@ -76,6 +76,14 @@ impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output
     pub fn contains(&self, vertex_index: &IndexType) -> bool {
         *vertex_index >= self.start() && *vertex_index < self.end()
     }
+    pub fn contains_any(&self, vertex_indices: &Vec<IndexType>) -> bool {
+        for vertex_index in vertex_indices.iter() {
+            if self.contains(vertex_index) {
+                return true
+            }
+        }
+        false
+    }
     /// fuse two ranges together, returning (the whole range, the interfacing range)
     pub fn fuse(&self, other: &Self) -> (Self, Self) {
         self.sanity_check();

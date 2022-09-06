@@ -752,8 +752,9 @@ impl DualModuleParallelUnit {
         self.dedup_sync_events_execute(&sync_requests);
     }
 
-    pub fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
+    pub fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex
+            , nodes_circle_vertices: &Vec<VertexIndex>) {
+        if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
         }
         // depth-first search
@@ -761,10 +762,10 @@ impl DualModuleParallelUnit {
             for child_weak in [left_child_weak, right_child_weak] {
                 let child_ptr = child_weak.upgrade_force();
                 let mut child = child_ptr.write();
-                child.iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex);
+                child.iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex, nodes_circle_vertices);
             }
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_nodes_any(nodes_circle) {
+        if self.owning_range.contains_any(&nodes_circle_vertices) || self.serial_module.read_recursive().contains_dual_nodes_any(nodes_circle) {
             self.serial_module.write().add_blossom(blossom_ptr);
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
@@ -803,6 +804,22 @@ impl DualModuleParallelUnit {
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             left_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
             right_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
+        }
+    }
+
+    pub fn iterative_grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight, representative_vertex: VertexIndex) {
+        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
+            return  // no descendant related to this dual node
+        }
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            for child_weak in [left_child_weak, right_child_weak] {
+                let child_ptr = child_weak.upgrade_force();
+                let mut child = child_ptr.write();
+                child.iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
+            }
+        }
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
+            self.serial_module.write().grow_dual_node(dual_node_ptr, length);
         }
     }
 
@@ -889,7 +906,8 @@ impl DualModuleImpl for DualModuleParallelUnit {
                 // first set all children dual nodes as shrinking, to be safe
                 let nodes_circle_ptrs: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force()).collect();
                 self.sync_prepare_blossom_initial_shrink(&nodes_circle_ptrs, representative_vertex);
-                self.iterative_add_blossom(dual_node_ptr, &nodes_circle_ptrs, representative_vertex);
+                let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force().get_representative_vertex()).collect();
+                self.iterative_add_blossom(dual_node_ptr, &nodes_circle_ptrs, representative_vertex, &nodes_circle_vertices);
             },
         }
     }
@@ -922,8 +940,9 @@ impl DualModuleImpl for DualModuleParallelUnit {
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
-        // TODO: execute on all nodes that handles this dual node
-        self.serial_module.write().grow_dual_node(dual_node_ptr, length)
+        let representative_vertex = dual_node_ptr.get_representative_vertex();
+        debug_assert!(self.whole_range.contains(&representative_vertex), "cannot grow dual node outside of the scope");
+        self.iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
     }
 
     fn grow(&mut self, length: Weight) {
@@ -1235,9 +1254,18 @@ pub mod tests {
 
     /// the reason for this bug is that I forgot to set dual_variable correctly, leading to false VertexShrinkStop event at the 
     #[test]
-    fn dual_module_parallel_debug_3() {  // cargo dual_module_parallel_debug_3 dual_module_parallel_debug_2 -- --nocapture
+    fn dual_module_parallel_debug_3() {  // cargo test dual_module_parallel_debug_3 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_3.json");
         let syndrome_vertices = vec![3, 5, 7];  // indices are before the reorder
+        dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
+    }
+
+    /// incorrect final result
+    /// the reason is I didn't search through all the representative vertices of all children nodes, causing the parent blossom not propagating correctly
+    #[test]
+    fn dual_module_parallel_debug_4() {  // cargo test dual_module_parallel_debug_4 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_4.json");
+        let syndrome_vertices = vec![2, 3, 5, 6, 7];  // indices are before the reorder
         dual_module_parallel_debug_123_common(visualize_filename, syndrome_vertices, 5);
     }
 
