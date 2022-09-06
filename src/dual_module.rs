@@ -50,22 +50,24 @@ impl DualNodeGrowState {
 
 }
 
-/// gives the maximum absolute length to grow, if not possible, give the reason
+/// gives the maximum absolute length to grow, if not possible, give the reason;
+/// note that strong reference is stored in `MaxUpdateLength` so dropping these temporary messages are necessary to avoid memory leakage;
+/// the strong reference is required when multiple `BlossomNeedExpand` event is reported in different partitions and sorting them requires a reference
 #[derive(Derivative, PartialEq, Eq, Clone)]
 #[derivative(Debug)]
 pub enum MaxUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
     /// conflicting growth
-    Conflicting((DualNodeWeak, DualNodeWeak), (DualNodeWeak, DualNodeWeak)),  // (node_1, touching_1), (node_2, touching_2)
+    Conflicting((DualNodePtr, DualNodePtr), (DualNodePtr, DualNodePtr)),  // (node_1, touching_1), (node_2, touching_2)
     /// conflicting growth because of touching virtual node
-    TouchingVirtual((DualNodeWeak, DualNodeWeak), VertexIndex),  // (node, touching), virtual_vertex
+    TouchingVirtual((DualNodePtr, DualNodePtr), VertexIndex),  // (node, touching), virtual_vertex
     /// blossom hitting 0 dual variable while shrinking
-    BlossomNeedExpand(DualNodeWeak),
+    BlossomNeedExpand(DualNodePtr),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module;
     /// in case that the dual module is partitioned and nobody can report this conflicting event, one needs to embed the potential conflicts using the second
     /// argument so that dual module can gather two `VertexShrinkStop` events to form a single `Conflicting` event
-    VertexShrinkStop((DualNodeWeak, Option<(DualNodeWeak, DualNodeWeak)>)),
+    VertexShrinkStop((DualNodePtr, Option<(DualNodePtr, DualNodePtr)>)),
 }
 
 #[derive(Derivative, Clone)]
@@ -817,10 +819,10 @@ impl MaxUpdateLength {
     #[allow(dead_code)]
     pub fn is_conflicting(&self, a: &DualNodePtr, b: &DualNodePtr) -> bool {
         if let MaxUpdateLength::Conflicting((n1, _), (n2, _)) = self {
-            if n1 == &a.downgrade() && n2 == &b.downgrade() {
+            if n1 == a && n2 == b {
                 return true
             }
-            if n1 == &b.downgrade() && n2 == &a.downgrade() {
+            if n1 == b && n2 == a {
                 return true
             }
         }
@@ -842,7 +844,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_conflicting(&self) -> Option<(DualNodePtr, DualNodePtr)> {
         match self {
-            Self::Conflicting((a, _), (b, _)) => { Some((a.upgrade_force(), b.upgrade_force())) },
+            Self::Conflicting((a, _), (b, _)) => { Some((a.clone(), b.clone())) },
             _ => { None },
         }
     }
@@ -852,7 +854,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_touching_virtual(&self) -> Option<(DualNodePtr, VertexIndex)> {
         match self {
-            Self::TouchingVirtual((a, _), b) => { Some((a.upgrade_force(), *b)) },
+            Self::TouchingVirtual((a, _), b) => { Some((a.clone(), *b)) },
             _ => { None },
         }
     }
@@ -862,7 +864,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_blossom_need_expand(&self) -> Option<DualNodePtr> {
         match self {
-            Self::BlossomNeedExpand(a) => { Some(a.upgrade_force()) },
+            Self::BlossomNeedExpand(a) => { Some(a.clone()) },
             _ => { None },
         }
     }
@@ -872,7 +874,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_vertex_shrink_stop(&self) -> Option<DualNodePtr> {
         match self {
-            Self::VertexShrinkStop((a, _)) => { Some(a.upgrade_force()) },
+            Self::VertexShrinkStop((a, _)) => { Some(a.clone()) },
             _ => { None },
         }
     }

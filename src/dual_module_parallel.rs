@@ -832,7 +832,7 @@ impl DualModuleParallelUnit {
         }
     }
 
-    pub fn iterative_remove_blossom(&mut self, dual_node_ptr: DualNodePtr, representative_vertex: VertexIndex) {
+    pub fn iterative_remove_blossom(&mut self, dual_node_ptr: &DualNodePtr, representative_vertex: VertexIndex) {
         if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(&dual_node_ptr) {
             return  // no descendant related to this dual node
         }
@@ -840,11 +840,11 @@ impl DualModuleParallelUnit {
             for child_weak in [left_child_weak, right_child_weak] {
                 let child_ptr = child_weak.upgrade_force();
                 let mut child = child_ptr.write();
-                child.iterative_remove_blossom(dual_node_ptr.clone(), representative_vertex);
+                child.iterative_remove_blossom(dual_node_ptr, representative_vertex);
             }
         }
         if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(&dual_node_ptr) {
-            self.serial_module.write().remove_blossom(dual_node_ptr);
+            self.serial_module.write().remove_blossom(dual_node_ptr.clone());
         }
     }
 
@@ -930,7 +930,7 @@ impl DualModuleImpl for DualModuleParallelUnit {
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
         let representative_vertex = dual_node_ptr.get_representative_vertex();
-        self.iterative_remove_blossom(dual_node_ptr, representative_vertex);
+        self.iterative_remove_blossom(&dual_node_ptr, representative_vertex);
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
@@ -1328,4 +1328,20 @@ pub mod tests {
         dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 10);
     }
 
+    /// panic `Option::unwrap()` on a `None` value', src/dual_module.rs:242:1
+    #[test]
+    fn dual_module_parallel_debug_8() {  // cargo test dual_module_parallel_debug_8 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_8.json");
+        let syndrome_vertices = vec![1, 2, 3, 4, 9, 10, 13, 16, 17, 19, 24, 29, 33, 36, 37, 44, 48, 49, 51, 52];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 13);
+    }
+
+    /// panicked at 'dual node of edge should be some', src/dual_module_serial.rs:379:13
+    #[test]
+    fn dual_module_parallel_debug_9() {  // cargo test dual_module_parallel_debug_9 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_9.json");
+        let syndrome_vertices = vec![1, 7, 19, 31, 38, 43, 53, 54, 60, 61, 64, 65, 72, 74, 75, 76, 84, 85, 86, 87, 88, 89, 92, 93, 109, 129];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(11, visualize_filename, syndrome_vertices, 13);
+    }
+    
 }

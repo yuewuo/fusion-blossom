@@ -141,8 +141,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                 MaxUpdateLength::Conflicting((node_ptr_1, touching_ptr_1), (node_ptr_2, touching_ptr_2)) => {
                     assert!(node_ptr_1 != node_ptr_2, "one cannot conflict with itself, double check to avoid deadlock");
                     // always use outer node in case it's already wrapped into a blossom
-                    let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1.upgrade_force()));
-                    let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2.upgrade_force()));
+                    let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1.clone()));
+                    let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2.clone()));
                     if primal_node_internal_ptr_1 == primal_node_internal_ptr_2 {
                         continue  // this is no longer a conflict because both of them belongs to a single blossom
                     }
@@ -157,8 +157,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let (free_1, free_2) = (primal_node_internal_1.is_free(), primal_node_internal_2.is_free());
                     if free_1 && free_2 {
                         // simply match them temporarily
-                        primal_node_internal_1.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()), touching_ptr_1));
-                        primal_node_internal_2.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()), touching_ptr_2));
+                        primal_node_internal_1.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()), touching_ptr_1.downgrade()));
+                        primal_node_internal_2.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()), touching_ptr_2.downgrade()));
                         // update dual module interface
                         interface.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         interface.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
@@ -180,12 +180,12 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 free_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: free_node_internal_ptr.downgrade(),
                                     parent: None,
-                                    children: vec![(matched_node_internal_ptr.downgrade(), free_touching_ptr)],
+                                    children: vec![(matched_node_internal_ptr.downgrade(), free_touching_ptr.downgrade())],
                                     depth: 0,
                                 });
                                 matched_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: free_node_internal_ptr.downgrade(),
-                                    parent: Some((free_node_internal_ptr.downgrade(), matched_touching_ptr)),
+                                    parent: Some((free_node_internal_ptr.downgrade(), matched_touching_ptr.downgrade())),
                                     children: vec![(leaf_node_internal_weak.clone(), matched_touching_grandson)],
                                     depth: 1,
                                 });
@@ -205,8 +205,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             },
                             MatchTarget::VirtualVertex(_) => {
                                 // virtual boundary doesn't have to be matched, so in this case simply match these two nodes together
-                                free_node_internal.temporary_match = Some((MatchTarget::Peer(matched_node_internal_ptr.downgrade()), free_touching_ptr));
-                                matched_node_internal.temporary_match = Some((MatchTarget::Peer(free_node_internal_ptr.downgrade()), matched_touching_ptr));
+                                free_node_internal.temporary_match = Some((MatchTarget::Peer(matched_node_internal_ptr.downgrade()), free_touching_ptr.downgrade()));
+                                matched_node_internal.temporary_match = Some((MatchTarget::Peer(free_node_internal_ptr.downgrade()), matched_touching_ptr.downgrade()));
                                 // update dual module interface
                                 interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                                 interface.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
@@ -222,10 +222,10 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             } else {
                                 (primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1)
                             };
-                        free_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), free_touching_ptr));
+                        free_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), free_touching_ptr.downgrade()));
                         interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         drop(tree_node_internal);  // unlock
-                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr, interface, dual_module);
+                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr.downgrade(), interface, dual_module);
                         continue
                     }
                     // fourth probable case: tree touches matched pair
@@ -244,11 +244,11 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 let tree_node = tree_node_internal.tree_node.as_mut().unwrap();
                                 assert!(tree_node.depth % 2 == 0, "conflicting one must be + node");
                                 // simply add this matched pair to the children
-                                tree_node.children.push((matched_node_internal_ptr.downgrade(), tree_touching_ptr));
+                                tree_node.children.push((matched_node_internal_ptr.downgrade(), tree_touching_ptr.downgrade()));
                                 // link children to parent
                                 matched_node_internal.tree_node = Some(AlternatingTreeNode {
                                     root: tree_node.root.clone(),
-                                    parent: Some((tree_node_internal_ptr.downgrade(), matched_touching_ptr)),
+                                    parent: Some((tree_node_internal_ptr.downgrade(), matched_touching_ptr.downgrade())),
                                     children: vec![(leaf_node_internal_weak.clone(), matched_node_internal.temporary_match.as_ref().unwrap().1.clone())],
                                     depth: tree_node.depth + 1,
                                 });
@@ -268,10 +268,10 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             },
                             MatchTarget::VirtualVertex(_) => {
                                 // virtual boundary doesn't have to be matched, so in this case remove it and augment the tree
-                                matched_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), matched_touching_ptr));
+                                matched_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), matched_touching_ptr.downgrade()));
                                 drop(matched_node_internal);  // unlock
                                 drop(tree_node_internal);  // unlock
-                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr, interface, dual_module);
+                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr.downgrade(), interface, dual_module);
                                 continue
                             }
                         }
@@ -301,7 +301,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                         let node = ptr.read_recursive();
                                         let tree_node = node.tree_node.as_ref().unwrap();
                                         let left_touching_ptr = if idx == 0 {
-                                            touching_ptr_1.clone()
+                                            touching_ptr_1.downgrade()
                                         } else {
                                             let last_ptr = path_1[idx-1].downgrade();
                                             let idx = tree_node.children.iter().position(|(ptr, _)| ptr == &last_ptr).expect("should find child");
@@ -315,14 +315,14 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                     let node = lca_ptr.read_recursive();
                                     let tree_node = node.tree_node.as_ref().unwrap();
                                     let left_touching_ptr = if path_1.is_empty() {
-                                        touching_ptr_1.clone()
+                                        touching_ptr_1.downgrade()
                                     } else {
                                         let left_ptr = path_1[path_1.len() - 1].downgrade();
                                         let left_idx = tree_node.children.iter().position(|(ptr, _)| ptr == &left_ptr).expect("should find child");
                                         tree_node.children[left_idx].1.clone()
                                     };
                                     let right_touching_ptr = if path_2.is_empty() {
-                                        touching_ptr_2.clone()
+                                        touching_ptr_2.downgrade()
                                     } else {
                                         let right_ptr = path_2[path_2.len() - 1].downgrade();
                                         let right_idx = tree_node.children.iter().position(|(ptr, _)| ptr == &right_ptr).expect("should find child");
@@ -336,7 +336,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                         let tree_node = node.tree_node.as_ref().unwrap();
                                         let left_touching_ptr = tree_node.parent.as_ref().unwrap().1.clone();
                                         let right_touching_ptr = if idx == 0 {
-                                            touching_ptr_2.clone()
+                                            touching_ptr_2.downgrade()
                                         } else {
                                             let last_ptr = path_2[idx-1].downgrade();
                                             let idx = tree_node.children.iter().position(|(ptr, _)| ptr == &last_ptr).expect("should find child");
@@ -431,15 +431,15 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         } else {
                             drop(primal_node_internal_1);  // unlock
                             drop(primal_node_internal_2);  // unlock
-                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1, interface, dual_module);
-                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2, interface, dual_module);
+                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1.downgrade(), interface, dual_module);
+                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2.downgrade(), interface, dual_module);
                             continue
                         }
                     }
                     unreachable!()
                 },
                 MaxUpdateLength::TouchingVirtual((node_ptr, touching_ptr), virtual_vertex_index) => {
-                    let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr.upgrade_force()));
+                    let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr.clone()));
                     let mut primal_node_internal = primal_node_internal_ptr.write();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
                     if grow_state != DualNodeGrowState::Grow {
@@ -447,22 +447,21 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     }
                     // this is the most probable case, so put it in the front
                     if primal_node_internal.is_free() {
-                        primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr));
+                        primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr.downgrade()));
                         interface.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
                     }
                     // tree touching virtual boundary will just augment the whole tree
                     if primal_node_internal.tree_node.is_some() {
                         drop(primal_node_internal);
-                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr, interface, dual_module);
+                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr.downgrade(), interface, dual_module);
                         continue
                     }
                     unreachable!()
                 },
-                MaxUpdateLength::BlossomNeedExpand(node_weak) => {
+                MaxUpdateLength::BlossomNeedExpand(node_ptr) => {
                     // blossom breaking is assumed to be very rare given our multiple-tree approach, so don't need to optimize for it
                     // first, isolate this blossom from its alternating tree
-                    let node_ptr = node_weak.upgrade_force();
                     let primal_node_internal_ptr = self.get_primal_node_internal_ptr(&node_ptr);
                     let outer_primal_node_internal_ptr = self.get_outer_node(primal_node_internal_ptr.clone());
                     if outer_primal_node_internal_ptr != primal_node_internal_ptr {
