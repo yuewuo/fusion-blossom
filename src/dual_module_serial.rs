@@ -313,7 +313,7 @@ impl DualModuleImpl for DualModuleSerial {
                     // copy all the boundary edges and modify edge belongings
                     for dual_node_weak in nodes_circle.iter() {
                         let dual_node_ptr = dual_node_weak.upgrade_force();
-                        if self.unit_module_info.is_none() {  // otherwise it's already done
+                        if self.unit_module_info.is_none() {  // it's required to do it in the outer loop and synchronize everybody, so no need to do it here
                             self.prepare_dual_node_growth(&dual_node_ptr, false);  // prepare all nodes in shrinking mode for consistency
                         }
                         if let Some(dual_node_internal_ptr) = self.get_dual_node_internal_ptr_optional(&dual_node_ptr) {
@@ -1279,7 +1279,7 @@ impl DualModuleSerial {
         if vertex.propagated_dual_node == propagated_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()) {
             // actually this may happen: if the same vertex is propagated from two different units with the same distance
             // to the closest grandson, it may happen that sync event will conflict on the grandson...
-            // this conflict doesn't matter anyway: any grandson is good
+            // this conflict doesn't matter anyway: any grandson is good, as long as they're consistent
             // assert_eq!(vertex.propagated_grandson_dual_node, propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()));
             vertex.propagated_grandson_dual_node = propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade());
         } else {  // conflict with existing value, action needed
@@ -1308,10 +1308,13 @@ impl DualModuleSerial {
                             // sanity check: if exists, must be the same
                             debug_assert!(dual_node_weak.upgrade_force() == dual_node_internal_ptr);
                             // reset the dual node to be unoccupied
-                            let dual_node = if is_left { &mut edge.left_dual_node } else { &mut edge.right_dual_node };
-                            *dual_node = None;
-                            let grandson_dual_node = if is_left { &mut edge.left_grandson_dual_node } else { &mut edge.right_grandson_dual_node };
-                            *grandson_dual_node = None;
+                            if is_left {
+                                edge.left_dual_node = None;
+                                edge.left_grandson_dual_node = None;
+                            } else {
+                                edge.right_dual_node = None;
+                                edge.right_grandson_dual_node = None;
+                            }
                         }
                     } else {
                         updated_boundary.push((is_left, edge_weak.clone()));
@@ -1328,10 +1331,13 @@ impl DualModuleSerial {
                         // sanity check: if exists, must be the same
                         debug_assert!(dual_node_weak.upgrade_force() == dual_node_internal_ptr);
                         // need to add to the boundary
-                        let dual_node = if is_left { &mut edge.left_dual_node } else { &mut edge.right_dual_node };
-                        *dual_node = None;
-                        let grandson_dual_node = if is_left { &mut edge.left_grandson_dual_node } else { &mut edge.right_grandson_dual_node };
-                        *grandson_dual_node = None;
+                        if is_left {
+                            edge.left_dual_node = None;
+                            edge.left_grandson_dual_node = None;
+                        } else {
+                            edge.right_dual_node = None;
+                            edge.right_grandson_dual_node = None;
+                        };
                         updated_boundary.push((!is_left, edge_weak.clone()));
                     }
                 }
@@ -1350,11 +1356,15 @@ impl DualModuleSerial {
                     edge_ptr.dynamic_clear(active_timestamp);
                     let mut edge = edge_ptr.write(active_timestamp);
                     let is_left = vertex_ptr.downgrade() == edge.left;
-                    let dual_node = if is_left { &mut edge.left_dual_node } else { &mut edge.right_dual_node };
-                    assert_eq!(dual_node, &None, "edges incident to the vertex must have been vacated");
-                    *dual_node = Some(dual_node_internal_ptr.downgrade());
-                    let grandson_dual_node = if is_left { &mut edge.left_grandson_dual_node } else { &mut edge.right_grandson_dual_node };
-                    *grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
+                    if is_left {
+                        assert_eq!(edge.left_dual_node, None, "edges incident to the vertex must have been vacated");
+                        edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
+                        edge.left_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
+                    } else {
+                        assert_eq!(edge.right_dual_node, None, "edges incident to the vertex must have been vacated");
+                        edge.right_dual_node = Some(dual_node_internal_ptr.downgrade());
+                        edge.right_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
+                    }
                     dual_node_internal.boundary.push((is_left, edge_weak.clone()));
                 }
             }
@@ -1489,6 +1499,16 @@ impl DualModuleSerial {
                         if vertex.propagated_dual_node == Some(dual_node_internal_ptr.downgrade()) {
                             vertex.propagated_dual_node = None;
                             vertex.propagated_grandson_dual_node = None;
+                            // add to the sync list
+                            if let Some(mirror_unit_weak) = &vertex.mirror_unit {
+                                let unit_module_info = self.unit_module_info.as_mut().unwrap();
+                                unit_module_info.sync_requests.push(SyncRequest {
+                                    mirror_unit_weak: mirror_unit_weak.clone(),
+                                    vertex_index: vertex.vertex_index,
+                                    propagated_dual_node: None,
+                                    propagated_grandson_dual_node: None,
+                                });
+                            }
                             for edge_weak in vertex.edges.iter() {
                                 let edge_ptr = edge_weak.upgrade_force();
                                 let mut edge = edge_ptr.write(active_timestamp);
@@ -1507,8 +1527,8 @@ impl DualModuleSerial {
                                     edge.right_dual_node = None;
                                     edge.right_grandson_dual_node = None;
                                 }
-                                if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
-                                    if is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
+                                if (if !is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
+                                    if !is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
                                     updated_boundary.push((!is_left, edge_weak.clone()));  // boundary has the opposite end
                                 }
                             }
@@ -1565,6 +1585,16 @@ impl DualModuleSerial {
                 if vertex.propagated_dual_node.is_some() {
                     vertex.propagated_dual_node = None;
                     vertex.propagated_grandson_dual_node = None;
+                    // add to the sync list
+                    if let Some(mirror_unit_weak) = &vertex.mirror_unit {
+                        let unit_module_info = self.unit_module_info.as_mut().unwrap();
+                        unit_module_info.sync_requests.push(SyncRequest {
+                            mirror_unit_weak: mirror_unit_weak.clone(),
+                            vertex_index: vertex.vertex_index,
+                            propagated_dual_node: None,
+                            propagated_grandson_dual_node: None,
+                        });
+                    }
                     for edge_weak in vertex.edges.iter() {
                         let edge_ptr = edge_weak.upgrade_force();
                         let (is_left, newly_propagated_edge) = {
@@ -1584,24 +1614,24 @@ impl DualModuleSerial {
                         };
                         if newly_propagated_edge {
                             let mut edge = edge_ptr.write(active_timestamp);
-                            if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
-                                if is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
+                            if (if !is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
+                                if !is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
                                 updated_boundary.push((!is_left, edge_weak.clone()));
-                                if edge.weight == 0 {
-                                    newly_propagated_edge_has_zero_weight = true;
-                                }
-                                if is_left {
-                                    assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
-                                    assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
-                                    edge.left_dual_node = None;
-                                    edge.left_grandson_dual_node = None;
-                                } else {
-                                    assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
-                                    assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
-                                    edge.right_dual_node = None;
-                                    edge.right_grandson_dual_node = None;
-                                };
-                            }  // otherwise it's duplicate and should be ignored
+                            }  // otherwise it's duplicate and should not be added to the boundary list
+                            if edge.weight == 0 {
+                                newly_propagated_edge_has_zero_weight = true;
+                            }
+                            if is_left {
+                                assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
+                                assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
+                                edge.left_dual_node = None;
+                                edge.left_grandson_dual_node = None;
+                            } else {
+                                assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
+                                assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
+                                edge.right_dual_node = None;
+                                edge.right_grandson_dual_node = None;
+                            };
                         } else {
                             let mut edge = edge_ptr.write(active_timestamp);
                             if is_left {

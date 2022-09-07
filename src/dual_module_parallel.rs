@@ -21,7 +21,7 @@ use crate::serde_json;
 use serde::{Serialize, Deserialize};
 use super::visualize::*;
 use crate::rayon::prelude::*;
-use std::collections::{BTreeSet, BTreeMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use super::complete_graph::CompleteGraph;
 use crate::weak_table::PtrWeakHashSet;
 
@@ -229,177 +229,166 @@ impl DualModuleParallel {
         let mut units = vec![];
         let partition_info = Arc::new(PartitionInfo::new(&config, initializer));
         let unit_count = config.partitions.len() + config.fusions.len();
-        if config.partitions.len() == 1 {  // no partition
-            assert!(config.fusions.is_empty(), "should be no `fusions` with only 1 partition");
-            let dual_module = DualModuleSerial::new(&initializer);
-            let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
-            let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, 0, Arc::clone(&partition_info), PartitionUnitPtr::new(PartitionUnit {
-                unit_index: 0,
-                enabled: true,
-            }));
-            units.push(unit);
-        } else {  // multiple partitions, do the initialization in parallel to take advantage of multiple cores
-            let complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);  // build the graph to construct the NN data structure
-            let mut contained_vertices_vec: Vec<BTreeSet<VertexIndex>> = vec![];  // all vertices maintained by each unit
-            let mut is_vertex_virtual: Vec<_> = (0..initializer.vertex_num).map(|_| false).collect();
-            for virtual_vertex in initializer.virtual_vertices.iter() {
-                is_vertex_virtual[*virtual_vertex] = true;
+        let complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);  // build the graph to construct the NN data structure
+        let mut contained_vertices_vec: Vec<BTreeSet<VertexIndex>> = vec![];  // all vertices maintained by each unit
+        let mut is_vertex_virtual: Vec<_> = (0..initializer.vertex_num).map(|_| false).collect();
+        for virtual_vertex in initializer.virtual_vertices.iter() {
+            is_vertex_virtual[*virtual_vertex] = true;
+        }
+        let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new(PartitionUnit {
+            unit_index: unit_index,
+            enabled: unit_index < config.partitions.len(),
+        })).collect();
+        let mut partitioned_initializers: Vec<PartitionedSolverInitializer> = (0..unit_count).map(|unit_index| {
+            let mut interfaces = vec![];
+            let mut current_index = unit_index;
+            let owning_range = &partition_info.units[unit_index].owning_range;
+            let mut contained_vertices = BTreeSet::new();
+            for vertex_index in owning_range.iter() {
+                contained_vertices.insert(vertex_index);
             }
-            let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new(PartitionUnit {
-                unit_index: unit_index,
-                enabled: unit_index < config.partitions.len(),
-            })).collect();
-            let mut partitioned_initializers: Vec<PartitionedSolverInitializer> = (0..unit_count).map(|unit_index| {
-                let mut interfaces = vec![];
-                let mut current_index = unit_index;
-                let owning_range = &partition_info.units[unit_index].owning_range;
-                let mut contained_vertices = BTreeSet::new();
-                for vertex_index in owning_range.iter() {
-                    contained_vertices.insert(vertex_index);
-                }
-                while let Some(parent_index) = &partition_info.units[current_index].parent {
-                    let mut mirror_vertices = vec![];
-                    if config.edges_in_fusion_unit {
-                        for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
-                            let mut is_incident = false;
-                            for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
-                                if owning_range.contains(peer_index) {
-                                    is_incident = true;
-                                    break
-                                }
-                            }
-                            if is_incident {
-                                mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
-                                contained_vertices.insert(vertex_index);
+            while let Some(parent_index) = &partition_info.units[current_index].parent {
+                let mut mirror_vertices = vec![];
+                if config.edges_in_fusion_unit {
+                    for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
+                        let mut is_incident = false;
+                        for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
+                            if owning_range.contains(peer_index) {
+                                is_incident = true;
+                                break
                             }
                         }
-                    } else {
-                        // first check if there EXISTS any vertex that's adjacent of it's contains vertex
-                        let mut has_incident = false;
-                        for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
-                            for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
-                                if contained_vertices.contains(peer_index) {  // important diff: as long as it has an edge with contained vertex, add it
-                                    has_incident = true;
-                                    break
-                                }
-                            }
-                            if has_incident {
+                        if is_incident {
+                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
+                            contained_vertices.insert(vertex_index);
+                        }
+                    }
+                } else {
+                    // first check if there EXISTS any vertex that's adjacent of it's contains vertex
+                    let mut has_incident = false;
+                    for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
+                        for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
+                            if contained_vertices.contains(peer_index) {  // important diff: as long as it has an edge with contained vertex, add it
+                                has_incident = true;
                                 break
                             }
                         }
                         if has_incident {
-                            // add all vertices as mirrored
-                            for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
-                                mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
-                                contained_vertices.insert(vertex_index);
-                            }
+                            break
                         }
                     }
-                    if !mirror_vertices.is_empty() {  // only add non-empty mirrored parents is enough
-                        interfaces.push((partition_units[*parent_index].downgrade(), mirror_vertices));
+                    if has_incident {
+                        // add all vertices as mirrored
+                        for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
+                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
+                            contained_vertices.insert(vertex_index);
+                        }
                     }
-                    current_index = *parent_index;
                 }
-                contained_vertices_vec.push(contained_vertices);
-                PartitionedSolverInitializer {
-                    unit_index: unit_index,
-                    vertex_num: initializer.vertex_num,
-                    edge_num: initializer.weighted_edges.len(),
-                    owning_range: owning_range.clone(),
-                    owning_interface: if unit_index < config.partitions.len() { None } else { Some(partition_units[unit_index].downgrade()) },
-                    weighted_edges: vec![],  // to be filled later
-                    interfaces: interfaces,
-                    virtual_vertices: owning_range.iter().filter(|vertex_index| is_vertex_virtual[*vertex_index]).collect(),
-                }  // note that all fields can be modified later
-            }).collect();
-            // assign each edge to its unique partition
-            for (edge_index, &(i, j, weight)) in initializer.weighted_edges.iter().enumerate() {
-                assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
-                assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
-                assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
-                let i_unit_index = partition_info.vertex_to_owning_unit[i];
-                let j_unit_index = partition_info.vertex_to_owning_unit[j];
-                // either left is ancestor of right or right is ancestor of left, otherwise the edge is invalid (because crossing two independent partitions)
-                let is_i_ancestor = partition_info.units[i_unit_index].descendants.contains(&j_unit_index);
-                let is_j_ancestor = partition_info.units[j_unit_index].descendants.contains(&i_unit_index);
-                assert!(is_i_ancestor || is_j_ancestor || i_unit_index == j_unit_index, "violating edge ({}, {}) crossing two independent partitions {} and {}"
-                    , i, j, i_unit_index, j_unit_index);
-                let ancestor_unit_index = if is_i_ancestor { i_unit_index } else { j_unit_index };
-                let descendant_unit_index = if is_i_ancestor { j_unit_index } else { i_unit_index };
-                if config.edges_in_fusion_unit {
-                    // the edge should be added to the descendant, and it's guaranteed that the descendant unit contains (although not necessarily owned) the vertex
+                if !mirror_vertices.is_empty() {  // only add non-empty mirrored parents is enough
+                    interfaces.push((partition_units[*parent_index].downgrade(), mirror_vertices));
+                }
+                current_index = *parent_index;
+            }
+            contained_vertices_vec.push(contained_vertices);
+            PartitionedSolverInitializer {
+                unit_index: unit_index,
+                vertex_num: initializer.vertex_num,
+                edge_num: initializer.weighted_edges.len(),
+                owning_range: owning_range.clone(),
+                owning_interface: if unit_index < config.partitions.len() { None } else { Some(partition_units[unit_index].downgrade()) },
+                weighted_edges: vec![],  // to be filled later
+                interfaces: interfaces,
+                virtual_vertices: owning_range.iter().filter(|vertex_index| is_vertex_virtual[*vertex_index]).collect(),
+            }  // note that all fields can be modified later
+        }).collect();
+        // assign each edge to its unique partition
+        for (edge_index, &(i, j, weight)) in initializer.weighted_edges.iter().enumerate() {
+            assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+            assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
+            assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
+            let i_unit_index = partition_info.vertex_to_owning_unit[i];
+            let j_unit_index = partition_info.vertex_to_owning_unit[j];
+            // either left is ancestor of right or right is ancestor of left, otherwise the edge is invalid (because crossing two independent partitions)
+            let is_i_ancestor = partition_info.units[i_unit_index].descendants.contains(&j_unit_index);
+            let is_j_ancestor = partition_info.units[j_unit_index].descendants.contains(&i_unit_index);
+            assert!(is_i_ancestor || is_j_ancestor || i_unit_index == j_unit_index, "violating edge ({}, {}) crossing two independent partitions {} and {}"
+                , i, j, i_unit_index, j_unit_index);
+            let ancestor_unit_index = if is_i_ancestor { i_unit_index } else { j_unit_index };
+            let descendant_unit_index = if is_i_ancestor { j_unit_index } else { i_unit_index };
+            if config.edges_in_fusion_unit {
+                // the edge should be added to the descendant, and it's guaranteed that the descendant unit contains (although not necessarily owned) the vertex
+                partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
+            } else {
+                // add edge to every unit from the descendant (including) and the ancestor (excluding) who mirrored the vertex
+                if ancestor_unit_index < config.partitions.len() {
+                    // leaf unit holds every unit
                     partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
                 } else {
-                    // add edge to every unit from the descendant (including) and the ancestor (excluding) who mirrored the vertex
-                    if ancestor_unit_index < config.partitions.len() {
-                        // leaf unit holds every unit
-                        partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
-                    } else {
-                        // iterate every leaf unit of the `descendant_unit_index` to see if adding the edge or not
-                        fn dfs_add(unit_index: usize, config: &DualModuleParallelConfig, partition_info: &PartitionInfo, i: VertexIndex, j: VertexIndex
-                                , weight: Weight, contained_vertices_vec: &Vec<BTreeSet<VertexIndex>>, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>
-                                , edge_index: EdgeIndex) {
-                            if unit_index >= config.partitions.len() {
-                                let (left_index, right_index) = &partition_info.units[unit_index].children.expect("fusion unit must have children");
-                                dfs_add(*left_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
-                                dfs_add(*right_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
-                            } else {
-                                let contain_i = contained_vertices_vec[unit_index].contains(&i);
-                                let contain_j = contained_vertices_vec[unit_index].contains(&j);
-                                assert!(!(contain_i ^ contain_j), "{} and {} must either be both contained or not contained by {}", i, j, unit_index);
-                                if contain_i {
-                                    partitioned_initializers[unit_index].weighted_edges.push((i, j, weight, edge_index));
-                                }
-                            }
-                        }
-                        dfs_add(descendant_unit_index, &config, &partition_info, i, j, weight, &contained_vertices_vec, &mut partitioned_initializers, edge_index);
-                    }
-                }
-            }
-            // println!("partitioned_initializers: {:?}", partitioned_initializers);
-            thread_pool.scope(|_| {
-                (0..unit_count).into_par_iter().map(|unit_index| {
-                    // println!("unit_index: {unit_index}");
-                    let dual_module = DualModuleSerial::new_partitioned(&partitioned_initializers[unit_index]);
-                    let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
-                    let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, unit_index, Arc::clone(&partition_info), partition_units[unit_index].clone());
-                    unit
-                }).collect_into_vec(&mut units);
-            });
-            // fill in the children and parent references
-            for unit_index in 0..unit_count {
-                let mut unit = units[unit_index].write();
-                if let Some((left_children_index, right_children_index)) = &partition_info.units[unit_index].children {
-                    unit.children = Some((units[*left_children_index].downgrade(), units[*right_children_index].downgrade()))
-                }
-                if let Some(parent_index) = &partition_info.units[unit_index].parent {
-                    unit.parent = Some(units[*parent_index].downgrade());
-                }
-            }
-            // fill in the extra_descendant_mirrored_vertices
-            for unit_index in 0..unit_count {
-                let mut unit = units[unit_index].write();
-                let serial_module_ptr = unit.serial_module.clone();
-                let whole_range = unit.whole_range.clone();
-                let serial_module = serial_module_ptr.read_recursive();
-                for i in serial_module.owning_range.len()..serial_module.vertices.len() {
-                    let vertex_index = serial_module.vertices[i].read_recursive_force().vertex_index;
-                    if !whole_range.contains(&vertex_index) {
-                        unit.extra_descendant_mirrored_vertices.insert(vertex_index);
-                    }
-                }
-                if let Some((left_children_weak, right_children_weak)) = unit.children.clone() {
-                    for child_weak in [left_children_weak, right_children_weak] {
-                        // note: although iterating over HashSet is not performance optimal, this only happens at initialization and thus it's fine
-                        for vertex_index in child_weak.upgrade_force().read_recursive().extra_descendant_mirrored_vertices.iter() {
-                            if !whole_range.contains(&vertex_index) {
-                                unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
+                    // iterate every leaf unit of the `descendant_unit_index` to see if adding the edge or not
+                    fn dfs_add(unit_index: usize, config: &DualModuleParallelConfig, partition_info: &PartitionInfo, i: VertexIndex, j: VertexIndex
+                            , weight: Weight, contained_vertices_vec: &Vec<BTreeSet<VertexIndex>>, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>
+                            , edge_index: EdgeIndex) {
+                        if unit_index >= config.partitions.len() {
+                            let (left_index, right_index) = &partition_info.units[unit_index].children.expect("fusion unit must have children");
+                            dfs_add(*left_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
+                            dfs_add(*right_index, config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
+                        } else {
+                            let contain_i = contained_vertices_vec[unit_index].contains(&i);
+                            let contain_j = contained_vertices_vec[unit_index].contains(&j);
+                            assert!(!(contain_i ^ contain_j), "{} and {} must either be both contained or not contained by {}", i, j, unit_index);
+                            if contain_i {
+                                partitioned_initializers[unit_index].weighted_edges.push((i, j, weight, edge_index));
                             }
                         }
                     }
+                    dfs_add(descendant_unit_index, &config, &partition_info, i, j, weight, &contained_vertices_vec, &mut partitioned_initializers, edge_index);
                 }
-                // println!("{} extra_descendant_mirrored_vertices: {:?}", unit.unit_index, unit.extra_descendant_mirrored_vertices);
             }
+        }
+        // println!("partitioned_initializers: {:?}", partitioned_initializers);
+        thread_pool.scope(|_| {
+            (0..unit_count).into_par_iter().map(|unit_index| {
+                // println!("unit_index: {unit_index}");
+                let dual_module = DualModuleSerial::new_partitioned(&partitioned_initializers[unit_index]);
+                let dual_module_ptr = DualModuleSerialPtr::new(dual_module);
+                let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, unit_index, Arc::clone(&partition_info), partition_units[unit_index].clone());
+                unit
+            }).collect_into_vec(&mut units);
+        });
+        // fill in the children and parent references
+        for unit_index in 0..unit_count {
+            let mut unit = units[unit_index].write();
+            if let Some((left_children_index, right_children_index)) = &partition_info.units[unit_index].children {
+                unit.children = Some((units[*left_children_index].downgrade(), units[*right_children_index].downgrade()))
+            }
+            if let Some(parent_index) = &partition_info.units[unit_index].parent {
+                unit.parent = Some(units[*parent_index].downgrade());
+            }
+        }
+        // fill in the extra_descendant_mirrored_vertices
+        for unit_index in 0..unit_count {
+            let mut unit = units[unit_index].write();
+            let serial_module_ptr = unit.serial_module.clone();
+            let whole_range = unit.whole_range.clone();
+            let serial_module = serial_module_ptr.read_recursive();
+            for i in serial_module.owning_range.len()..serial_module.vertices.len() {
+                let vertex_index = serial_module.vertices[i].read_recursive_force().vertex_index;
+                if !whole_range.contains(&vertex_index) {
+                    unit.extra_descendant_mirrored_vertices.insert(vertex_index);
+                }
+            }
+            if let Some((left_children_weak, right_children_weak)) = unit.children.clone() {
+                for child_weak in [left_children_weak, right_children_weak] {
+                    // note: although iterating over HashSet is not performance optimal, this only happens at initialization and thus it's fine
+                    for vertex_index in child_weak.upgrade_force().read_recursive().extra_descendant_mirrored_vertices.iter() {
+                        if !whole_range.contains(&vertex_index) {
+                            unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
+                        }
+                    }
+                }
+            }
+            // println!("{} extra_descendant_mirrored_vertices: {:?}", unit.unit_index, unit.extra_descendant_mirrored_vertices);
         }
         Self {
             initializer: initializer.clone(),
@@ -629,6 +618,7 @@ impl DualModuleParallelUnit {
         }
         // my serial module
         let mut serial_module = self.serial_module.write();
+        // println!("sync_requests: {:?}", serial_module.unit_module_info.as_ref().unwrap().sync_requests);
         assert!(serial_module.unit_module_info.as_ref().unwrap().sync_requests.is_empty(), "must start with empty sync requests");
         serial_module.prepare_all_growth();
         let local_sync_requests = &mut serial_module.unit_module_info.as_mut().unwrap().sync_requests;
@@ -666,26 +656,11 @@ impl DualModuleParallelUnit {
         }
     }
 
-    // collect all sync requests, merging those on the same vertex (choosing any one is ok)
-    pub fn dedup_sync_events(sync_requests: &Vec<SyncRequest>) -> BTreeMap<VertexIndex, &SyncRequest> {
-        let mut sync_events = BTreeMap::<VertexIndex, &SyncRequest>::new();
+    /// no need to deduplicate the events: the result will always be consistent with the last one
+    pub fn sync_events_execute(&mut self, sync_requests: &Vec<SyncRequest>) {
+        // println!("sync_requests: {sync_requests:?}");
         for sync_request in sync_requests.iter() {
-            if let Some(sync_event) = sync_events.get(&sync_request.vertex_index) {
-                assert_eq!(sync_event.propagated_dual_node.is_some(), sync_request.propagated_dual_node.is_some(), 
-                    "it's only possible to conflict on setting the propagated nodes, not possible if someone is setting and others are resetting");
-            } else {
-                sync_events.insert(sync_request.vertex_index, &sync_request);
-            }
-        }
-        sync_events
-    }
-
-    pub fn dedup_sync_events_execute(&mut self, sync_requests: &Vec<SyncRequest>) {
-        let sync_events = Self::dedup_sync_events(&sync_requests);
-        // iterate over sync_events to update on all associated vertices
-        // println!("sync_events: {sync_events:?}");
-        for (_, sync_event) in sync_events.iter() {
-            self.sync_prepare_growth_update_sync_event(sync_event);
+            self.sync_prepare_growth_update_sync_event(sync_request);
         }
     }
 
@@ -697,7 +672,7 @@ impl DualModuleParallelUnit {
             let mut sync_requests = vec![];
             self.sync_prepare_growth_append_sync_requests(&mut sync_requests);
             // println!("sync_requests: {sync_requests:?}");
-            self.dedup_sync_events_execute(&sync_requests);
+            self.sync_events_execute(&sync_requests);
         }
         // TODO: what if a 0-weighted chain go across multiple units? iteratively run this when happens
     }
@@ -742,14 +717,17 @@ impl DualModuleParallelUnit {
                 child.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, sync_requests);
             }
         }
-        self.serial_module.write().prepare_blossom_initial_shrink(nodes_circle);
+        let mut serial_module = self.serial_module.write();
+        serial_module.prepare_blossom_initial_shrink(nodes_circle);
+        let local_sync_requests = &mut serial_module.unit_module_info.as_mut().unwrap().sync_requests;
+        sync_requests.append(local_sync_requests);
     }
 
     pub fn sync_prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>) {
         let mut sync_requests = vec![];
         self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, &mut sync_requests);
         // println!("sync_requests: {sync_requests:?}");
-        self.dedup_sync_events_execute(&sync_requests);
+        self.sync_events_execute(&sync_requests);
     }
 
     pub fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex
@@ -923,6 +901,9 @@ impl DualModuleImpl for DualModuleParallelUnit {
                 let nodes_circle_ptrs: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force()).collect();
                 let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force().get_representative_vertex()).collect();
                 self.sync_prepare_blossom_initial_shrink(&nodes_circle_ptrs, &nodes_circle_vertices);
+                // if dual_node_ptr.read_recursive().index == 8 {
+                //     return
+                // }
                 self.iterative_add_blossom(dual_node_ptr, &nodes_circle_ptrs, representative_vertex, &nodes_circle_vertices);
             },
         }
@@ -1355,11 +1336,14 @@ pub mod tests {
     }
 
     /// panicked at 'dual node of edge should be none', src/dual_module_serial.rs:400:25
+    /// reason: duplicate edge in the boundary... again...
+    /// this time it's because when judging whether an edge is already in the boundary, I mistakenly put the clearing edge logic into
+    /// the if condition as well... when the edge is duplicate in the boundary already, my code will not clear the edge properly
     #[test]
     fn dual_module_parallel_debug_11() {  // cargo test dual_module_parallel_debug_11 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_11.json");
-        let syndrome_vertices = vec![0, 1, 3, 16, 23, 27, 31, 32, 36, 40, 41, 42, 46, 47, 60, 63, 66, 73, 74, 81, 84, 88, 101, 109, 123, 132, 133, 140, 141, 143, 147, 152, 153, 154, 168, 171, 175, 176, 181, 187, 188, 191, 192, 193, 194, 195, 196, 197, 201, 203, 212, 214, 216, 217, 222, 232, 233, 236, 246, 252, 254, 257, 261, 262, 266, 269, 271, 287, 292, 294, 304, 306, 315, 321, 324, 325, 327, 329, 330, 337, 344, 361, 364, 369, 370, 371, 372, 373, 374, 375, 376];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 11);
+        let syndrome_vertices = vec![192, 193, 194, 212, 214, 232, 233];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 7);
     }
 
 }

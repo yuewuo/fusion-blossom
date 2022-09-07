@@ -144,6 +144,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1.clone()));
                     let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2.clone()));
                     if primal_node_internal_ptr_1 == primal_node_internal_ptr_2 {
+                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict because both of them belongs to a single blossom
                     }
                     let mut primal_node_internal_1 = primal_node_internal_ptr_1.write();
@@ -151,6 +152,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let grow_state_1 = primal_node_internal_1.origin.upgrade_force().read_recursive().grow_state;
                     let grow_state_2 = primal_node_internal_2.origin.upgrade_force().read_recursive().grow_state;
                     if !grow_state_1.is_against(&grow_state_2) {
+                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict
                     }
                     // this is the most probable case, so put it in the front
@@ -443,6 +445,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let mut primal_node_internal = primal_node_internal_ptr.write();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
                     if grow_state != DualNodeGrowState::Grow {
+                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict
                     }
                     // this is the most probable case, so put it in the front
@@ -466,11 +469,13 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     let outer_primal_node_internal_ptr = self.get_outer_node(primal_node_internal_ptr.clone());
                     if outer_primal_node_internal_ptr != primal_node_internal_ptr {
                         // this blossom is now wrapped into another blossom, so we don't need to expand it anymore
+                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue
                     }
                     let primal_node_internal = primal_node_internal_ptr.read_recursive();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
                     if grow_state != DualNodeGrowState::Shrink {
+                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict
                     }
                     // copy the nodes circle
