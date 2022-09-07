@@ -102,7 +102,7 @@ pub struct PartitionUnit {
     pub enabled: bool,
 }
 
-pub type PartitionUnitPtr= ArcRwLock<PartitionUnit>;
+pub type PartitionUnitPtr = ArcRwLock<PartitionUnit>;
 pub type PartitionUnitWeak = WeakRwLock<PartitionUnit>;
 
 impl std::fmt::Debug for PartitionUnitPtr {

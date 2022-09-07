@@ -60,7 +60,7 @@ pub struct UnitModuleInfo {
     pub dual_node_pointers: PtrWeakKeyHashMap<DualNodeWeak, usize>,
 }
 
-pub type DualModuleSerialPtr= ArcRwLock<DualModuleSerial>;
+pub type DualModuleSerialPtr = ArcRwLock<DualModuleSerial>;
 pub type DualModuleSerialWeak = WeakRwLock<DualModuleSerial>;
 
 /// internal information of the dual node, added to the [`DualNode`]
@@ -82,7 +82,7 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
-pub type DualNodeInternalPtr= ArcRwLock<DualNodeInternal>;
+pub type DualNodeInternalPtr = ArcRwLock<DualNodeInternal>;
 pub type DualNodeInternalWeak = WeakRwLock<DualNodeInternal>;
 
 impl std::fmt::Debug for DualNodeInternalPtr {
@@ -739,60 +739,7 @@ impl DualModuleImpl for DualModuleSerial {
         self.get_dual_node_index(dual_node_ptr).is_some()
     }
 
-}
-
-/*
-Implementing fast clear operations
-*/
-
-impl FastClear for Edge {
-
-    fn hard_clear(&mut self) {
-        self.left_growth = 0;
-        self.right_growth = 0;
-        self.left_dual_node = None;
-        self.left_grandson_dual_node = None;
-        self.right_dual_node = None;
-        self.right_grandson_dual_node = None;
-    }
-
-    fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
-    fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
-
-}
-
-impl FastClear for Vertex {
-
-    fn hard_clear(&mut self) {
-        self.is_syndrome = false;
-        self.propagated_dual_node = None;
-        self.propagated_grandson_dual_node = None;
-    }
-
-    fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
-    fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
-
-}
-
-impl Vertex {
-
-    /// if this vertex is a mirrored vertex and it's disabled, it can be temporarily matched just like a virtual vertex
-    pub fn is_mirror_blocked(&self) -> bool {
-        if let Some(ref mirror_unit_ptr) = self.mirror_unit {
-            let mirror_unit_ptr = mirror_unit_ptr.upgrade_force();
-            let mirror_unit = mirror_unit_ptr.read_recursive();
-            !mirror_unit.enabled
-        } else {
-            false
-        }
-    }
-
-}
-
-impl DualModuleSerial {
-
-    /// create a partitioned serial dual module to be used in the parallel dual module
-    pub fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
+    fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
         let active_timestamp = 0;
         // create vertices
         let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new(Vertex {
@@ -899,6 +846,171 @@ impl DualModuleSerial {
             sync_requests: vec![],
         }
     }
+
+    fn contains_vertex(&self, vertex_index: VertexIndex) -> bool {
+        self.get_vertex_index(vertex_index).is_some()
+    }
+
+    fn execute_sync_event(&mut self, sync_event: &SyncRequest) {
+        let active_timestamp = self.active_timestamp;
+        debug_assert!(self.contains_vertex(sync_event.vertex_index));
+        let propagated_dual_node_internal_ptr = sync_event.propagated_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
+            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
+        });
+        let propagated_grandson_dual_node_internal_ptr = sync_event.propagated_grandson_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
+            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
+        });
+        let local_vertex_index = self.get_vertex_index(sync_event.vertex_index).expect("cannot synchronize at a non-existing vertex");
+        let vertex_ptr = &self.vertices[local_vertex_index];
+        vertex_ptr.dynamic_clear(active_timestamp);
+        let mut vertex = vertex_ptr.write(active_timestamp);
+        if vertex.propagated_dual_node == propagated_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()) {
+            // actually this may happen: if the same vertex is propagated from two different units with the same distance
+            // to the closest grandson, it may happen that sync event will conflict on the grandson...
+            // this conflict doesn't matter anyway: any grandson is good, as long as they're consistent
+            // assert_eq!(vertex.propagated_grandson_dual_node, propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()));
+            vertex.propagated_grandson_dual_node = propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade());
+        } else {  // conflict with existing value, action needed
+            // first vacate the vertex, recovering dual node boundaries accordingly
+            if let Some(dual_node_internal_weak) = vertex.propagated_dual_node.as_ref() {
+                assert!(!vertex.is_syndrome, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
+                let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
+                let dual_node_internal_ptr = dual_node_internal_weak.upgrade_force();
+                let mut dual_node_internal = dual_node_internal_ptr.write();
+                vertex.propagated_dual_node = None;
+                vertex.propagated_grandson_dual_node = None;
+                // iterate over the boundary to remove any edges associated with the vertex and also reset those edges
+                for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
+                    let is_left = *is_left;
+                    let edge_ptr = edge_weak.upgrade_force();
+                    let mut edge = edge_ptr.write(active_timestamp);
+                    let this_vertex_ptr = if is_left {
+                        edge.left.upgrade_force()
+                    } else {
+                        edge.right.upgrade_force()
+                    };
+                    if &this_vertex_ptr == vertex_ptr {
+                        debug_assert!(if is_left { edge.left_growth == 0 } else { edge.right_growth == 0 }, "vacating a non-boundary vertex is forbidden");
+                        let dual_node = if is_left { &edge.left_dual_node } else { &edge.right_dual_node };
+                        if let Some(dual_node_weak) = dual_node.as_ref() {
+                            // sanity check: if exists, must be the same
+                            debug_assert!(dual_node_weak.upgrade_force() == dual_node_internal_ptr);
+                            // reset the dual node to be unoccupied
+                            if is_left {
+                                edge.left_dual_node = None;
+                                edge.left_grandson_dual_node = None;
+                            } else {
+                                edge.right_dual_node = None;
+                                edge.right_grandson_dual_node = None;
+                            }
+                        }
+                    } else {
+                        updated_boundary.push((is_left, edge_weak.clone()));
+                    }
+                }
+                // iterate over the edges around the vertex to add edges to the boundary
+                for edge_weak in vertex.edges.iter() {
+                    let edge_ptr = edge_weak.upgrade_force();
+                    edge_ptr.dynamic_clear(active_timestamp);
+                    let mut edge = edge_ptr.write(active_timestamp);
+                    let is_left = vertex_ptr.downgrade() == edge.left;
+                    let dual_node = if is_left { &edge.left_dual_node } else { &edge.right_dual_node };
+                    if let Some(dual_node_weak) = dual_node.as_ref() {
+                        // sanity check: if exists, must be the same
+                        debug_assert!(dual_node_weak.upgrade_force() == dual_node_internal_ptr);
+                        // need to add to the boundary
+                        if is_left {
+                            edge.left_dual_node = None;
+                            edge.left_grandson_dual_node = None;
+                        } else {
+                            edge.right_dual_node = None;
+                            edge.right_grandson_dual_node = None;
+                        };
+                        updated_boundary.push((!is_left, edge_weak.clone()));
+                    }
+                }
+                // update the boundary
+                std::mem::swap(&mut updated_boundary, &mut dual_node_internal.boundary);
+            }
+            // then update the vertex to the dual node
+            if let Some(dual_node_internal_ptr) = propagated_dual_node_internal_ptr.as_ref() {
+                // grandson dual node must present
+                let grandson_dual_node_internal_ptr = propagated_grandson_dual_node_internal_ptr.unwrap();
+                vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
+                vertex.propagated_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
+                let mut dual_node_internal = dual_node_internal_ptr.write();
+                for edge_weak in vertex.edges.iter() {
+                    let edge_ptr = edge_weak.upgrade_force();
+                    edge_ptr.dynamic_clear(active_timestamp);
+                    let mut edge = edge_ptr.write(active_timestamp);
+                    let is_left = vertex_ptr.downgrade() == edge.left;
+                    if is_left {
+                        assert_eq!(edge.left_dual_node, None, "edges incident to the vertex must have been vacated");
+                        edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
+                        edge.left_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
+                    } else {
+                        assert_eq!(edge.right_dual_node, None, "edges incident to the vertex must have been vacated");
+                        edge.right_dual_node = Some(dual_node_internal_ptr.downgrade());
+                        edge.right_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
+                    }
+                    dual_node_internal.boundary.push((is_left, edge_weak.clone()));
+                }
+            }
+            
+        }
+    }
+
+}
+
+/*
+Implementing fast clear operations
+*/
+
+impl FastClear for Edge {
+
+    fn hard_clear(&mut self) {
+        self.left_growth = 0;
+        self.right_growth = 0;
+        self.left_dual_node = None;
+        self.left_grandson_dual_node = None;
+        self.right_dual_node = None;
+        self.right_grandson_dual_node = None;
+    }
+
+    fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
+
+}
+
+impl FastClear for Vertex {
+
+    fn hard_clear(&mut self) {
+        self.is_syndrome = false;
+        self.propagated_dual_node = None;
+        self.propagated_grandson_dual_node = None;
+    }
+
+    fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
+
+}
+
+impl Vertex {
+
+    /// if this vertex is a mirrored vertex and it's disabled, it can be temporarily matched just like a virtual vertex
+    pub fn is_mirror_blocked(&self) -> bool {
+        if let Some(ref mirror_unit_ptr) = self.mirror_unit {
+            let mirror_unit_ptr = mirror_unit_ptr.upgrade_force();
+            let mirror_unit = mirror_unit_ptr.read_recursive();
+            !mirror_unit.enabled
+        } else {
+            false
+        }
+    }
+
+}
+
+impl DualModuleSerial {
 
     /// hard clear all growth (manual call not recommended due to performance drawback)
     pub fn hard_clear_graph(&mut self) {
@@ -1202,10 +1314,6 @@ impl DualModuleSerial {
         None
     }
 
-    pub fn contains_vertex(&self, vertex_index: VertexIndex) -> bool {
-        self.get_vertex_index(vertex_index).is_some()
-    }
-
     pub fn get_dual_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> DualNodeInternalPtr {
         self.get_dual_node_internal_ptr_optional(dual_node_ptr).unwrap()
     }
@@ -1240,116 +1348,6 @@ impl DualModuleSerial {
         let dual_node_internal_ptr = self.nodes[dual_node_index].as_ref().expect("internal dual node must exists");
         debug_assert!(dual_node_ptr == &dual_node_internal_ptr.read_recursive().origin.upgrade_force(), "dual node and dual internal node must corresponds to each other");
         dual_node_internal_ptr.clone()
-    }
-
-    /// execute a synchronize event by updating the state of a vertex and also update the internal dual node accordingly
-    pub fn execute_sync_event(&mut self, sync_event: &SyncRequest) {
-        let active_timestamp = self.active_timestamp;
-        debug_assert!(self.contains_vertex(sync_event.vertex_index));
-        let propagated_dual_node_internal_ptr = sync_event.propagated_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
-            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
-        });
-        let propagated_grandson_dual_node_internal_ptr = sync_event.propagated_grandson_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
-            self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
-        });
-        let local_vertex_index = self.get_vertex_index(sync_event.vertex_index).expect("cannot synchronize at a non-existing vertex");
-        let vertex_ptr = &self.vertices[local_vertex_index];
-        vertex_ptr.dynamic_clear(active_timestamp);
-        let mut vertex = vertex_ptr.write(active_timestamp);
-        if vertex.propagated_dual_node == propagated_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()) {
-            // actually this may happen: if the same vertex is propagated from two different units with the same distance
-            // to the closest grandson, it may happen that sync event will conflict on the grandson...
-            // this conflict doesn't matter anyway: any grandson is good, as long as they're consistent
-            // assert_eq!(vertex.propagated_grandson_dual_node, propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade()));
-            vertex.propagated_grandson_dual_node = propagated_grandson_dual_node_internal_ptr.as_ref().map(|x| x.downgrade());
-        } else {  // conflict with existing value, action needed
-            // first vacate the vertex, recovering dual node boundaries accordingly
-            if let Some(dual_node_internal_weak) = vertex.propagated_dual_node.as_ref() {
-                assert!(!vertex.is_syndrome, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
-                let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
-                let dual_node_internal_ptr = dual_node_internal_weak.upgrade_force();
-                let mut dual_node_internal = dual_node_internal_ptr.write();
-                vertex.propagated_dual_node = None;
-                vertex.propagated_grandson_dual_node = None;
-                // iterate over the boundary to remove any edges associated with the vertex and also reset those edges
-                for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
-                    let is_left = *is_left;
-                    let edge_ptr = edge_weak.upgrade_force();
-                    let mut edge = edge_ptr.write(active_timestamp);
-                    let this_vertex_ptr = if is_left {
-                        edge.left.upgrade_force()
-                    } else {
-                        edge.right.upgrade_force()
-                    };
-                    if &this_vertex_ptr == vertex_ptr {
-                        debug_assert!(if is_left { edge.left_growth == 0 } else { edge.right_growth == 0 }, "vacating a non-boundary vertex is forbidden");
-                        let dual_node = if is_left { &edge.left_dual_node } else { &edge.right_dual_node };
-                        if let Some(dual_node_weak) = dual_node.as_ref() {
-                            // sanity check: if exists, must be the same
-                            debug_assert!(dual_node_weak.upgrade_force() == dual_node_internal_ptr);
-                            // reset the dual node to be unoccupied
-                            if is_left {
-                                edge.left_dual_node = None;
-                                edge.left_grandson_dual_node = None;
-                            } else {
-                                edge.right_dual_node = None;
-                                edge.right_grandson_dual_node = None;
-                            }
-                        }
-                    } else {
-                        updated_boundary.push((is_left, edge_weak.clone()));
-                    }
-                }
-                // iterate over the edges around the vertex to add edges to the boundary
-                for edge_weak in vertex.edges.iter() {
-                    let edge_ptr = edge_weak.upgrade_force();
-                    edge_ptr.dynamic_clear(active_timestamp);
-                    let mut edge = edge_ptr.write(active_timestamp);
-                    let is_left = vertex_ptr.downgrade() == edge.left;
-                    let dual_node = if is_left { &edge.left_dual_node } else { &edge.right_dual_node };
-                    if let Some(dual_node_weak) = dual_node.as_ref() {
-                        // sanity check: if exists, must be the same
-                        debug_assert!(dual_node_weak.upgrade_force() == dual_node_internal_ptr);
-                        // need to add to the boundary
-                        if is_left {
-                            edge.left_dual_node = None;
-                            edge.left_grandson_dual_node = None;
-                        } else {
-                            edge.right_dual_node = None;
-                            edge.right_grandson_dual_node = None;
-                        };
-                        updated_boundary.push((!is_left, edge_weak.clone()));
-                    }
-                }
-                // update the boundary
-                std::mem::swap(&mut updated_boundary, &mut dual_node_internal.boundary);
-            }
-            // then update the vertex to the dual node
-            if let Some(dual_node_internal_ptr) = propagated_dual_node_internal_ptr.as_ref() {
-                // grandson dual node must present
-                let grandson_dual_node_internal_ptr = propagated_grandson_dual_node_internal_ptr.unwrap();
-                vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
-                vertex.propagated_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
-                let mut dual_node_internal = dual_node_internal_ptr.write();
-                for edge_weak in vertex.edges.iter() {
-                    let edge_ptr = edge_weak.upgrade_force();
-                    edge_ptr.dynamic_clear(active_timestamp);
-                    let mut edge = edge_ptr.write(active_timestamp);
-                    let is_left = vertex_ptr.downgrade() == edge.left;
-                    if is_left {
-                        assert_eq!(edge.left_dual_node, None, "edges incident to the vertex must have been vacated");
-                        edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
-                        edge.left_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
-                    } else {
-                        assert_eq!(edge.right_dual_node, None, "edges incident to the vertex must have been vacated");
-                        edge.right_dual_node = Some(dual_node_internal_ptr.downgrade());
-                        edge.right_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
-                    }
-                    dual_node_internal.boundary.push((is_left, edge_weak.clone()));
-                }
-            }
-            
-        }
     }
 
     /// this is equivalent to [`DualModuleSerial::prepare_dual_node_growth`] when there are no 0 weight edges, but when it encounters zero-weight edges, it will report `true`

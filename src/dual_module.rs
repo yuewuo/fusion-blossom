@@ -255,7 +255,7 @@ impl DualNode {
 
 }
 
-pub type DualNodePtr= ArcRwLock<DualNode>;
+pub type DualNodePtr = ArcRwLock<DualNode>;
 pub type DualNodeWeak = WeakRwLock<DualNode>;
 
 impl Ord for DualNodePtr {
@@ -458,6 +458,11 @@ pub trait DualModuleImpl {
      * the following apis are only required when this dual module can be used as a partitioned one
      */
 
+    /// create a partitioned dual module (hosting only a subgraph and subset of dual nodes) to be used in the parallel dual module
+    fn new_partitioned(_partitioned_initializer: &PartitionedSolverInitializer) -> Self where Self: std::marker::Sized {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
+    }
+
     /// prepare the growing or shrinking state of all nodes and return a list of sync requests in case of mirrored vertices are changed
     fn prepare_all(&mut self) -> &mut Vec<SyncRequest> {
         panic!("this dual module implementation doesn't support this function, please use another dual module")
@@ -476,6 +481,16 @@ pub trait DualModuleImpl {
             }
         }
         false
+    }
+
+    /// judge whether the current module hosts a vertex
+    fn contains_vertex(&self, _vertex_index: VertexIndex) -> bool {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
+    }
+
+    /// execute a synchronize event by updating the state of a vertex and also update the internal dual node accordingly
+    fn execute_sync_event(&mut self, _sync_event: &SyncRequest) {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
     }
 
 }

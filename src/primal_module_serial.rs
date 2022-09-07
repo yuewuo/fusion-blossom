@@ -52,7 +52,7 @@ pub struct PrimalNodeInternal {
     pub temporary_match: Option<(MatchTarget, DualNodeWeak)>,
 }
 
-pub type PrimalNodeInternalPtr= ArcRwLock<PrimalNodeInternal>;
+pub type PrimalNodeInternalPtr = ArcRwLock<PrimalNodeInternal>;
 pub type PrimalNodeInternalWeak = WeakRwLock<PrimalNodeInternal>;
 
 impl std::fmt::Debug for PrimalNodeInternalPtr {
