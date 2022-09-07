@@ -186,8 +186,8 @@ pub struct DualModuleParallelUnit<SerialModule: DualModuleImpl + Send + Sync> {
     pub owning_range: VertexRange,
     /// the vertices that are mirrored outside of whole_range, in order to propagate a vertex's sync event to every unit that mirrors it
     pub extra_descendant_mirrored_vertices: HashSet<VertexIndex>,
-    /// `Some(_)` only if this parallel dual module is a simple wrapper of a serial dual module
-    pub serial_module: ArcRwLock<SerialModule>,
+    /// the owned serial dual module
+    pub serial_module: SerialModule,
     /// left and right children dual modules
     pub children: Option<(DualModuleParallelUnitWeak<SerialModule>, DualModuleParallelUnitWeak<SerialModule>)>,
     /// parent dual module
@@ -357,7 +357,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             (0..unit_count).into_par_iter().map(|unit_index| {
                 // println!("unit_index: {unit_index}");
                 let dual_module = SerialModule::new_partitioned(&partitioned_initializers[unit_index]);
-                let dual_module_ptr = ArcRwLock::<SerialModule>::new(dual_module);
+                let dual_module_ptr = dual_module;
                 let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, unit_index, Arc::clone(&partition_info), partition_units[unit_index].clone());
                 unit
             }).collect_into_vec(&mut units);
@@ -588,7 +588,7 @@ impl<SerialModule: DualModuleImpl + FusionVisualizer + Send + Sync> FusionVisual
 
 impl<SerialModule: DualModuleImpl + FusionVisualizer + Send + Sync> FusionVisualizer for DualModuleParallelUnit<SerialModule> {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
-        let mut value = self.serial_module.read_recursive().snapshot(abbrev);
+        let mut value = self.serial_module.snapshot(abbrev);
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             snapshot_combine_values(&mut value, left_child_weak.upgrade_force().read_recursive().snapshot(abbrev), abbrev);
             snapshot_combine_values(&mut value, right_child_weak.upgrade_force().read_recursive().snapshot(abbrev), abbrev);
@@ -654,8 +654,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
             }
         }
         // my serial module
-        let mut serial_module = self.serial_module.write();
-        let local_sync_requests = serial_module.prepare_all();
+        let local_sync_requests = self.serial_module.prepare_all();
         sync_requests.append(local_sync_requests);
     }
 
@@ -669,8 +668,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
             left_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
             right_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
-            self.serial_module.write().set_grow_state(dual_node_ptr, grow_state);
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
+            self.serial_module.set_grow_state(dual_node_ptr, grow_state);
         }
     }
 
@@ -704,8 +703,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_prepare_nodes_shrink(nodes_circle, nodes_circle_vertices, sync_requests);
             }
         }
-        let mut serial_module = self.serial_module.write();
-        let local_sync_requests = serial_module.prepare_nodes_shrink(nodes_circle);
+        let local_sync_requests = self.serial_module.prepare_nodes_shrink(nodes_circle);
         sync_requests.append(local_sync_requests);
     }
 
@@ -727,8 +725,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex, nodes_circle_vertices);
             }
         }
-        if self.owning_range.contains_any(&nodes_circle_vertices) || self.serial_module.read_recursive().contains_dual_nodes_any(nodes_circle) {
-            self.serial_module.write().add_blossom(blossom_ptr);
+        if self.owning_range.contains_any(&nodes_circle_vertices) || self.serial_module.contains_dual_nodes_any(nodes_circle) {
+            self.serial_module.add_blossom(blossom_ptr);
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
@@ -757,9 +755,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
             }
         }
         // update on my serial module
-        let mut serial_module = self.serial_module.write();
-        if serial_module.contains_vertex(vertex_index) {
-            serial_module.add_syndrome_node(dual_node_ptr);
+        if self.serial_module.contains_vertex(vertex_index) {
+            self.serial_module.add_syndrome_node(dual_node_ptr);
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
@@ -770,7 +767,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
 
     pub fn iterative_compute_maximum_update_length(&mut self, group_max_update_length: &mut GroupMaxUpdateLength) {
         // TODO: early terminate if no active dual nodes anywhere in the descendant
-        group_max_update_length.extend(self.serial_module.write().compute_maximum_update_length());
+        group_max_update_length.extend(self.serial_module.compute_maximum_update_length());
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
                 let mut group_max_update_length_2 = GroupMaxUpdateLength::new();
@@ -803,14 +800,14 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
             }
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
-            self.serial_module.write().grow_dual_node(dual_node_ptr, length);
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
+            self.serial_module.grow_dual_node(dual_node_ptr, length);
         }
     }
 
     pub fn iterative_grow(&mut self, length: Weight) {
         // TODO: early terminate if no active dual nodes anywhere in the descendant
-        self.serial_module.write().grow(length);
+        self.serial_module.grow(length);
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
                 rayon::join(|| {
@@ -841,8 +838,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_remove_blossom(dual_node_ptr, representative_vertex);
             }
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(&dual_node_ptr) {
-            self.serial_module.write().remove_blossom(dual_node_ptr.clone());
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(&dual_node_ptr) {
+            self.serial_module.remove_blossom(dual_node_ptr.clone());
         }
     }
 
@@ -851,7 +848,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
 impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<SerialModule> {
 
     /// create a simple wrapper over a serial dual module
-    pub fn new_wrapper(dual_module_ptr: ArcRwLock<SerialModule>, unit_index: usize, partition_info: Arc<PartitionInfo>, partition_unit: PartitionUnitPtr) -> Self {
+    pub fn new_wrapper(serial_module: SerialModule, unit_index: usize, partition_info: Arc<PartitionInfo>, partition_unit: PartitionUnitPtr) -> Self {
         let partition_unit_info = &partition_info.units[unit_index];
         Self::new(DualModuleParallelUnit {
             unit_index: unit_index,
@@ -861,7 +858,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<Seria
             whole_range: partition_unit_info.whole_range,
             owning_range: partition_unit_info.owning_range,
             extra_descendant_mirrored_vertices: HashSet::new(),  // to be filled later
-            serial_module: dual_module_ptr,
+            serial_module: serial_module,
             children: None,  // to be filled later
             parent: None,  // to be filled later
             elevated_dual_nodes: PtrWeakHashSet::new(),
@@ -883,7 +880,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
-        self.serial_module.write().clear()
+        self.serial_module.clear()
     }
 
     /// add a new dual node from dual module root
@@ -943,7 +940,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         // TODO: execute on all nodes that handles this dual node
-        self.serial_module.write().compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update)
+        self.serial_module.compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update)
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
@@ -968,7 +965,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
         // TODO: split the edge modifier and then load them to individual descendant units
         // hint: each edge could appear in any unit that mirrors the two vertices
-        self.serial_module.write().load_edge_modifier(edge_modifier)
+        self.serial_module.load_edge_modifier(edge_modifier)
     }
 
     fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
@@ -1016,10 +1013,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
             right_child_weak.upgrade_force().write().execute_sync_event(sync_event);
         }
         // update on my serial module
-        let mut serial_module = self.serial_module.write();
-        if serial_module.contains_vertex(sync_event.vertex_index) {
+        if self.serial_module.contains_vertex(sync_event.vertex_index) {
             // println!("update: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
-            serial_module.execute_sync_event(sync_event);
+            self.serial_module.execute_sync_event(sync_event);
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
