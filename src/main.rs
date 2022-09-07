@@ -52,29 +52,29 @@ pub fn main() {
                     let mut codes = Vec::<(String, Box<dyn ExampleCode>)>::new();
                     let total_rounds = 1000;
                     let max_half_weight: Weight = 500;
-                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                         for d in [3, 7, 11, 15, 19] {
                             codes.push((format!("repetition {d} {p}"), Box::new(CodeCapacityRepetitionCode::new(d, p, max_half_weight))));
                         }
                     }
-                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                         for d in [3, 7, 11, 15, 19] {
                             codes.push((format!("planar {d} {p}"), Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))));
                         }
                     }
-                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // test erasures
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // test erasures
                         for d in [3, 7, 11, 15, 19] {
                             let mut code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
                             code.set_erasure_probability(p);
                             codes.push((format!("mixed erasure planar {d} {p}"), Box::new(code)));
                         }
                     }
-                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                         for d in [3, 7, 11] {
                             codes.push((format!("phenomenological {d} {p}"), Box::new(PhenomenologicalPlanarCode::new(d, d, p, max_half_weight))));
                         }
                     }
-                    for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                         for d in [3, 7, 11] {
                             codes.push((format!("circuit-level {d} {p}"), Box::new(CircuitLevelPlanarCode::new(d, d, p, max_half_weight))));
                         }
@@ -178,46 +178,46 @@ pub fn main() {
                     }
                     let enable_visualizer = matches.is_present("enable_visualizer");
                     let disable_blossom = matches.is_present("disable_blossom");
-                    let mut codes = Vec::<(String, (Box<dyn ExampleCode>, Box<dyn Fn(&SolverInitializer, &mut dual_module_parallel::DualModuleParallelConfig)>))>::new();
+                    let mut codes = Vec::<(String, (
+                        Box<dyn ExampleCode>,
+                        Box<dyn Fn(&SolverInitializer, &mut dual_module_parallel::DualModuleParallelConfig)>,
+                    ))>::new();
                     let total_rounds = 1000;
                     let max_half_weight: Weight = 500;
-                    // for p in [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
-                    //     for d in [7, 11, 15, 19] {
-                    //         let mut reordered_vertices = vec![];
-                    //         let split_vertical = (d + 1) / 2;
-                    //         for j in 0..split_vertical {
-                    //             reordered_vertices.push(j);
-                    //         }
-                    //         reordered_vertices.push(d);
-                    //         for j in split_vertical..d {
-                    //             reordered_vertices.push(j);
-                    //         }
-                    //         codes.push((format!("repetition {d} {p}"), (
-                    //             Box::new((|| {
-                    //                 let mut code = CodeCapacityRepetitionCode::new(d, p, max_half_weight);
-                    //                 code.reorder_vertices(&reordered_vertices);
-                    //                 code
-                    //             })()),
-                    //             Box::new(move |initializer, config| {
-                    //                 config.partitions = vec![
-                    //                     VertexRange::new(0, split_vertical + 1),
-                    //                     VertexRange::new(split_vertical + 2, initializer.vertex_num),
-                    //                 ];
-                    //                 config.fusions = vec![
-                    //                     (0, 1),
-                    //                 ];
-                    //             }),
-                    //         )));
-                    //     }
-                    // }
-                    // simple partition into top and bottom
                     for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                         for d in [7, 11, 15, 19] {
-                    // for p in [0.1, 0.3, 0.499] {
-                    //     for d in [7] {
+                            let mut reordered_vertices = vec![];
+                            let split_vertical = (d + 1) / 2;
+                            for j in 0..split_vertical {
+                                reordered_vertices.push(j);
+                            }
+                            reordered_vertices.push(d);
+                            for j in split_vertical..d {
+                                reordered_vertices.push(j);
+                            }
+                            codes.push((format!("2-partition repetition {d} {p}"), (
+                                Box::new((|| {
+                                    let mut code = CodeCapacityRepetitionCode::new(d, p, max_half_weight);
+                                    code.reorder_vertices(&reordered_vertices);
+                                    code
+                                })()),
+                                Box::new(move |initializer, config| {
+                                    config.partitions = vec![
+                                        VertexRange::new(0, split_vertical + 1),
+                                        VertexRange::new(split_vertical + 2, initializer.vertex_num),
+                                    ];
+                                    config.fusions = vec![
+                                        (0, 1),
+                                    ];
+                                }),
+                            )));
+                        }
+                    }
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
+                        for d in [7, 11, 15, 19] {
                             let split_horizontal = (d + 1) / 2;
                             let row_count = d + 1;
-                            codes.push((format!("planar {d} {p}"), (
+                            codes.push((format!("2-partition planar {d} {p}"), (
                                 Box::new((|| {
                                     let code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
                                     code
@@ -229,6 +229,75 @@ pub fn main() {
                                     ];
                                     config.fusions = vec![
                                         (0, 1),
+                                    ];
+                                }),
+                            )));
+                        }
+                    }
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // complex partition into 4 blocks
+                        for d in [7, 11, 15, 19] {
+                            let mut reordered_vertices = vec![];
+                            let row_count = d + 1;
+                            let split_horizontal = (d + 1) / 2;
+                            let split_vertical = (d + 1) / 2;
+                            let start_1 = 0;
+                            for i in 0..split_horizontal {  // left-top block
+                                for j in 0..split_vertical {
+                                    reordered_vertices.push(i * row_count + j);
+                                }
+                                reordered_vertices.push(i * row_count + (row_count-1));
+                            }
+                            let end_1 = reordered_vertices.len();
+                            for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
+                                reordered_vertices.push(i * row_count + split_vertical);
+                            }
+                            let start_2 = reordered_vertices.len();
+                            for i in 0..split_horizontal {  // right-top block
+                                for j in (split_vertical+1)..(row_count-1) {
+                                    reordered_vertices.push(i * row_count + j);
+                                }
+                            }
+                            let end_2 = reordered_vertices.len();
+                            {  // the big interface between top and bottom
+                                for j in 0..row_count {
+                                    reordered_vertices.push(split_horizontal * row_count + j);
+                                }
+                            }
+                            let start_3 = reordered_vertices.len();
+                            for i in (split_horizontal+1)..(row_count-1) {  // left-bottom block
+                                for j in 0..split_vertical {
+                                    reordered_vertices.push(i * row_count + j);
+                                }
+                                reordered_vertices.push(i * row_count + (row_count-1));
+                            }
+                            let end_3 = reordered_vertices.len();
+                            for i in (split_horizontal+1)..(row_count-1) {  // interface between the left-bottom block and the right-bottom block
+                                reordered_vertices.push(i * row_count + split_vertical);
+                            }
+                            let start_4 = reordered_vertices.len();
+                            for i in (split_horizontal+1)..(row_count-1) {  // right-bottom block
+                                for j in (split_vertical+1)..(row_count-1) {
+                                    reordered_vertices.push(i * row_count + j);
+                                }
+                            }
+                            let end_4 = reordered_vertices.len();
+                            codes.push((format!("4-partition planar {d} {p}"), (
+                                Box::new((|| {
+                                    let mut code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
+                                    code.reorder_vertices(&reordered_vertices);
+                                    code
+                                })()),
+                                Box::new(move |_initializer, config| {
+                                    config.partitions = vec![
+                                        VertexRange::new(start_1, end_1),
+                                        VertexRange::new(start_2, end_2),
+                                        VertexRange::new(start_3, end_3),
+                                        VertexRange::new(start_4, end_4),
+                                    ];
+                                    config.fusions = vec![
+                                        (0, 1),
+                                        (2, 3),
+                                        (4, 5),
                                     ];
                                 }),
                             )));
