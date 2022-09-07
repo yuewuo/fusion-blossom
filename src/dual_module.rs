@@ -468,6 +468,11 @@ pub trait DualModuleImpl {
         panic!("this dual module implementation doesn't support this function, please use another dual module")
     }
 
+    /// execute a synchronize event by updating the state of a vertex and also update the internal dual node accordingly
+    fn execute_sync_event(&mut self, _sync_event: &SyncRequest) {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
+    }
+
     /// judge whether the current module hosts the dual node
     fn contains_dual_node(&self, _dual_node_ptr: &DualNodePtr) -> bool {
         panic!("this dual module implementation doesn't support this function, please use another dual module")
@@ -485,11 +490,6 @@ pub trait DualModuleImpl {
 
     /// judge whether the current module hosts a vertex
     fn contains_vertex(&self, _vertex_index: VertexIndex) -> bool {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
-    }
-
-    /// execute a synchronize event by updating the state of a vertex and also update the internal dual node accordingly
-    fn execute_sync_event(&mut self, _sync_event: &SyncRequest) {
         panic!("this dual module implementation doesn't support this function, please use another dual module")
     }
 

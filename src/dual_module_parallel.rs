@@ -476,30 +476,38 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                 self.units[owning_unit_index].clone()
             },
         };
-        let mut unit = unit_ptr.write();
-        if unit.is_active {
-            unit.add_dual_node(&dual_node_ptr);
-        } else {
-            unit.pending_dual_node_ptrs.push(dual_node_ptr.clone());
-        }
+        self.thread_pool.scope(|_| {
+            let mut unit = unit_ptr.write();
+            if unit.is_active {
+                unit.add_dual_node(&dual_node_ptr);
+            } else {
+                unit.pending_dual_node_ptrs.push(dual_node_ptr.clone());
+            }
+        })
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
         let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-        let mut unit = unit_ptr.write();
-        unit.remove_blossom(dual_node_ptr);
+        self.thread_pool.scope(|_| {
+            let mut unit = unit_ptr.write();
+            unit.remove_blossom(dual_node_ptr);
+        })
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
         let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-        let mut unit = unit_ptr.write();
-        unit.set_grow_state(&dual_node_ptr, grow_state);
+        self.thread_pool.scope(|_| {
+            let mut unit = unit_ptr.write();
+            unit.set_grow_state(&dual_node_ptr, grow_state);
+        })
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-        let mut unit = unit_ptr.write();
-        unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update)
+        self.thread_pool.scope(|_| {
+            let mut unit = unit_ptr.write();
+            unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update)
+        })
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
@@ -519,8 +527,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
         let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-        let mut unit = unit_ptr.write();
-        unit.grow_dual_node(&dual_node_ptr, length);
+        self.thread_pool.scope(|_| {
+            let mut unit = unit_ptr.write();
+            unit.grow_dual_node(&dual_node_ptr, length);
+        })
     }
 
     fn grow(&mut self, length: Weight) {
@@ -545,8 +555,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
         let unit_ptr = self.find_active_ancestor(&nodes_circle[0]);
-        let mut unit = unit_ptr.write();
-        unit.prepare_nodes_shrink(nodes_circle);
+        self.thread_pool.scope(|_| {
+            let mut unit = unit_ptr.write();
+            unit.prepare_nodes_shrink(nodes_circle);
+        });
         &mut self.empty_sync_request
     }
 
@@ -607,21 +619,6 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 }
             }
         }
-        // TODO: steal the dual module list from the left child, presumably the larger one;
-        // and then renumber the dual nodes from fusion unit and the right child, presumably the smaller ones.
-
-    }
-
-    pub fn sync_prepare_growth_append_sync_requests(&mut self, sync_requests: &mut Vec<SyncRequest>) {
-        // depth-first search
-        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            left_child_weak.upgrade_force().write().sync_prepare_growth_append_sync_requests(sync_requests);
-            right_child_weak.upgrade_force().write().sync_prepare_growth_append_sync_requests(sync_requests);
-        }
-        // my serial module
-        let mut serial_module = self.serial_module.write();
-        let local_sync_requests = serial_module.prepare_all();
-        sync_requests.append(local_sync_requests);
     }
 
     /// if any descendant unit mirror or own the vertex
@@ -629,57 +626,25 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         self.whole_range.contains(&vertex_index) || self.extra_descendant_mirrored_vertices.contains(&vertex_index)
     }
 
-    pub fn sync_prepare_growth_update_sync_event(&mut self, sync_event: &SyncRequest) {
-        // if the vertex is not hold by any descendant, simply return
-        if !self.is_vertex_in_descendant(sync_event.vertex_index) {
-            return
-        }
-        // println!("sync_prepare_growth_update_sync_event: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+    /// iteratively prepare all growing and shrinking and append the sync requests
+    pub fn iterative_prepare_all(&mut self, sync_requests: &mut Vec<SyncRequest>) {
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            left_child_weak.upgrade_force().write().sync_prepare_growth_update_sync_event(sync_event);
-            right_child_weak.upgrade_force().write().sync_prepare_growth_update_sync_event(sync_event);
+            left_child_weak.upgrade_force().write().iterative_prepare_all(sync_requests);
+            right_child_weak.upgrade_force().write().iterative_prepare_all(sync_requests);
         }
-        // update on my serial module
+        // my serial module
         let mut serial_module = self.serial_module.write();
-        if serial_module.contains_vertex(sync_event.vertex_index) {
-            // println!("update: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
-            serial_module.execute_sync_event(sync_event);
-        }
-        // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
-        // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
-        if !self.whole_range.contains(&sync_event.vertex_index) {
-            if let Some((propagated_dual_node_weak, _)) = sync_event.propagated_dual_node.as_ref() {
-                self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
-            }
-        }
+        let local_sync_requests = serial_module.prepare_all();
+        sync_requests.append(local_sync_requests);
     }
 
     /// no need to deduplicate the events: the result will always be consistent with the last one
-    pub fn sync_events_execute(&mut self, sync_requests: &Vec<SyncRequest>) {
+    pub fn execute_sync_events(&mut self, sync_requests: &Vec<SyncRequest>) {
         // println!("sync_requests: {sync_requests:?}");
         for sync_request in sync_requests.iter() {
-            self.sync_prepare_growth_update_sync_event(sync_request);
+            self.execute_sync_event(sync_request);
         }
-    }
-
-    /// prepare the growth of all children and synchronize them
-    pub fn sync_prepare_growth(&mut self) {
-        if self.children.is_none() {
-            // don't do anything, not even prepare the growth because it will be done in the serial module
-        } else {
-            let mut sync_requests = vec![];
-            loop {
-                self.sync_prepare_growth_append_sync_requests(&mut sync_requests);
-                if sync_requests.is_empty() {
-                    break
-                }
-                // println!("sync_requests: {sync_requests:?}");
-                self.sync_events_execute(&sync_requests);
-                sync_requests.clear();
-            }
-        }
-        // TODO: what if a 0-weighted chain go across multiple units? iteratively run this when happens
     }
 
     /// iteratively set grow state
@@ -689,11 +654,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         }
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            for child_weak in [left_child_weak, right_child_weak] {
-                let child_ptr = child_weak.upgrade_force();
-                let mut child = child_ptr.write();
-                child.iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
-            }
+            left_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
+            right_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
         }
         if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
             self.serial_module.write().set_grow_state(dual_node_ptr, grow_state);
@@ -710,34 +672,19 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     // prepare the initial shrink of a blossom
-    pub fn sync_prepare_blossom_initial_shrink_append_sync_requests(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>, sync_requests: &mut Vec<SyncRequest>) {
+    pub fn iterative_prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>
+            , sync_requests: &mut Vec<SyncRequest>) {
         if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
         }
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            for child_weak in [left_child_weak, right_child_weak] {
-                let child_ptr = child_weak.upgrade_force();
-                let mut child = child_ptr.write();
-                child.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, sync_requests);
-            }
+            left_child_weak.upgrade_force().write().iterative_prepare_nodes_shrink(nodes_circle, nodes_circle_vertices, sync_requests);
+            right_child_weak.upgrade_force().write().iterative_prepare_nodes_shrink(nodes_circle, nodes_circle_vertices, sync_requests);
         }
         let mut serial_module = self.serial_module.write();
         let local_sync_requests = serial_module.prepare_nodes_shrink(nodes_circle);
         sync_requests.append(local_sync_requests);
-    }
-
-    pub fn sync_prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>) {
-        let mut sync_requests = vec![];
-        loop {
-            self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, &mut sync_requests);
-            if sync_requests.is_empty() {
-                break
-            }
-            // println!("sync_requests: {sync_requests:?}");
-            self.sync_events_execute(&sync_requests);
-            sync_requests.clear();
-        }
     }
 
     pub fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex
@@ -747,11 +694,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         }
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            for child_weak in [left_child_weak, right_child_weak] {
-                let child_ptr = child_weak.upgrade_force();
-                let mut child = child_ptr.write();
-                child.iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex, nodes_circle_vertices);
-            }
+            left_child_weak.upgrade_force().write().iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex, nodes_circle_vertices);
+            right_child_weak.upgrade_force().write().iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex, nodes_circle_vertices);
         }
         if self.owning_range.contains_any(&nodes_circle_vertices) || self.serial_module.read_recursive().contains_dual_nodes_any(nodes_circle) {
             self.serial_module.write().add_blossom(blossom_ptr);
@@ -800,11 +744,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
             return  // no descendant related to this dual node
         }
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            for child_weak in [left_child_weak, right_child_weak] {
-                let child_ptr = child_weak.upgrade_force();
-                let mut child = child_ptr.write();
-                child.iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
-            }
+            left_child_weak.upgrade_force().write().iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
+            right_child_weak.upgrade_force().write().iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
         }
         if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(dual_node_ptr) {
             self.serial_module.write().grow_dual_node(dual_node_ptr, length);
@@ -825,11 +766,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
             return  // no descendant related to this dual node
         }
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            for child_weak in [left_child_weak, right_child_weak] {
-                let child_ptr = child_weak.upgrade_force();
-                let mut child = child_ptr.write();
-                child.iterative_remove_blossom(dual_node_ptr, representative_vertex);
-            }
+            left_child_weak.upgrade_force().write().iterative_remove_blossom(dual_node_ptr, representative_vertex);
+            right_child_weak.upgrade_force().write().iterative_remove_blossom(dual_node_ptr, representative_vertex);
         }
         if self.owning_range.contains(&representative_vertex) || self.serial_module.read_recursive().contains_dual_node(&dual_node_ptr) {
             self.serial_module.write().remove_blossom(dual_node_ptr.clone());
@@ -911,10 +849,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                 // first set all children dual nodes as shrinking, to be safe
                 let nodes_circle_ptrs: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force()).collect();
                 let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|weak| weak.upgrade_force().get_representative_vertex()).collect();
-                self.sync_prepare_blossom_initial_shrink(&nodes_circle_ptrs, &nodes_circle_vertices);
-                // if dual_node_ptr.read_recursive().index == 8 {
-                //     return
-                // }
+                self.prepare_nodes_shrink(&nodes_circle_ptrs);
                 self.iterative_add_blossom(dual_node_ptr, &nodes_circle_ptrs, representative_vertex, &nodes_circle_vertices);
             },
         }
@@ -940,9 +875,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
         // first prepare all dual node for growth and shrink accordingly and synchronize them
-        self.sync_prepare_growth();
+        self.prepare_all();
         // them do the functions independently
-        let mut group_max_update_length = self.serial_module.write().compute_maximum_update_length();
+        let mut group_max_update_length = GroupMaxUpdateLength::new();
         self.iterative_compute_maximum_update_length(&mut group_max_update_length);
         group_max_update_length
     }
@@ -965,8 +900,61 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
         let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|ptr| ptr.get_representative_vertex()).collect();
-        self.sync_prepare_blossom_initial_shrink(&nodes_circle, &nodes_circle_vertices);
+        let mut sync_requests = vec![];
+        loop {
+            self.iterative_prepare_nodes_shrink(nodes_circle, &nodes_circle_vertices, &mut sync_requests);
+            if sync_requests.is_empty() {
+                break
+            }
+            // println!("sync_requests: {sync_requests:?}");
+            self.execute_sync_events(&sync_requests);
+            sync_requests.clear();
+        }
         &mut self.empty_sync_request
+    }
+
+    fn prepare_all(&mut self) -> &mut Vec<SyncRequest> {
+        if self.children.is_none() {
+            // don't do anything, not even prepare the growth because it will be done in the serial module
+        } else {
+            let mut sync_requests = vec![];
+            loop {
+                self.iterative_prepare_all(&mut sync_requests);
+                if sync_requests.is_empty() {
+                    break
+                }
+                // println!("sync_requests: {sync_requests:?}");
+                self.execute_sync_events(&sync_requests);
+                sync_requests.clear();
+            }
+        }
+        &mut self.empty_sync_request
+    }
+
+    fn execute_sync_event(&mut self, sync_event: &SyncRequest) {
+        // if the vertex is not hold by any descendant, simply return
+        if !self.is_vertex_in_descendant(sync_event.vertex_index) {
+            return
+        }
+        // println!("sync_prepare_growth_update_sync_event: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            left_child_weak.upgrade_force().write().execute_sync_event(sync_event);
+            right_child_weak.upgrade_force().write().execute_sync_event(sync_event);
+        }
+        // update on my serial module
+        let mut serial_module = self.serial_module.write();
+        if serial_module.contains_vertex(sync_event.vertex_index) {
+            // println!("update: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
+            serial_module.execute_sync_event(sync_event);
+        }
+        // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
+        // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
+        if !self.whole_range.contains(&sync_event.vertex_index) {
+            if let Some((propagated_dual_node_weak, _)) = sync_event.propagated_dual_node.as_ref() {
+                self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
+            }
+        }
     }
 
 }
