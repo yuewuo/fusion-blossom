@@ -32,7 +32,7 @@ pub struct PerfectMatching {
 pub trait PrimalModuleImpl {
 
     /// create a primal module given the dual module
-    fn new<D: DualModuleImpl>(dual_module: &D) -> Self;
+    fn new(solver_initializer: &SolverInitializer) -> Self;
 
     /// clear all states; however this method is not necessarily called when load a new decoding problem, so you need to call it yourself
     fn clear(&mut self);

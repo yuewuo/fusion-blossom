@@ -98,7 +98,7 @@ impl PrimalNodeInternal {
 
 impl PrimalModuleImpl for PrimalModuleSerial {
 
-    fn new<D: DualModuleImpl>(_dual_module: &D) -> Self {
+    fn new(_initializer: &SolverInitializer) -> Self {
         Self {
             nodes: vec![],
             debug_resolve_only_one: false,
@@ -1035,7 +1035,7 @@ pub mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1178,7 +1178,7 @@ pub mod tests {
         // create dual module
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1240,7 +1240,7 @@ pub mod tests {
         // create dual module
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1305,7 +1305,7 @@ pub mod tests {
         // create dual module
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1370,7 +1370,7 @@ pub mod tests {
         // create dual module
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
@@ -1435,7 +1435,7 @@ pub mod tests {
         // create dual module
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
@@ -1515,7 +1515,7 @@ pub mod tests {
         // create dual module
         let mut dual_module = DualModuleSerial::new(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+        let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);

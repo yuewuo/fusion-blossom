@@ -11,10 +11,10 @@ use fusion_blossom::primal_module::*;
 use fusion_blossom::dual_module_parallel;
 use pbr::ProgressBar;
 
-// commonly used types
 use dual_module_serial::DualModuleSerial;
 use primal_module_serial::PrimalModuleSerial;
 use dual_module_parallel::DualModuleParallel;
+use std::sync::Arc;
 
 fn create_clap_parser<'a>(color_choice: clap::ColorChoice) -> clap::Command<'a> {
     clap::Command::new("Fusion Blossom")
@@ -94,7 +94,7 @@ pub fn main() {
                         let mut initializer = code.get_initializer();
                         let mut dual_module = DualModuleSerial::new(&initializer);
                         // create primal module
-                        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+                        let mut primal_module = PrimalModuleSerial::new(&initializer);
                         primal_module.debug_resolve_only_one = false;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 0..total_rounds {
@@ -317,11 +317,12 @@ pub fn main() {
                         // create dual module
                         let mut initializer = code.get_initializer();
                         let config = dual_module_parallel::DualModuleParallelConfig::default();
-                        let mut partition_config = PartitionConfig::default();
+                        let mut partition_config = PartitionConfig::default(&initializer);
                         partition_func(&initializer, &mut partition_config);
-                        let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, partition_config, config);
+                        let partition_info = partition_config.into_info(&initializer);
+                        let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, Arc::clone(&partition_info), config);
                         // create primal module
-                        let mut primal_module = PrimalModuleSerial::new(&dual_module);
+                        let mut primal_module = PrimalModuleSerial::new(&initializer);
                         primal_module.debug_resolve_only_one = false;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 82..total_rounds {
