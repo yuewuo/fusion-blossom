@@ -4,9 +4,8 @@
 //!
 
 use super::util::*;
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use crate::derivative::Derivative;
-use crate::parking_lot::RwLock;
 use core::cmp::Ordering;
 use std::collections::{BinaryHeap, BTreeMap, HashSet};
 use super::visualize::*;
@@ -256,7 +255,8 @@ impl DualNode {
 
 }
 
-create_ptr_types!(DualNode, DualNodePtr, DualNodeWeak);
+pub type DualNodePtr= ArcRwLock<DualNode>;
+pub type DualNodeWeak = WeakRwLock<DualNode>;
 
 impl Ord for DualNodePtr {
     // a consistent compare (during a single program)

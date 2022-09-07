@@ -6,8 +6,6 @@
 
 use super::util::*;
 use crate::derivative::Derivative;
-use std::sync::{Arc, Weak};
-use crate::parking_lot::RwLock;
 use super::primal_module::*;
 use super::visualize::*;
 use super::dual_module::*;
@@ -54,7 +52,8 @@ pub struct PrimalNodeInternal {
     pub temporary_match: Option<(MatchTarget, DualNodeWeak)>,
 }
 
-create_ptr_types!(PrimalNodeInternal, PrimalNodeInternalPtr, PrimalNodeInternalWeak);
+pub type PrimalNodeInternalPtr= ArcRwLock<PrimalNodeInternal>;
+pub type PrimalNodeInternalWeak = WeakRwLock<PrimalNodeInternal>;
 
 impl std::fmt::Debug for PrimalNodeInternalPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

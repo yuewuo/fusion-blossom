@@ -16,7 +16,6 @@ use super::util::*;
 use std::sync::{Arc, Weak};
 use super::dual_module::*;
 use super::dual_module_serial::*;
-use crate::parking_lot::RwLock;
 use crate::serde_json;
 use serde::{Serialize, Deserialize};
 use super::visualize::*;
@@ -201,7 +200,8 @@ pub struct DualModuleParallelUnit {
     pub empty_sync_request: Vec<SyncRequest>,
 }
 
-create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleParallelUnitWeak);
+pub type DualModuleParallelUnitPtr= ArcRwLock<DualModuleParallelUnit>;
+pub type DualModuleParallelUnitWeak = WeakRwLock<DualModuleParallelUnit>;
 
 impl std::fmt::Debug for DualModuleParallelUnitPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

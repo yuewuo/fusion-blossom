@@ -102,7 +102,8 @@ pub struct PartitionUnit {
     pub enabled: bool,
 }
 
-create_ptr_types!(PartitionUnit, PartitionUnitPtr, PartitionUnitWeak);
+pub type PartitionUnitPtr= ArcRwLock<PartitionUnit>;
+pub type PartitionUnitWeak = WeakRwLock<PartitionUnit>;
 
 impl std::fmt::Debug for PartitionUnitPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -277,122 +278,158 @@ pub trait RwLockPtr<ObjType> {
 
 }
 
-#[macro_export]
-macro_rules! create_ptr_types {
-    (
-        $struct_name:ident, $ptr_name:ident, $weak_name:ident
-    ) => {
+pub struct ArcRwLock<T> {
+    ptr: Arc<RwLock<T>>,
+}
 
-        pub struct $ptr_name { ptr: Arc<RwLock<$struct_name>>, }
-        pub struct $weak_name { ptr: Weak<RwLock<$struct_name>>, }
+pub struct WeakRwLock<T> {
+    ptr: Weak<RwLock<T>>,
+}
 
-        impl $ptr_name { pub fn downgrade(&self) -> $weak_name { $weak_name { ptr: Arc::downgrade(&self.ptr) } } }
-        impl $weak_name {
-            pub fn upgrade_force(&self) -> $ptr_name { $ptr_name { ptr: self.ptr.upgrade().unwrap() } }
-            pub fn upgrade(&self) -> Option<$ptr_name> { self.ptr.upgrade().map(|x| $ptr_name { ptr: x }) }
+impl<T> ArcRwLock<T> {
+    pub fn downgrade(&self) -> WeakRwLock<T> {
+        WeakRwLock::<T> {
+            ptr: Arc::downgrade(&self.ptr)
         }
-
-        impl Clone for $ptr_name {
-            fn clone(&self) -> Self {
-                Self::new_ptr(Arc::clone(self.ptr()))
-            }
-        }
-
-        impl RwLockPtr<$struct_name> for $ptr_name {
-            fn new_ptr(ptr: Arc<RwLock<$struct_name>>) -> Self { Self { ptr: ptr }  }
-            fn new(obj: $struct_name) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-            #[inline(always)] fn ptr(&self) -> &Arc<RwLock<$struct_name>> { &self.ptr }
-            #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<$struct_name>> { &mut self.ptr }
-        }
-
-        impl PartialEq for $ptr_name {
-            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-        }
-
-        impl Eq for $ptr_name { }
-
-        impl Clone for $weak_name {
-            fn clone(&self) -> Self {
-                Self { ptr: self.ptr.clone() }
-            }
-        }
-
-        impl PartialEq for $weak_name {
-            fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
-        }
-
-        impl Eq for $weak_name { }
-
-        impl std::ops::Deref for $ptr_name {
-            type Target = RwLock<$struct_name>;
-            fn deref(&self) -> &Self::Target {
-                &self.ptr
-            }
-        }
-
-        impl weak_table::traits::WeakElement for $weak_name {
-            type Strong = $ptr_name;
-            fn new(view: &Self::Strong) -> Self {
-                view.downgrade()
-            }
-            fn view(&self) -> Option<Self::Strong> {
-                self.upgrade()
-            }
-            fn clone(view: &Self::Strong) -> Self::Strong {
-                view.clone()
-            }
-        }
-
     }
 }
-#[allow(unused_imports)] pub use create_ptr_types;
 
-#[macro_export]
-macro_rules! create_fast_clear_ptr_types {
-    (
-        $struct_name:ident, $ptr_name:ident, $weak_name:ident
-    ) => {
-
-        pub struct $ptr_name { ptr: Arc<RwLock<$struct_name>>, }
-        pub struct $weak_name { ptr: Weak<RwLock<$struct_name>>, }
-
-        impl $ptr_name { pub fn downgrade(&self) -> $weak_name { $weak_name { ptr: Arc::downgrade(&self.ptr) } } }
-        impl $weak_name {
-            pub fn upgrade_force(&self) -> $ptr_name { $ptr_name { ptr: self.ptr.upgrade().unwrap() } }
-            pub fn upgrade(&self) -> Option<$ptr_name> { self.ptr.upgrade().map(|x| $ptr_name { ptr: x }) }
+impl<T> WeakRwLock<T> {
+    pub fn upgrade_force(&self) -> ArcRwLock<T> {
+        ArcRwLock::<T> {
+            ptr: self.ptr.upgrade().unwrap()
         }
-
-        impl Clone for $ptr_name {
-            fn clone(&self) -> Self {
-                Self::new_ptr(Arc::clone(self.ptr()))
-            }
-        }
-
-        impl FastClearRwLockPtr<$struct_name> for $ptr_name {
-            fn new_ptr(ptr: Arc<RwLock<$struct_name>>) -> Self { Self { ptr: ptr }  }
-            fn new(obj: $struct_name) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-            #[inline(always)] fn ptr(&self) -> &Arc<RwLock<$struct_name>> { &self.ptr }
-            #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<$struct_name>> { &mut self.ptr }
-        }
-
-        impl PartialEq for $ptr_name {
-            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
-        }
-
-        impl Eq for $ptr_name { }
-
-        impl Clone for $weak_name {
-            fn clone(&self) -> Self {
-                Self { ptr: self.ptr.clone() }
-            }
-        }
-
-        impl PartialEq for $weak_name {
-            fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
-        }
-
-        impl Eq for $weak_name { }
-
+    }
+    pub fn upgrade(&self) -> Option<ArcRwLock<T>> {
+        self.ptr.upgrade().map(|x| ArcRwLock::<T> { ptr: x })
     }
 }
-#[allow(unused_imports)] pub use create_fast_clear_ptr_types;
+
+impl<T> Clone for ArcRwLock<T> {
+    fn clone(&self) -> Self {
+        Self::new_ptr(Arc::clone(self.ptr()))
+    }
+}
+
+impl<T> RwLockPtr<T> for ArcRwLock<T> {
+    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr: ptr }  }
+    fn new(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
+    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
+}
+
+impl<T> PartialEq for ArcRwLock<T> {
+    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
+impl<T> Eq for ArcRwLock<T> { }
+
+impl<T> Clone for WeakRwLock<T> {
+    fn clone(&self) -> Self {
+        Self { ptr: self.ptr.clone() }
+    }
+}
+
+impl<T> PartialEq for WeakRwLock<T> {
+    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+}
+
+impl<T> Eq for WeakRwLock<T> { }
+
+impl<T> std::ops::Deref for ArcRwLock<T> {
+    type Target = RwLock<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.ptr
+    }
+}
+
+impl<T> weak_table::traits::WeakElement for WeakRwLock<T> {
+    type Strong = ArcRwLock<T>;
+    fn new(view: &Self::Strong) -> Self {
+        view.downgrade()
+    }
+    fn view(&self) -> Option<Self::Strong> {
+        self.upgrade()
+    }
+    fn clone(view: &Self::Strong) -> Self::Strong {
+        view.clone()
+    }
+}
+
+pub struct FastClearArcRwLock<T: FastClear> {
+    ptr: Arc<RwLock<T>>,
+}
+
+pub struct FastClearWeakRwLock<T: FastClear> {
+    ptr: Weak<RwLock<T>>,
+}
+
+impl<T: FastClear> FastClearArcRwLock<T> {
+    pub fn downgrade(&self) -> FastClearWeakRwLock<T> {
+        FastClearWeakRwLock::<T> {
+            ptr: Arc::downgrade(&self.ptr)
+        }
+    }
+}
+
+impl<T: FastClear> FastClearWeakRwLock<T> {
+    pub fn upgrade_force(&self) -> FastClearArcRwLock<T> {
+        FastClearArcRwLock::<T> {
+            ptr: self.ptr.upgrade().unwrap()
+        }
+    }
+    pub fn upgrade(&self) -> Option<FastClearArcRwLock<T>> {
+        self.ptr.upgrade().map(|x| FastClearArcRwLock::<T> { ptr: x })
+    }
+}
+
+impl<T: FastClear> Clone for FastClearArcRwLock<T> {
+    fn clone(&self) -> Self {
+        Self::new_ptr(Arc::clone(self.ptr()))
+    }
+}
+
+impl<T: FastClear> FastClearRwLockPtr<T> for FastClearArcRwLock<T> {
+    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr: ptr }  }
+    fn new(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
+    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
+}
+
+impl<T: FastClear> PartialEq for FastClearArcRwLock<T> {
+    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+}
+
+impl<T: FastClear> Eq for FastClearArcRwLock<T> { }
+
+impl<T: FastClear> Clone for FastClearWeakRwLock<T> {
+    fn clone(&self) -> Self {
+        Self { ptr: self.ptr.clone() }
+    }
+}
+
+impl<T: FastClear> PartialEq for FastClearWeakRwLock<T> {
+    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+}
+
+impl<T: FastClear> Eq for FastClearWeakRwLock<T> { }
+
+impl<T: FastClear> std::ops::Deref for FastClearArcRwLock<T> {
+    type Target = RwLock<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.ptr
+    }
+}
+
+impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
+    type Strong = FastClearArcRwLock<T>;
+    fn new(view: &Self::Strong) -> Self {
+        view.downgrade()
+    }
+    fn view(&self) -> Option<Self::Strong> {
+        self.upgrade()
+    }
+    fn clone(view: &Self::Strong) -> Self::Strong {
+        view.clone()
+    }
+}

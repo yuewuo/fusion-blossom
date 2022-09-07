@@ -10,8 +10,6 @@
 
 use super::util::*;
 use crate::derivative::Derivative;
-use std::sync::{Arc, Weak};
-use crate::parking_lot::RwLock;
 use super::dual_module::*;
 use super::visualize::*;
 use std::collections::HashMap;
@@ -62,7 +60,8 @@ pub struct UnitModuleInfo {
     pub dual_node_pointers: PtrWeakKeyHashMap<DualNodeWeak, usize>,
 }
 
-create_ptr_types!(DualModuleSerial, DualModuleSerialPtr, DualModuleSerialWeak);
+pub type DualModuleSerialPtr= ArcRwLock<DualModuleSerial>;
+pub type DualModuleSerialWeak = WeakRwLock<DualModuleSerial>;
 
 /// internal information of the dual node, added to the [`DualNode`]
 #[derive(Derivative)]
@@ -83,7 +82,8 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
-create_ptr_types!(DualNodeInternal, DualNodeInternalPtr, DualNodeInternalWeak);
+pub type DualNodeInternalPtr= ArcRwLock<DualNodeInternal>;
+pub type DualNodeInternalWeak = WeakRwLock<DualNodeInternal>;
 
 impl std::fmt::Debug for DualNodeInternalPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -120,7 +120,8 @@ pub struct Vertex {
     pub timestamp: FastClearTimestamp,
 }
 
-create_fast_clear_ptr_types!(Vertex, VertexPtr, VertexWeak);
+pub type VertexPtr= FastClearArcRwLock<Vertex>;
+pub type VertexWeak = FastClearWeakRwLock<Vertex>;
 
 impl std::fmt::Debug for VertexPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -167,7 +168,8 @@ pub struct Edge {
     pub dedup_timestamp: (FastClearTimestamp, FastClearTimestamp),
 }
 
-create_fast_clear_ptr_types!(Edge, EdgePtr, EdgeWeak);
+pub type EdgePtr= FastClearArcRwLock<Edge>;
+pub type EdgeWeak = FastClearWeakRwLock<Edge>;
 
 impl std::fmt::Debug for EdgePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
