@@ -670,9 +670,15 @@ impl DualModuleParallelUnit {
             // don't do anything, not even prepare the growth because it will be done in the serial module
         } else {
             let mut sync_requests = vec![];
-            self.sync_prepare_growth_append_sync_requests(&mut sync_requests);
-            // println!("sync_requests: {sync_requests:?}");
-            self.sync_events_execute(&sync_requests);
+            loop {
+                self.sync_prepare_growth_append_sync_requests(&mut sync_requests);
+                if sync_requests.is_empty() {
+                    break
+                }
+                // println!("sync_requests: {sync_requests:?}");
+                self.sync_events_execute(&sync_requests);
+                sync_requests.clear();
+            }
         }
         // TODO: what if a 0-weighted chain go across multiple units? iteratively run this when happens
     }
@@ -725,9 +731,15 @@ impl DualModuleParallelUnit {
 
     pub fn sync_prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>) {
         let mut sync_requests = vec![];
-        self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, &mut sync_requests);
-        // println!("sync_requests: {sync_requests:?}");
-        self.sync_events_execute(&sync_requests);
+        loop {
+            self.sync_prepare_blossom_initial_shrink_append_sync_requests(nodes_circle, nodes_circle_vertices, &mut sync_requests);
+            if sync_requests.is_empty() {
+                break
+            }
+            // println!("sync_requests: {sync_requests:?}");
+            self.sync_events_execute(&sync_requests);
+            sync_requests.clear();
+        }
     }
 
     pub fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex
@@ -1344,6 +1356,14 @@ pub mod tests {
         let visualize_filename = format!("dual_module_parallel_debug_11.json");
         let syndrome_vertices = vec![192, 193, 194, 212, 214, 232, 233];  // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 7);
+    }
+
+    /// panicked at 'no sync requests should arise here; make sure to deal with all sync requests before growing', src/dual_module_serial.rs:582:13
+    #[test]
+    fn dual_module_parallel_debug_12() {  // cargo test dual_module_parallel_debug_12 -- --nocapture
+        let visualize_filename = format!("dual_module_parallel_debug_12.json");
+        let syndrome_vertices = vec![197, 216, 235, 275, 296, 316];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 5);
     }
 
 }
