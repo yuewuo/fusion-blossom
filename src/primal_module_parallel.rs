@@ -18,8 +18,29 @@ pub struct PrimalModuleParallel {
     pub thread_pool: rayon::ThreadPool,
 }
 
-
 pub struct PrimalModuleParallelUnit {
+    /// the index
+    pub unit_index: usize,
     /// the owned serial primal module
-    pub serial_module: ArcRwLock<PrimalModuleSerial>,
+    pub serial_module: PrimalModuleSerial,
+}
+
+pub type PrimalModuleParallelUnitPtr = ArcRwLock<PrimalModuleParallelUnit>;
+pub type PrimalModuleParallelUnitWeak = WeakRwLock<PrimalModuleParallelUnit>;
+
+impl std::fmt::Debug for PrimalModuleParallelUnitPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let unit = self.read_recursive();
+        write!(f, "{}", unit.unit_index)
+    }
+}
+
+impl std::fmt::Debug for PrimalModuleParallelUnitWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
+}
+
+impl PrimalModuleParallel {
+
 }

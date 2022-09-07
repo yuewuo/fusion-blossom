@@ -41,7 +41,7 @@ impl SolverSerial {
     /// create a new decoder
     pub fn new(initializer: &SolverInitializer) -> Self {
         let mut dual_module = DualModuleSerial::new(initializer);
-        let primal_module = PrimalModuleSerial::new(initializer);
+        let primal_module = PrimalModuleSerial::new(&dual_module);
         let interface = DualModuleInterface::new(&vec![], &mut dual_module);  // initialize with empty syndrome
         let subgraph_builder = SubGraphBuilder::new(initializer);
         Self {

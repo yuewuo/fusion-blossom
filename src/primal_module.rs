@@ -31,8 +31,8 @@ pub struct PerfectMatching {
 /// common trait that must be implemented for each implementation of primal module
 pub trait PrimalModuleImpl {
 
-    /// create a primal module given the same parameters of the dual module, although not all of them is needed
-    fn new(initializer: &SolverInitializer) -> Self;
+    /// create a primal module given the dual module
+    fn new<D: DualModuleImpl>(dual_module: &D) -> Self;
 
     /// clear all states; however this method is not necessarily called when load a new decoding problem, so you need to call it yourself
     fn clear(&mut self);

@@ -4,6 +4,7 @@ use std::sync::{Arc, Weak};
 use crate::parking_lot::{RwLock, RawRwLock};
 use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
 use serde::{Serialize, Deserialize};
+use std::collections::BTreeSet;
 
 
 cfg_if::cfg_if! {
@@ -116,6 +117,125 @@ impl std::fmt::Debug for PartitionUnitWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.upgrade_force().fmt(f)
     }
+}
+
+/// user input partition configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PartitionConfig {
+    /// detailed plan of partitioning serial modules: each serial module possesses a list of vertices, including all interface vertices
+    #[serde(default = "partition_config_defaults::partitions")]
+    pub partitions: Vec<VertexRange>,
+    /// detailed plan of interfacing vertices
+    #[serde(default = "partition_config_defaults::fusions")]
+    pub fusions: Vec<(usize, usize)>,
+}
+
+impl Default for PartitionConfig {
+    fn default() -> Self { serde_json::from_value(json!({})).unwrap() }
+}
+
+pub mod partition_config_defaults {
+    use super::*;
+    pub fn partitions() -> Vec<VertexRange> { vec![] }  // by default, this field is optional, and when empty, it will have only 1 partition
+    pub fn fusions() -> Vec<(usize, usize)> { vec![] }  // by default no interface
+}
+
+pub struct PartitionInfo {
+    /// individual info of each unit
+    pub units: Vec<PartitionUnitInfo>,
+    /// the mapping from vertices to the owning unit: serial unit (holding real vertices) as well as parallel units (holding interfacing vertices);
+    /// used for loading syndrome to the holding units
+    pub vertex_to_owning_unit: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PartitionUnitInfo {
+    /// the whole range of units
+    pub whole_range: VertexRange,
+    /// the owning range of units, meaning vertices inside are exclusively belonging to the unit
+    pub owning_range: VertexRange,
+    /// left and right
+    pub children: Option<(usize, usize)>,
+    /// parent dual module
+    pub parent: Option<usize>,
+    /// all the leaf dual modules
+    pub leaves: Vec<usize>,
+    /// all the descendants
+    pub descendants: BTreeSet<usize>,
+}
+
+impl PartitionInfo {
+
+    pub fn new(partition_config: &PartitionConfig, initializer: &SolverInitializer) -> Self {
+        assert!(partition_config.partitions.len() > 0, "at least one partition must exist");
+        let mut whole_ranges = vec![];
+        let mut owning_ranges = vec![];
+        for partition in partition_config.partitions.iter() {
+            partition.sanity_check();
+            assert!(partition.end() <= initializer.vertex_num, "invalid vertex index {} in partitions", partition.end());
+            whole_ranges.push(partition.clone());
+            owning_ranges.push(partition.clone());
+        }
+        let mut parents: Vec<Option<usize>> = (0..partition_config.partitions.len() + partition_config.fusions.len()).map(|_| None).collect();
+        for (fusion_index, (left_index, right_index)) in partition_config.fusions.iter().enumerate() {
+            let unit_index = fusion_index + partition_config.partitions.len();
+            assert!(*left_index < unit_index, "dependency wrong, {} depending on {}", unit_index, left_index);
+            assert!(*right_index < unit_index, "dependency wrong, {} depending on {}", unit_index, right_index);
+            assert!(parents[*left_index].is_none(), "cannot fuse {} twice", left_index);
+            assert!(parents[*right_index].is_none(), "cannot fuse {} twice", right_index);
+            parents[*left_index] = Some(unit_index);
+            parents[*right_index] = Some(unit_index);
+            // fusing range
+            let (whole_range, interface_range) = whole_ranges[*left_index].fuse(&whole_ranges[*right_index]);
+            whole_ranges.push(whole_range);
+            owning_ranges.push(interface_range);
+        }
+        // check that all nodes except for the last one has been merged
+        for unit_index in 0..partition_config.partitions.len() + partition_config.fusions.len() - 1 {
+            assert!(parents[unit_index].is_some(), "found unit {} without being fused", unit_index);
+        }
+        // check that the final node has the full range
+        let last_unit_index = partition_config.partitions.len() + partition_config.fusions.len() - 1;
+        assert!(whole_ranges[last_unit_index].start() == 0, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
+        assert!(whole_ranges[last_unit_index].end() == initializer.vertex_num, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
+        // construct partition info
+        let mut partition_unit_info: Vec<_> = (0..partition_config.partitions.len() + partition_config.fusions.len()).map(|i| {
+            PartitionUnitInfo {
+                whole_range: whole_ranges[i],
+                owning_range: owning_ranges[i],
+                children: if i >= partition_config.partitions.len() { Some(partition_config.fusions[i - partition_config.partitions.len()]) } else { None },
+                parent: parents[i].clone(),
+                leaves: if i < partition_config.partitions.len() { vec![i] } else { vec![] },
+                descendants: BTreeSet::new(),
+            }
+        }).collect();
+        // build descendants
+        for (fusion_index, (left_index, right_index)) in partition_config.fusions.iter().enumerate() {
+            let unit_index = fusion_index + partition_config.partitions.len();
+            let mut leaves = vec![];
+            leaves.extend(partition_unit_info[*left_index].leaves.iter());
+            leaves.extend(partition_unit_info[*right_index].leaves.iter());
+            partition_unit_info[unit_index].leaves.extend(leaves.iter());
+            let mut descendants = vec![];
+            descendants.push(*left_index);
+            descendants.push(*right_index);
+            descendants.extend(partition_unit_info[*left_index].descendants.iter());
+            descendants.extend(partition_unit_info[*right_index].descendants.iter());
+            partition_unit_info[unit_index].descendants.extend(descendants.iter());
+        }
+        let mut vertex_to_owning_unit: Vec<_> = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
+        for (unit_index, unit_range) in partition_unit_info.iter().map(|x| x.owning_range).enumerate() {
+            for vertex_index in unit_range.iter() {
+                vertex_to_owning_unit[vertex_index] = unit_index;
+            }
+        }
+        Self {
+            units: partition_unit_info,
+            vertex_to_owning_unit: vertex_to_owning_unit,
+        }
+    }
+
 }
 
 #[derive(Debug, Clone)]

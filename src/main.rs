@@ -94,7 +94,7 @@ pub fn main() {
                         let mut initializer = code.get_initializer();
                         let mut dual_module = DualModuleSerial::new(&initializer);
                         // create primal module
-                        let mut primal_module = PrimalModuleSerial::new(&initializer);
+                        let mut primal_module = PrimalModuleSerial::new(&dual_module);
                         primal_module.debug_resolve_only_one = false;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 0..total_rounds {
@@ -184,7 +184,7 @@ pub fn main() {
                     let disable_blossom = matches.is_present("disable_blossom");
                     let mut codes = Vec::<(String, (
                         Box<dyn ExampleCode>,
-                        Box<dyn Fn(&SolverInitializer, &mut dual_module_parallel::DualModuleParallelConfig)>,
+                        Box<dyn Fn(&SolverInitializer, &mut PartitionConfig)>,
                     ))>::new();
                     let total_rounds = 1000;
                     let max_half_weight: Weight = 500;
@@ -316,11 +316,12 @@ pub fn main() {
                         pb.message(format!("{code_name} [{code_idx}/{codes_len}] ").as_str());
                         // create dual module
                         let mut initializer = code.get_initializer();
-                        let mut config = dual_module_parallel::DualModuleParallelConfig::default();
-                        partition_func(&initializer, &mut config);
-                        let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, config);
+                        let config = dual_module_parallel::DualModuleParallelConfig::default();
+                        let mut partition_config = PartitionConfig::default();
+                        partition_func(&initializer, &mut partition_config);
+                        let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, partition_config, config);
                         // create primal module
-                        let mut primal_module = PrimalModuleSerial::new(&initializer);
+                        let mut primal_module = PrimalModuleSerial::new(&dual_module);
                         primal_module.debug_resolve_only_one = false;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 82..total_rounds {
