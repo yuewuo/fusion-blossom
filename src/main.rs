@@ -211,10 +211,10 @@ pub fn main() {
                     //     }
                     // }
                     // simple partition into top and bottom
-                    // for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
-                    //     for d in [7, 11, 15, 19] {
-                    for p in [0.1, 0.3, 0.499] {
-                        for d in [19] {
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                        for d in [7, 11, 15, 19] {
+                    // for p in [0.1, 0.3, 0.499] {
+                    //     for d in [7] {
                             let split_horizontal = (d + 1) / 2;
                             let row_count = d + 1;
                             codes.push((format!("planar {d} {p}"), (
@@ -248,7 +248,7 @@ pub fn main() {
                         let mut dual_module = dual_module_parallel::DualModuleParallel::new_config(&initializer, config);
                         // create primal module
                         let mut primal_module = primal_module_serial::PrimalModuleSerial::new(&initializer);
-                        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+                        primal_module.debug_resolve_only_one = false;  // to enable debug mode
                         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
                         for round in 82..total_rounds {
                             dual_module.clear();
@@ -263,7 +263,7 @@ pub fn main() {
                             }
                             // try to work on a simple syndrome
                             code.set_syndrome(&syndrome_vertices);
-                            println!("syndrome_vertices: {syndrome_vertices:?}");
+                            // println!("syndrome_vertices: {syndrome_vertices:?}");
                             // println!("erasures: {erasures:?}");
                             let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
                             dual_module.fuse_all();

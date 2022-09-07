@@ -140,9 +140,11 @@ impl PrimalModuleImpl for PrimalModuleSerial {
             match conflict {
                 MaxUpdateLength::Conflicting((node_ptr_1, touching_ptr_1), (node_ptr_2, touching_ptr_2)) => {
                     assert!(node_ptr_1 != node_ptr_2, "one cannot conflict with itself, double check to avoid deadlock");
+                    if self.get_primal_node_internal_ptr_option(&node_ptr_1).is_none() { continue }  // ignore out-of-date event
+                    if self.get_primal_node_internal_ptr_option(&node_ptr_2).is_none() { continue }  // ignore out-of-date event
                     // always use outer node in case it's already wrapped into a blossom
-                    let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1.clone()));
-                    let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2.clone()));
+                    let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1));
+                    let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2));
                     if primal_node_internal_ptr_1 == primal_node_internal_ptr_2 {
                         assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict because both of them belongs to a single blossom
@@ -441,7 +443,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     unreachable!()
                 },
                 MaxUpdateLength::TouchingVirtual((node_ptr, touching_ptr), virtual_vertex_index) => {
-                    let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr.clone()));
+                    if self.get_primal_node_internal_ptr_option(&node_ptr).is_none() { continue }  // ignore out-of-date event
+                    let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr));
                     let mut primal_node_internal = primal_node_internal_ptr.write();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
                     if grow_state != DualNodeGrowState::Grow {
@@ -463,6 +466,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     unreachable!()
                 },
                 MaxUpdateLength::BlossomNeedExpand(node_ptr) => {
+                    if self.get_primal_node_internal_ptr_option(&node_ptr).is_none() { continue }  // ignore out-of-date event
                     // blossom breaking is assumed to be very rare given our multiple-tree approach, so don't need to optimize for it
                     // first, isolate this blossom from its alternating tree
                     let primal_node_internal_ptr = self.get_primal_node_internal_ptr(&node_ptr);
@@ -714,11 +718,17 @@ impl FusionVisualizer for PrimalModuleSerial {
 
 impl PrimalModuleSerial {
 
-    pub fn get_primal_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> PrimalNodeInternalPtr {
+    pub fn get_primal_node_internal_ptr_option(&self, dual_node_ptr: &DualNodePtr) -> Option<PrimalNodeInternalPtr> {
         let dual_node = dual_node_ptr.read_recursive();
-        let primal_node_internal_ptr = self.nodes[dual_node.index].as_ref().expect("internal primal node must exists");
-        debug_assert!(dual_node_ptr == &primal_node_internal_ptr.read_recursive().origin.upgrade_force(), "dual node and primal internal node must corresponds to each other");
-        primal_node_internal_ptr.clone()
+        self.nodes[dual_node.index].as_ref().map(|primal_node_internal_ptr| {
+            debug_assert!(dual_node_ptr == &primal_node_internal_ptr.read_recursive().origin.upgrade_force()
+                , "dual node and primal internal node must corresponds to each other");
+            primal_node_internal_ptr.clone()
+        })
+    }
+
+    pub fn get_primal_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> PrimalNodeInternalPtr {
+        self.get_primal_node_internal_ptr_option(dual_node_ptr).expect("internal primal node must exists")
     }
 
     /// get the outer node in the most up-to-date cache

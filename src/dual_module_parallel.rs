@@ -1359,6 +1359,7 @@ pub mod tests {
     }
 
     /// panicked at 'no sync requests should arise here; make sure to deal with all sync requests before growing', src/dual_module_serial.rs:582:13
+    /// just loop the synchronization process until no sync requests emerge
     #[test]
     fn dual_module_parallel_debug_12() {  // cargo test dual_module_parallel_debug_12 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_12.json");
