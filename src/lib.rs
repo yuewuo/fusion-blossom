@@ -23,6 +23,7 @@ pub mod primal_module;
 pub mod primal_module_serial;
 pub mod mwpm_solver;
 pub mod dual_module_parallel;
+pub mod primal_module_parallel;
 
 use util::*;
 use complete_graph::*;
