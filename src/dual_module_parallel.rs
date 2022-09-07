@@ -26,8 +26,6 @@ use crate::weak_table::PtrWeakHashSet;
 
 
 pub struct DualModuleParallel<SerialModule: DualModuleImpl + Send + Sync> {
-    /// initializer, used for customized partition
-    pub initializer: SolverInitializer,
     /// the basic wrapped serial modules at the beginning, afterwards the fused units are appended after them
     pub units: Vec<ArcRwLock<DualModuleParallelUnit<SerialModule>>>,
     /// local configuration
@@ -123,7 +121,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         }
         let thread_pool = thread_pool_builder.build().expect("creating thread pool failed");
         let mut units = vec![];
-        let unit_count = partition_info.config.partitions.len() + partition_info.config.fusions.len();
+        let unit_count = partition_info.units.len();
         let complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);  // build the graph to construct the NN data structure
         let mut contained_vertices_vec: Vec<BTreeSet<VertexIndex>> = vec![];  // all vertices maintained by each unit
         let mut is_vertex_virtual: Vec<_> = (0..initializer.vertex_num).map(|_| false).collect();
@@ -246,9 +244,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             (0..unit_count).into_par_iter().map(|unit_index| {
                 // println!("unit_index: {unit_index}");
                 let dual_module = SerialModule::new_partitioned(&partitioned_initializers[unit_index]);
-                let dual_module_ptr = dual_module;
-                let unit = DualModuleParallelUnitPtr::new_wrapper(dual_module_ptr, unit_index, Arc::clone(&partition_info), partition_units[unit_index].clone());
-                unit
+                DualModuleParallelUnitPtr::new_wrapper(dual_module, unit_index, Arc::clone(&partition_info), partition_units[unit_index].clone())
             }).collect_into_vec(&mut units);
         });
         // fill in the children and parent references
@@ -286,7 +282,6 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             // println!("{} extra_descendant_mirrored_vertices: {:?}", unit.unit_index, unit.extra_descendant_mirrored_vertices);
         }
         Self {
-            initializer: initializer.clone(),
             units: units,
             config: config,
             partition_info: partition_info,
@@ -974,21 +969,8 @@ pub mod tests {
         dual_module.fuse_all();
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.as_mut().map(|v| v.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap());
         // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
-            } else {
-                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-        }
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)
     }

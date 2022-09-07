@@ -1042,21 +1042,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.as_mut().map(|v| v.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap());
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![&interface, &dual_module, &primal_module]).unwrap());
-            } else {
-                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.as_mut().map(|v| v.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap());
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-        }
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2 * half_weight, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)
     }
@@ -1185,22 +1171,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
-            } else {
-                // let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-        }
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
@@ -1247,25 +1218,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let mut current_viz_id = 1;
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
-            } else {
-                // let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
-            current_viz_id += 1;
-        }
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
@@ -1312,25 +1265,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let mut current_viz_id = 1;
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                // visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
-            } else {
-                // let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                // visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
-            current_viz_id += 1;
-        }
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
@@ -1377,25 +1312,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let mut current_viz_id = 1;
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
-            } else {
-                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
-            current_viz_id += 1;
-        }
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
@@ -1441,25 +1358,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let mut current_viz_id = 1;
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
-            } else {
-                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
-            current_viz_id += 1;
-        }
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
@@ -1521,25 +1420,7 @@ pub mod tests {
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         interface.debug_print_actions = true;
         primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module, &primal_module]).unwrap();
-        let mut current_viz_id = 1;
-        // grow until end
-        let mut group_max_update_length = dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                interface.grow(length, &mut dual_module);
-                visualizer.snapshot_combined(format!("grow {}", length), vec![&interface, &dual_module, &primal_module]).unwrap();
-            } else {
-                let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                primal_module.resolve(group_max_update_length, &mut interface, &mut dual_module);
-                visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![&interface, &dual_module, &primal_module]).unwrap();
-            }
-            group_max_update_length = dual_module.compute_maximum_update_length();
-            println!("------------------------- current_viz_id: {current_viz_id} -------------------------");
-            current_viz_id += 1;
-        }
-        visualizer.snapshot_combined(format!("end"), vec![&interface, &dual_module, &primal_module]).unwrap();
+        primal_module.solve_visualizer(&mut interface, &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);

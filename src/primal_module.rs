@@ -8,6 +8,7 @@ use super::dual_module::*;
 use crate::derivative::Derivative;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use super::complete_graph::*;
+use super::visualize::*;
 
 
 #[derive(Derivative)]
@@ -53,6 +54,42 @@ pub trait PrimalModuleImpl {
     fn perfect_matching<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D) -> PerfectMatching {
         let intermediate_matching = self.intermediate_matching(interface, dual_module);
         intermediate_matching.get_perfect_matching()
+    }
+
+    fn solve<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D) {
+        self.solve_step_callback(interface, dual_module, |_, _, _, _| {})
+    }
+
+    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D, mut callback: F)
+            where F: FnMut(&mut DualModuleInterface, &mut D, &mut Self, &GroupMaxUpdateLength) {
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        while !group_max_update_length.is_empty() {
+            callback(interface, dual_module, self, &group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                interface.grow(length, dual_module);
+            } else {
+                self.resolve(group_max_update_length, interface, dual_module);
+            }
+            group_max_update_length = dual_module.compute_maximum_update_length();
+        }
+    }
+
+    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D
+            , visualizer: Option<&mut Visualizer>) where Self: FusionVisualizer + Sized {
+        if let Some(visualizer) = visualizer {
+            self.solve_step_callback(interface, dual_module, |interface, dual_module, primal_module, group_max_update_length| {
+                println!("group_max_update_length: {:?}", group_max_update_length);
+                if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                    visualizer.snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module]).unwrap();
+                } else {
+                    let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
+                    visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![interface, dual_module, primal_module]).unwrap();
+                };
+            });
+            visualizer.snapshot_combined(format!("solved"), vec![interface, dual_module, self]).unwrap();
+        } else {
+            self.solve(interface, dual_module);
+        }
     }
 
 }

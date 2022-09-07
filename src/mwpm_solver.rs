@@ -60,17 +60,7 @@ impl SolverSerial {
 
     pub fn load_syndrome_and_solve(&mut self, syndrome_vertices: &Vec<usize>) {
         self.load_syndrome(syndrome_vertices);
-        // grow until end
-        let mut group_max_update_length = self.dual_module.compute_maximum_update_length();
-        while !group_max_update_length.is_empty() {
-            // println!("group_max_update_length: {:?}", group_max_update_length);
-            if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                self.interface.grow(length, &mut self.dual_module);
-            } else {
-                self.primal_module.resolve(group_max_update_length, &mut self.interface, &mut self.dual_module);
-            }
-            group_max_update_length = self.dual_module.compute_maximum_update_length();
-        }
+        self.primal_module.solve(&mut self.interface, &mut self.dual_module);
     }
 
     /// solve subgraph directly
