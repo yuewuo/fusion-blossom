@@ -37,6 +37,8 @@ pub struct DualModuleParallel {
     pub partition_info: Arc<PartitionInfo>,
     /// thread pool used to execute async functions in parallel
     pub thread_pool: rayon::ThreadPool,
+    /// an empty sync requests queue just to implement the trait
+    pub empty_sync_request: Vec<SyncRequest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,6 +197,8 @@ pub struct DualModuleParallelUnit {
     pub elevated_dual_nodes: PtrWeakHashSet<DualNodeWeak>,
     /// pending dual nodes to be added when activate
     pub pending_dual_node_ptrs: Vec<DualNodePtr>,
+    /// an empty sync requests queue just to implement the trait
+    pub empty_sync_request: Vec<SyncRequest>,
 }
 
 create_ptr_types!(DualModuleParallelUnit, DualModuleParallelUnitPtr, DualModuleParallelUnitWeak);
@@ -369,13 +373,13 @@ impl DualModuleParallel {
         // fill in the extra_descendant_mirrored_vertices
         for unit_index in 0..unit_count {
             let mut unit = units[unit_index].write();
-            let serial_module_ptr = unit.serial_module.clone();
-            let whole_range = unit.whole_range.clone();
-            let serial_module = serial_module_ptr.read_recursive();
-            for i in serial_module.owning_range.len()..serial_module.vertices.len() {
-                let vertex_index = serial_module.vertices[i].read_recursive_force().vertex_index;
-                if !whole_range.contains(&vertex_index) {
-                    unit.extra_descendant_mirrored_vertices.insert(vertex_index);
+            let whole_range = &partition_info.units[unit_index].whole_range;
+            let partitioned_initializer = &partitioned_initializers[unit_index];
+            for (_, interface_vertices) in partitioned_initializer.interfaces.iter() {
+                for (vertex_index, _) in interface_vertices.iter() {
+                    if !whole_range.contains(vertex_index) {
+                        unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
+                    }
                 }
             }
             if let Some((left_children_weak, right_children_weak)) = unit.children.clone() {
@@ -396,6 +400,7 @@ impl DualModuleParallel {
             config: config,
             partition_info: partition_info,
             thread_pool: thread_pool,
+            empty_sync_request: vec![],
         }
     }
 
@@ -462,47 +467,39 @@ impl DualModuleImpl for DualModuleParallel {
     // although not the intended way to use it, we do support these common APIs for compatibility with normal primal modules
 
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
-        self.thread_pool.scope(|_| {
-            let unit_ptr = match dual_node_ptr.read_recursive().class {
-                DualNodeClass::Blossom{ .. } => {
-                    self.find_active_ancestor(&dual_node_ptr)
-                },
-                DualNodeClass::SyndromeVertex{ syndrome_index } => {
-                    let owning_unit_index = self.partition_info.vertex_to_owning_unit[syndrome_index];
-                    self.units[owning_unit_index].clone()
-                },
-            };
-            let mut unit = unit_ptr.write();
-            if unit.is_active {
-                unit.add_dual_node(&dual_node_ptr);
-            } else {
-                unit.pending_dual_node_ptrs.push(dual_node_ptr.clone());
-            }
-        })
+        let unit_ptr = match dual_node_ptr.read_recursive().class {
+            DualNodeClass::Blossom{ .. } => {
+                self.find_active_ancestor(&dual_node_ptr)
+            },
+            DualNodeClass::SyndromeVertex{ syndrome_index } => {
+                let owning_unit_index = self.partition_info.vertex_to_owning_unit[syndrome_index];
+                self.units[owning_unit_index].clone()
+            },
+        };
+        let mut unit = unit_ptr.write();
+        if unit.is_active {
+            unit.add_dual_node(&dual_node_ptr);
+        } else {
+            unit.pending_dual_node_ptrs.push(dual_node_ptr.clone());
+        }
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
-        self.thread_pool.scope(|_| {
-            let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-            let mut unit = unit_ptr.write();
-            unit.remove_blossom(dual_node_ptr);
-        })
+        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let mut unit = unit_ptr.write();
+        unit.remove_blossom(dual_node_ptr);
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
-        self.thread_pool.scope(|_| {
-            let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-            let mut unit = unit_ptr.write();
-            unit.set_grow_state(&dual_node_ptr, grow_state);
-        })
+        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let mut unit = unit_ptr.write();
+        unit.set_grow_state(&dual_node_ptr, grow_state);
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
-        self.thread_pool.scope(|_| {
-            let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-            let mut unit = unit_ptr.write();
-            unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update)
-        })
+        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let mut unit = unit_ptr.write();
+        unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update)
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
@@ -521,11 +518,9 @@ impl DualModuleImpl for DualModuleParallel {
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
-        self.thread_pool.scope(|_| {
-            let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
-            let mut unit = unit_ptr.write();
-            unit.grow_dual_node(&dual_node_ptr, length);
-        })
+        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let mut unit = unit_ptr.write();
+        unit.grow_dual_node(&dual_node_ptr, length);
     }
 
     fn grow(&mut self, length: Weight) {
@@ -546,6 +541,13 @@ impl DualModuleImpl for DualModuleParallel {
                 unit.load_edge_modifier(edge_modifier);
             });
         })
+    }
+
+    fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+        let unit_ptr = self.find_active_ancestor(&nodes_circle[0]);
+        let mut unit = unit_ptr.write();
+        unit.prepare_nodes_shrink(nodes_circle);
+        &mut self.empty_sync_request
     }
 
 }
@@ -618,10 +620,7 @@ impl DualModuleParallelUnit {
         }
         // my serial module
         let mut serial_module = self.serial_module.write();
-        // println!("sync_requests: {:?}", serial_module.unit_module_info.as_ref().unwrap().sync_requests);
-        assert!(serial_module.unit_module_info.as_ref().unwrap().sync_requests.is_empty(), "must start with empty sync requests");
-        serial_module.prepare_all_growth();
-        let local_sync_requests = &mut serial_module.unit_module_info.as_mut().unwrap().sync_requests;
+        let local_sync_requests = serial_module.prepare_all();
         sync_requests.append(local_sync_requests);
     }
 
@@ -724,8 +723,7 @@ impl DualModuleParallelUnit {
             }
         }
         let mut serial_module = self.serial_module.write();
-        serial_module.prepare_blossom_initial_shrink(nodes_circle);
-        let local_sync_requests = &mut serial_module.unit_module_info.as_mut().unwrap().sync_requests;
+        let local_sync_requests = serial_module.prepare_nodes_shrink(nodes_circle);
         sync_requests.append(local_sync_requests);
     }
 
@@ -858,6 +856,7 @@ impl DualModuleParallelUnitPtr {
             parent: None,  // to be filled later
             elevated_dual_nodes: PtrWeakHashSet::new(),
             pending_dual_node_ptrs: vec![],
+            empty_sync_request: vec![],
         })
     }
 
@@ -962,6 +961,12 @@ impl DualModuleImpl for DualModuleParallelUnit {
         // TODO: split the edge modifier and then load them to individual descendant units
         // hint: each edge could appear in any unit that mirrors the two vertices
         self.serial_module.write().load_edge_modifier(edge_modifier)
+    }
+
+    fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+        let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|ptr| ptr.get_representative_vertex()).collect();
+        self.sync_prepare_blossom_initial_shrink(&nodes_circle, &nodes_circle_vertices);
+        &mut self.empty_sync_request
     }
 
 }

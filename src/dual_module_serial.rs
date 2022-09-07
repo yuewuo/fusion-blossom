@@ -44,21 +44,8 @@ pub struct DualModuleSerial {
     pub edge_modifier: EdgeWeightModifier,
     /// deduplicate edges in the boundary, helpful when the decoding problem is partitioned
     pub edge_dedup_timestamp: FastClearTimestamp,
-}
-
-/// synchronize request on vertices, when a vertex is mirrored
-#[derive(Derivative)]
-#[derivative(Debug)]
-pub struct SyncRequest {
-    /// the unit that owns this vertex
-    pub mirror_unit_weak: PartitionUnitWeak,
-    /// the vertex index to be synchronized
-    pub vertex_index: VertexIndex,
-    /// propagated dual node index and the dual variable of the propagated dual node;
-    /// this field is necessary to differentiate between normal shrink and the one that needs to report VertexShrinkStop event, when the syndrome is on the interface
-    pub propagated_dual_node: Option<(DualNodeWeak, Weight)>,
-    /// propagated grandson node: must be a syndrome node
-    pub propagated_grandson_dual_node: Option<(DualNodeWeak, Weight)>,
+    /// temporary list of synchronize requests, i.e. those propagating into the mirrored vertices; should always be empty when not partitioned, i.e. serial version
+    pub sync_requests: Vec<SyncRequest>,
 }
 
 /// records information only available when used as a unit in the partitioned dual module
@@ -73,8 +60,6 @@ pub struct UnitModuleInfo {
     pub owning_dual_range: VertexRange,
     /// hash table for mapping [`DualNodePtr`] to internal [`DualNodeInternalPtr`]
     pub dual_node_pointers: PtrWeakKeyHashMap<DualNodeWeak, usize>,
-    /// temporary list of synchronize requests, i.e. those propagating into the mirrored vertices
-    pub sync_requests: Vec<SyncRequest>,
 }
 
 create_ptr_types!(DualModuleSerial, DualModuleSerialPtr, DualModuleSerialWeak);
@@ -272,6 +257,7 @@ impl DualModuleImpl for DualModuleSerial {
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
             edge_dedup_timestamp: 0,
+            sync_requests: vec![],
         }
     }
 
@@ -576,11 +562,9 @@ impl DualModuleImpl for DualModuleSerial {
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
         // first prepare all nodes for individual grow or shrink; Stay nodes will be prepared to shrink in order to minimize effect on others
-        self.prepare_all_growth();
+        self.prepare_all();
         // after preparing all the growth, there should be no sync requests
-        if let Some(unit_module_info) = self.unit_module_info.as_ref() {
-            assert!(unit_module_info.sync_requests.is_empty(), "no sync requests should arise here; make sure to deal with all sync requests before growing");
-        }
+        assert!(self.sync_requests.is_empty(), "no sync requests should arise here; make sure to deal with all sync requests before growing");
         let mut group_max_update_length = GroupMaxUpdateLength::new();
         for i in 0..self.active_list.len() {
             let dual_node_ptr = {
@@ -699,6 +683,58 @@ impl DualModuleImpl for DualModuleSerial {
             edge.weight = *target_weight;
             self.edge_modifier.push_modified_edge(*edge_index, original_weight);
         }
+    }
+
+    fn prepare_all(&mut self) -> &mut Vec<SyncRequest> {
+        assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
+        self.renew_active_list();
+        for i in 0..self.active_list.len() {
+            let dual_node_ptr = {
+                if let Some(internal_dual_node_ptr) = self.active_list[i].upgrade() {
+                    let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                    dual_node_internal.origin.upgrade_force()
+                } else {
+                    continue  // a blossom could be in the active list even after it's been removed
+                }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            match dual_node.grow_state {
+                DualNodeGrowState::Grow => { },
+                DualNodeGrowState::Shrink => { self.prepare_dual_node_growth(&dual_node_ptr, false); },
+                DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
+            };
+        }
+        for i in 0..self.active_list.len() {
+            let dual_node_ptr = {
+                if let Some(internal_dual_node_ptr) = self.active_list[i].upgrade() {
+                    let dual_node_internal = internal_dual_node_ptr.read_recursive();
+                    dual_node_internal.origin.upgrade_force()
+                } else {
+                    continue  // a blossom could be in the active list even after it's been removed
+                }
+            };
+            let dual_node = dual_node_ptr.read_recursive();
+            match dual_node.grow_state {
+                DualNodeGrowState::Grow => { self.prepare_dual_node_growth(&dual_node_ptr, true); },
+                DualNodeGrowState::Shrink => { },
+                DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
+            };
+        }
+        &mut self.sync_requests
+    }
+
+    fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+        assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
+        for dual_node_ptr in nodes_circle.iter() {
+            if self.contains_dual_node(dual_node_ptr) {
+                self.prepare_dual_node_growth(&dual_node_ptr, false);  // prepare to shrink
+            }
+        }
+        &mut self.sync_requests
+    }
+
+    fn contains_dual_node(&self, dual_node_ptr: &DualNodePtr) -> bool {
+        self.get_dual_node_index(dual_node_ptr).is_some()
     }
 
 }
@@ -853,57 +889,12 @@ impl DualModuleSerial {
                 mirrored_vertices: mirrored_vertices,
                 owning_dual_range: VertexRange::new(0, 0),
                 dual_node_pointers: PtrWeakKeyHashMap::<DualNodeWeak, usize>::new(),
-                sync_requests: vec![],
             }),
             active_list: vec![],
             current_cycle: 0,
             edge_modifier: EdgeWeightModifier::new(),
             edge_dedup_timestamp: 0,
-        }
-    }
-
-    pub fn prepare_all_growth(&mut self) {
-        self.renew_active_list();
-        for i in 0..self.active_list.len() {
-            let dual_node_ptr = {
-                if let Some(internal_dual_node_ptr) = self.active_list[i].upgrade() {
-                    let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                    dual_node_internal.origin.upgrade_force()
-                } else {
-                    continue  // a blossom could be in the active list even after it's been removed
-                }
-            };
-            let dual_node = dual_node_ptr.read_recursive();
-            match dual_node.grow_state {
-                DualNodeGrowState::Grow => { },
-                DualNodeGrowState::Shrink => { self.prepare_dual_node_growth(&dual_node_ptr, false); },
-                DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
-            };
-        }
-        for i in 0..self.active_list.len() {
-            let dual_node_ptr = {
-                if let Some(internal_dual_node_ptr) = self.active_list[i].upgrade() {
-                    let dual_node_internal = internal_dual_node_ptr.read_recursive();
-                    dual_node_internal.origin.upgrade_force()
-                } else {
-                    continue  // a blossom could be in the active list even after it's been removed
-                }
-            };
-            let dual_node = dual_node_ptr.read_recursive();
-            match dual_node.grow_state {
-                DualNodeGrowState::Grow => { self.prepare_dual_node_growth(&dual_node_ptr, true); },
-                DualNodeGrowState::Shrink => { },
-                DualNodeGrowState::Stay => { },  // do not touch, Stay nodes might have become a part of a blossom, so it's not safe to change the boundary
-            };
-        }
-    }
-
-    /// before creating a blossom, all nodes must be prepared to shrink throughout all partitioned dual modules
-    pub fn prepare_blossom_initial_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) {
-        for dual_node_ptr in nodes_circle.iter() {
-            if self.contains_dual_node(dual_node_ptr) {
-                self.prepare_dual_node_growth(&dual_node_ptr, false);  // prepare to shrink
-            }
+            sync_requests: vec![],
         }
     }
 
@@ -1197,19 +1188,6 @@ impl DualModuleSerial {
         }
     }
 
-    pub fn contains_dual_node(&self, dual_node_ptr: &DualNodePtr) -> bool {
-        self.get_dual_node_index(dual_node_ptr).is_some()
-    }
-
-    pub fn contains_dual_nodes_any(&self, dual_node_ptrs: &Vec<DualNodePtr>) -> bool {
-        for dual_node_ptr in dual_node_ptrs.iter() {
-            if self.contains_dual_node(dual_node_ptr) {
-                return true
-            }
-        }
-        false
-    }
-
     pub fn get_vertex_index(&self, vertex_index: VertexIndex) -> Option<usize> {
         if self.owning_range.contains(&vertex_index) {
             return Some(vertex_index - self.owning_range.start())
@@ -1432,8 +1410,7 @@ impl DualModuleSerial {
                     vertex.propagated_grandson_dual_node = grandson_dual_node.clone();
                     // add to the sync list
                     if let Some(mirror_unit_weak) = &vertex.mirror_unit {
-                        let unit_module_info = self.unit_module_info.as_mut().unwrap();
-                        unit_module_info.sync_requests.push(SyncRequest {
+                        self.sync_requests.push(SyncRequest {
                             mirror_unit_weak: mirror_unit_weak.clone(),
                             vertex_index: vertex.vertex_index,
                             propagated_dual_node: vertex.propagated_dual_node.clone().map(|weak| {
@@ -1501,8 +1478,7 @@ impl DualModuleSerial {
                             vertex.propagated_grandson_dual_node = None;
                             // add to the sync list
                             if let Some(mirror_unit_weak) = &vertex.mirror_unit {
-                                let unit_module_info = self.unit_module_info.as_mut().unwrap();
-                                unit_module_info.sync_requests.push(SyncRequest {
+                                self.sync_requests.push(SyncRequest {
                                     mirror_unit_weak: mirror_unit_weak.clone(),
                                     vertex_index: vertex.vertex_index,
                                     propagated_dual_node: None,
@@ -1587,8 +1563,7 @@ impl DualModuleSerial {
                     vertex.propagated_grandson_dual_node = None;
                     // add to the sync list
                     if let Some(mirror_unit_weak) = &vertex.mirror_unit {
-                        let unit_module_info = self.unit_module_info.as_mut().unwrap();
-                        unit_module_info.sync_requests.push(SyncRequest {
+                        self.sync_requests.push(SyncRequest {
                             mirror_unit_weak: mirror_unit_weak.clone(),
                             vertex_index: vertex.vertex_index,
                             propagated_dual_node: None,

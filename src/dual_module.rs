@@ -50,6 +50,21 @@ impl DualNodeGrowState {
 
 }
 
+/// synchronize request on vertices, when a vertex is mirrored
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct SyncRequest {
+    /// the unit that owns this vertex
+    pub mirror_unit_weak: PartitionUnitWeak,
+    /// the vertex index to be synchronized
+    pub vertex_index: VertexIndex,
+    /// propagated dual node index and the dual variable of the propagated dual node;
+    /// this field is necessary to differentiate between normal shrink and the one that needs to report VertexShrinkStop event, when the syndrome is on the interface
+    pub propagated_dual_node: Option<(DualNodeWeak, Weight)>,
+    /// propagated grandson node: must be a syndrome node
+    pub propagated_grandson_dual_node: Option<(DualNodeWeak, Weight)>,
+}
+
 /// gives the maximum absolute length to grow, if not possible, give the reason;
 /// note that strong reference is stored in `MaxUpdateLength` so dropping these temporary messages are necessary to avoid memory leakage;
 /// the strong reference is required when multiple `BlossomNeedExpand` event is reported in different partitions and sorting them requires a reference
@@ -434,6 +449,35 @@ pub trait DualModuleImpl {
         self.load_edge_modifier(&edge_modifier);
     }
 
+    /// prepare a list of nodes as shrinking state; useful in creating a blossom
+    fn prepare_nodes_shrink(&mut self, _nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
+    }
+
+    /*
+     * the following apis are only required when this dual module can be used as a partitioned one
+     */
+
+    /// prepare the growing or shrinking state of all nodes and return a list of sync requests in case of mirrored vertices are changed
+    fn prepare_all(&mut self) -> &mut Vec<SyncRequest> {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
+    }
+
+    /// judge whether the current module hosts the dual node
+    fn contains_dual_node(&self, _dual_node_ptr: &DualNodePtr) -> bool {
+        panic!("this dual module implementation doesn't support this function, please use another dual module")
+    }
+
+    /// judge whether the current module hosts any of these dual node
+    fn contains_dual_nodes_any(&self, dual_node_ptrs: &Vec<DualNodePtr>) -> bool {
+        for dual_node_ptr in dual_node_ptrs.iter() {
+            if self.contains_dual_node(dual_node_ptr) {
+                return true
+            }
+        }
+        false
+    }
+
 }
 
 impl FusionVisualizer for DualModuleInterface {
@@ -577,6 +621,7 @@ impl DualModuleInterface {
             self.nodes.push(Some(blossom_node_ptr.clone()));
         }
         self.sum_grow_speed += 1;
+        dual_module_impl.prepare_nodes_shrink(&nodes_circle);
         dual_module_impl.add_blossom(&blossom_node_ptr);
         blossom_node_ptr
     }
