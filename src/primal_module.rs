@@ -38,8 +38,26 @@ pub trait PrimalModuleImpl {
     /// clear all states; however this method is not necessarily called when load a new decoding problem, so you need to call it yourself
     fn clear(&mut self);
 
-    /// load a new decoding problem given dual interface: note that all 
-    fn load(&mut self, interface: &DualModuleInterface);
+    fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
+
+    /// load a single syndrome and update the dual module and the interface
+    fn load_syndrome<D: DualModuleImpl>(&mut self, syndrome_vertex: VertexIndex, interface: &mut DualModuleInterface, dual_module: &mut D) {
+        interface.create_syndrome_node(syndrome_vertex, dual_module);
+        let index = interface.nodes.len() - 1;
+        self.load_syndrome_dual_node(interface.nodes[index].as_ref().expect("must load a fresh dual module interface, found empty node"))
+    }
+
+    /// load a new decoding problem given dual interface: note that all nodes MUST be syndrome node
+    fn load(&mut self, interface: &DualModuleInterface) {
+        for (index, node) in interface.nodes.iter().enumerate() {
+            assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
+            let node_ptr = node.as_ref().unwrap();
+            let node = node_ptr.read_recursive();
+            assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
+            assert_eq!(node.index, index, "must load a fresh dual module interface, found index out of order");
+            self.load_syndrome_dual_node(node_ptr);
+        }
+    }
 
     /// analyze the reason why dual module cannot further grow, update primal data structure (alternating tree, temporary matches, etc)
     /// and then tell dual module what to do to resolve these conflicts;

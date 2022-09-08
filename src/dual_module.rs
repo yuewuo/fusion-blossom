@@ -75,7 +75,7 @@ pub enum MaxUpdateLength {
     /// conflicting growth
     Conflicting((DualNodePtr, DualNodePtr), (DualNodePtr, DualNodePtr)),  // (node_1, touching_1), (node_2, touching_2)
     /// conflicting growth because of touching virtual node
-    TouchingVirtual((DualNodePtr, DualNodePtr), VertexIndex),  // (node, touching), virtual_vertex
+    TouchingVirtual((DualNodePtr, DualNodePtr), (VertexIndex, bool)),  // (node, touching), (virtual_vertex, is_mirror)
     /// blossom hitting 0 dual variable while shrinking
     BlossomNeedExpand(DualNodePtr),
     /// node hitting 0 dual variable while shrinking: note that this should have the lowest priority, normally it won't show up in a normal primal module;
@@ -558,15 +558,20 @@ impl FusionVisualizer for DualModuleInterface {
 
 impl DualModuleInterface {
 
-    /// a dual module interface MUST be created given a concrete implementation of the dual module
-    pub fn new(syndrome: &Vec<VertexIndex>, dual_module_impl: &mut impl DualModuleImpl) -> Self {
-        let mut array = Self {
+    /// create an empty interface
+    pub fn new_empty() -> Self {
+        Self {
             nodes: Vec::new(),
             sum_grow_speed: 0,
             sum_dual_variables: 0,
             debug_print_actions: false,
             dual_variable_global_progress: 0,
-        };
+        }
+    }
+
+    /// a dual module interface MUST be created given a concrete implementation of the dual module
+    pub fn new(syndrome: &Vec<VertexIndex>, dual_module_impl: &mut impl DualModuleImpl) -> Self {
+        let mut array = Self::new_empty();
         for vertex_idx in syndrome.iter() {
             array.create_syndrome_node(*vertex_idx, dual_module_impl);
         }
@@ -583,7 +588,7 @@ impl DualModuleInterface {
             },
             grow_state: DualNodeGrowState::Grow,
             parent_blossom: None,
-            dual_variable_cache: (0, 0),
+            dual_variable_cache: (0, self.dual_variable_global_progress),
         });
         self.nodes.push(Some(node_ptr.clone()));
         dual_module_impl.add_syndrome_node(&node_ptr);
@@ -939,7 +944,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_touching_virtual(&self) -> Option<(DualNodePtr, VertexIndex)> {
         match self {
-            Self::TouchingVirtual((a, _), b) => { Some((a.clone(), *b)) },
+            Self::TouchingVirtual((a, _), (b, _)) => { Some((a.clone(), *b)) },
             _ => { None },
         }
     }

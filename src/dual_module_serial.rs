@@ -536,7 +536,8 @@ impl DualModuleImpl for DualModuleSerial {
                                 } else {
                                     edge.right_grandson_dual_node.as_ref().map(|ptr| ptr.upgrade_force()).unwrap().read_recursive().origin.upgrade_force()
                                 };
-                                return MaxUpdateLength::TouchingVirtual((dual_node_ptr.clone(), grandson_ptr), peer_vertex.vertex_index);
+                                return MaxUpdateLength::TouchingVirtual((dual_node_ptr.clone(), grandson_ptr)
+                                    , (peer_vertex.vertex_index, peer_vertex.is_mirror_blocked()));
                             } else {
                                 println!("edge: {edge_ptr:?}, peer_vertex_ptr: {peer_vertex_ptr:?}");
                                 unreachable!("this edge should've been removed from boundary because it's already fully grown, and it's peer vertex is not virtual")

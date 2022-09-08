@@ -9,11 +9,14 @@ use crate::derivative::Derivative;
 use super::primal_module::*;
 use super::visualize::*;
 use super::dual_module::*;
+use std::collections::BTreeSet;
 
 
 pub struct PrimalModuleSerial {
     /// nodes internal information
     pub nodes: Vec<Option<PrimalNodeInternalPtr>>,
+    /// the indices of primal nodes that is possibly matched to the mirrored vertex, and need to break when mirrored vertices are no longer mirrored
+    pub possible_break: BTreeSet<NodeIndex>,
     /// debug mode: only resolve one conflict each time
     pub debug_resolve_only_one: bool,
 }
@@ -101,30 +104,27 @@ impl PrimalModuleImpl for PrimalModuleSerial {
     fn new(_initializer: &SolverInitializer) -> Self {
         Self {
             nodes: vec![],
+            possible_break: BTreeSet::new(),
             debug_resolve_only_one: false,
         }
     }
 
     fn clear(&mut self) {
         self.nodes.clear();
+        self.possible_break.clear();
     }
-    
-    fn load(&mut self, interface: &DualModuleInterface) {
-        debug_assert!(self.nodes.is_empty(), "loading to the same primal module without clear");
-        for (index, node) in interface.nodes.iter().enumerate() {
-            assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
-            let node_ptr = node.as_ref().unwrap();
-            let node = node_ptr.read_recursive();
-            assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
-            assert_eq!(node.index, index, "must load a fresh dual module interface, found index out of order");
-            let primal_node_internal = PrimalNodeInternal {
-                origin: node_ptr.downgrade(),
-                index: index,
-                tree_node: None,
-                temporary_match: None,
-            };
-            self.nodes.push(Some(PrimalNodeInternalPtr::new(primal_node_internal)));
-        }
+
+    fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
+        let node = dual_node_ptr.read_recursive();
+        assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
+        assert_eq!(node.index, self.nodes.len(), "must load in order, found index {} out of order, len = {}", node.index, self.nodes.len());
+        let primal_node_internal = PrimalNodeInternal {
+            origin: dual_node_ptr.downgrade(),
+            index: node.index,
+            tree_node: None,
+            temporary_match: None,
+        };
+        self.nodes.push(Some(PrimalNodeInternalPtr::new(primal_node_internal)));
     }
 
     fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
@@ -441,7 +441,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     }
                     unreachable!()
                 },
-                MaxUpdateLength::TouchingVirtual((node_ptr, touching_ptr), virtual_vertex_index) => {
+                MaxUpdateLength::TouchingVirtual((node_ptr, touching_ptr), (virtual_vertex_index, is_mirror)) => {
                     if self.get_primal_node_internal_ptr_option(&node_ptr).is_none() { continue }  // ignore out-of-date event
                     let primal_node_internal_ptr = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr));
                     let mut primal_node_internal = primal_node_internal_ptr.write();
@@ -453,6 +453,9 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     // this is the most probable case, so put it in the front
                     if primal_node_internal.is_free() {
                         primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr.downgrade()));
+                        if is_mirror {
+                            self.possible_break.insert(primal_node_internal.index);
+                        }
                         interface.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
                     }

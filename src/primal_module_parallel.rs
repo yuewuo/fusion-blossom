@@ -126,7 +126,7 @@ impl PrimalModuleImpl for PrimalModuleParallel {
         unimplemented!()
     }
 
-    fn load(&mut self, _interface: &DualModuleInterface) {
+    fn load_syndrome_dual_node(&mut self, _dual_node_ptr: &DualNodePtr) {
         panic!("load interface directly into the parallel primal module is forbidden, use `solve` instead");
     }
 
@@ -259,7 +259,14 @@ impl PrimalModuleParallelUnitPtr {
                 }
             }
             let mut interface = dual_unit.fuse((left_interface, right_interface));
-            primal_unit.fuse(&mut interface, dual_unit.deref_mut());
+            primal_unit.fuse();
+            if let Some(callback) = callback.as_mut() {  // do callback before actually breaking the matched pairs, for ease of visualization
+                callback(&interface, &dual_unit, &primal_unit.serial_module, None);
+            }
+            primal_unit.break_matching_with_mirror(&mut interface, dual_unit.deref_mut());
+            for syndrome_vertex in syndrome_vertices.iter() {
+                primal_unit.serial_module.load_syndrome(*syndrome_vertex, &mut interface, dual_unit.deref_mut());
+            }
             primal_unit.serial_module.solve_step_callback_interface_loaded(&mut interface, dual_unit.deref_mut()
                 , |interface, dual_module, primal_module, group_max_update_length| {
                     if let Some(callback) = callback.as_mut() {
@@ -288,21 +295,44 @@ impl PrimalModuleParallelUnitPtr {
 
 impl PrimalModuleParallelUnit {
 
-    /// fuse two units together, by copying the right child's content into the left child's content and resolve index
-    pub fn fuse(&mut self, interface: &mut DualModuleInterface, dual_module: &mut impl DualModuleImpl) {
+    /// fuse two units together, by copying the right child's content into the left child's content and resolve index;
+    /// note that this operation doesn't update on the dual module, call [`Self::break_matching_with_mirror`] if needed
+    pub fn fuse(&mut self) {
         let (left_child_ptr, right_child_ptr) = (self.children.as_ref().unwrap().0.upgrade_force(), self.children.as_ref().unwrap().1.upgrade_force());
         let mut left_child = left_child_ptr.write();
         let mut right_child = right_child_ptr.write();
         let bias = left_child.serial_module.nodes.len();
+        // copy `possible_break`
+        self.serial_module.possible_break.append(&mut left_child.serial_module.possible_break);
+        for node_index in right_child.serial_module.possible_break.iter() {
+            self.serial_module.possible_break.insert(*node_index + bias);
+        }
+        // copy `nodes`
         self.serial_module.nodes.append(&mut left_child.serial_module.nodes);
         for primal_node_ptr in right_child.serial_module.nodes.iter() {
             if let Some(primal_node_ptr) = primal_node_ptr {
                 let mut primal_node = primal_node_ptr.write();
                 primal_node.index += bias;
-            } 
+            }
         }
         self.serial_module.nodes.append(&mut right_child.serial_module.nodes);
-        // TODO: break the matched pairs of interface vertices
+    }
+
+    // break the matched pairs of interface vertices
+    pub fn break_matching_with_mirror(&mut self, interface: &mut DualModuleInterface, dual_module: &mut impl DualModuleImpl) {
+        for primal_node_ptr in self.serial_module.nodes.iter() {
+            if let Some(primal_node_ptr) = primal_node_ptr {
+                let mut primal_node = primal_node_ptr.write();
+                if let Some((match_target, _)) = &primal_node.temporary_match {
+                    if let MatchTarget::VirtualVertex(vertex_index) = match_target {
+                        if self.partition_info.vertex_to_owning_unit[*vertex_index] == self.unit_index {
+                            primal_node.temporary_match = None;
+                            interface.set_grow_state(&primal_node.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
+                        }
+                    }
+                }
+            }
+        }
     }
 
 }
@@ -319,6 +349,10 @@ impl PrimalModuleImpl for PrimalModuleParallelUnit {
 
     fn load(&mut self, interface: &DualModuleInterface) {
         self.serial_module.load(interface)
+    }
+
+    fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
+        self.serial_module.load_syndrome_dual_node(dual_node_ptr)
     }
 
     fn resolve<D: DualModuleImpl>(&mut self, group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
@@ -398,6 +432,147 @@ pub mod tests {
                 (0, 1),  // unit 2, by fusing 0 and 1
             ];
         }, None);
+    }
+
+    /// split into 2, with a syndrome vertex on the interface
+    #[test]
+    fn primal_module_parallel_basic_3() {  // cargo test primal_module_parallel_basic_3 -- --nocapture
+        let visualize_filename = format!("primal_module_parallel_basic_3.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let half_weight = 500;
+        primal_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, 60),    // unit 0
+                VertexRange::new(72, 132),  // unit 1
+            ];
+            config.fusions = vec![
+                (0, 1),  // unit 2, by fusing 0 and 1
+            ];
+        }, None);
+    }
+
+    /// split into 4, with no syndrome vertex on the interface
+    #[test]
+    fn primal_module_parallel_basic_4() {  // cargo test primal_module_parallel_basic_4 -- --nocapture
+        let visualize_filename = format!("primal_module_parallel_basic_4.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        let half_weight = 500;
+        primal_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, 36),
+                VertexRange::new(42, 72),
+                VertexRange::new(84, 108),
+                VertexRange::new(112, 132),
+            ];
+            config.fusions = vec![
+                (0, 1),
+                (2, 3),
+                (4, 5),
+            ];
+        }, Some((|| {
+            let mut reordered_vertices = vec![];
+            let split_horizontal = 6;
+            let split_vertical = 5;
+            for i in 0..split_horizontal {  // left-top block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
+                reordered_vertices.push(i * 12 + split_vertical);
+            }
+            for i in 0..split_horizontal {  // right-top block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            {  // the big interface between top and bottom
+                for j in 0..12 {
+                    reordered_vertices.push(split_horizontal * 12 + j);
+                }
+            }
+            for i in (split_horizontal+1)..11 {  // left-bottom block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in (split_horizontal+1)..11 {  // interface between the left-bottom block and the right-bottom block
+                reordered_vertices.push(i * 12 + split_vertical);
+            }
+            for i in (split_horizontal+1)..11 {  // right-bottom block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            reordered_vertices
+        })()));
+    }
+
+    /// split into 4, with 2 syndrome vertices on parent interfaces
+    #[test]
+    fn primal_module_parallel_basic_5() {  // cargo test primal_module_parallel_basic_5 -- --nocapture
+        let visualize_filename = format!("primal_module_parallel_basic_5.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        let half_weight = 500;
+        primal_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, 25),
+                VertexRange::new(30, 60),
+                VertexRange::new(72, 97),
+                VertexRange::new(102, 132),
+            ];
+            config.fusions = vec![
+                (0, 1),
+                (2, 3),
+                (4, 5),
+            ];
+        }, Some((|| {
+            let mut reordered_vertices = vec![];
+            let split_horizontal = 5;
+            let split_vertical = 4;
+            for i in 0..split_horizontal {  // left-top block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
+                reordered_vertices.push(i * 12 + split_vertical);
+            }
+            for i in 0..split_horizontal {  // right-top block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            {  // the big interface between top and bottom
+                for j in 0..12 {
+                    reordered_vertices.push(split_horizontal * 12 + j);
+                }
+            }
+            for i in (split_horizontal+1)..11 {  // left-bottom block
+                for j in 0..split_vertical {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 11);
+            }
+            for i in (split_horizontal+1)..11 {  // interface between the left-bottom block and the right-bottom block
+                reordered_vertices.push(i * 12 + split_vertical);
+            }
+            for i in (split_horizontal+1)..11 {  // right-bottom block
+                for j in (split_vertical+1)..10 {
+                    reordered_vertices.push(i * 12 + j);
+                }
+                reordered_vertices.push(i * 12 + 10);
+            }
+            reordered_vertices
+        })()));
     }
 
 }
