@@ -75,7 +75,7 @@ impl Default for PrimalModuleParallelConfig {
 pub mod primal_module_parallel_default_configs {
     // pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
     pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
-    pub fn debug_sequential() -> bool { true }  // by default enabled: only disable when you need to debug and get visualizer to work
+    pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
 }
 
 impl PrimalModuleParallel {
@@ -393,7 +393,9 @@ pub mod tests {
         partition_func(&initializer, &mut partition_config);
         let partition_info = partition_config.into_info(&initializer);
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
-        let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), PrimalModuleParallelConfig::default());
+        let mut primal_config = PrimalModuleParallelConfig::default();
+        primal_config.debug_sequential = true;
+        let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
         code.set_syndrome(&syndrome_vertices);
         let interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
