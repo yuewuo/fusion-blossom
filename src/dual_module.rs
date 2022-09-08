@@ -495,6 +495,15 @@ pub trait DualModuleImpl {
 
 }
 
+/// this dual module is a parallel version that hosts many partitioned ones
+pub trait DualModuleParallelImpl {
+
+    type UnitType: DualModuleImpl + Send + Sync;
+
+    fn get_unit(&self, unit_index: usize) -> ArcRwLock<Self::UnitType>;
+
+}
+
 impl FusionVisualizer for DualModuleInterface {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         // do the sanity check first before taking snapshot
