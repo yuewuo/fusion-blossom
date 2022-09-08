@@ -495,9 +495,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     /// statically fuse the children of this unit
     pub fn static_fuse(&mut self) {
         assert!(!self.is_active, "cannot fuse the child an already active unit");
-        let (left_child_weak, right_child_weak) = self.children.as_ref().expect("fuse a standalone unit forbidden");
-        let left_child_ptr = left_child_weak.upgrade_force();
-        let right_child_ptr = right_child_weak.upgrade_force();
+        let (left_child_ptr, right_child_ptr) = (self.children.as_ref().unwrap().0.upgrade_force(), self.children.as_ref().unwrap().1.upgrade_force());
         let mut left_child = left_child_ptr.write();
         let mut right_child = right_child_ptr.write();
         assert!(left_child.is_active && right_child.is_active, "cannot fuse inactive pairs");
@@ -513,9 +511,32 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     /// fuse the children of this unit and also fuse the interfaces of them
     pub fn fuse(&mut self, interfaces: (DualModuleInterface, DualModuleInterface)) -> DualModuleInterface {
         self.static_fuse();
-        // TODO: change the index of dual nodes in the right children, and append it to the left
-        let (mut left_interface, mut right_interface) = interfaces;
-        unimplemented!()
+        let (left_interface, right_interface) = interfaces;
+        let right_child_ptr = self.children.as_ref().unwrap().1.upgrade_force();
+        let mut right_child = right_child_ptr.write();
+        // change the index of dual nodes in the right children
+        let bias = left_interface.nodes.len();
+        right_child.iterative_bias_dual_node_index(bias);
+        let interface = left_interface.fuse(right_interface);
+        interface
+    }
+
+    pub fn iterative_bias_dual_node_index(&mut self, bias: NodeIndex) {
+        // depth-first search
+        if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+            if self.enable_parallel_execution {
+                rayon::join(|| {
+                    left_child_weak.upgrade_force().write().iterative_bias_dual_node_index(bias);
+                }, || {
+                    right_child_weak.upgrade_force().write().iterative_bias_dual_node_index(bias);
+                });
+            } else {
+                left_child_weak.upgrade_force().write().iterative_bias_dual_node_index(bias);
+                right_child_weak.upgrade_force().write().iterative_bias_dual_node_index(bias);
+            }
+        }
+        // my serial module
+        self.serial_module.bias_dual_node_index(bias);
     }
 
     /// if any descendant unit mirror or own the vertex

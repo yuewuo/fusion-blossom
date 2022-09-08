@@ -290,7 +290,19 @@ impl PrimalModuleParallelUnit {
 
     /// fuse two units together, by copying the right child's content into the left child's content and resolve index
     pub fn fuse(&mut self, interface: &mut DualModuleInterface, dual_module: &mut impl DualModuleImpl) {
-        unimplemented!()
+        let (left_child_ptr, right_child_ptr) = (self.children.as_ref().unwrap().0.upgrade_force(), self.children.as_ref().unwrap().1.upgrade_force());
+        let mut left_child = left_child_ptr.write();
+        let mut right_child = right_child_ptr.write();
+        let bias = left_child.serial_module.nodes.len();
+        self.serial_module.nodes.append(&mut left_child.serial_module.nodes);
+        for primal_node_ptr in right_child.serial_module.nodes.iter() {
+            if let Some(primal_node_ptr) = primal_node_ptr {
+                let mut primal_node = primal_node_ptr.write();
+                primal_node.index += bias;
+            } 
+        }
+        self.serial_module.nodes.append(&mut right_child.serial_module.nodes);
+        // TODO: break the matched pairs of interface vertices
     }
 
 }

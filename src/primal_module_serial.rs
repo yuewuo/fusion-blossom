@@ -45,7 +45,7 @@ pub struct PrimalNodeInternal {
     /// the pointer to the origin [`DualNode`]
     pub origin: DualNodeWeak,
     /// local index, to find myself in [`DualModuleSerial::nodes`]
-    index: NodeIndex,
+    pub index: NodeIndex,
     /// alternating tree information if applicable
     pub tree_node: Option<AlternatingTreeNode>,
     /// temporary match with another node, (target, touching_grandson)

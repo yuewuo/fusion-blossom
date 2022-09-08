@@ -229,8 +229,6 @@ impl GroupMaxUpdateLength {
 pub struct DualNode {
     /// the index of this dual node, helps to locate internal details of this dual node
     pub index: NodeIndex,
-    /// the implementation internal node, providing the index of it
-    pub internal: Option<usize>,
     /// the class of this dual node
     pub class: DualNodeClass,
     /// whether it grows, stays or shrinks
@@ -421,7 +419,7 @@ pub trait DualModuleImpl {
     /// if `is_grow` is false, return `length` <= 0, in any case |`length`| is maximized so that at least one edge becomes fully grown or fully not-grown.
     /// if `simultaneous_update` is true, also check for the peer node according to [`DualNode::grow_state`].
     fn compute_maximum_update_length_dual_node(&mut self, _dual_node_ptr: &DualNodePtr, _is_grow: bool, _simultaneous_update: bool) -> MaxUpdateLength {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// check the maximum length to grow (shrink) for all nodes, return a list of conflicting reason and a single number indicating the maximum length to grow:
@@ -430,7 +428,7 @@ pub trait DualModuleImpl {
 
     /// An optional function that can manipulate individual dual node, not necessarily supported by all implementations
     fn grow_dual_node(&mut self, _dual_node_ptr: &DualNodePtr, _length: Weight) {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// grow a specific length globally, length must be positive.
@@ -451,7 +449,7 @@ pub trait DualModuleImpl {
 
     /// prepare a list of nodes as shrinking state; useful in creating a blossom
     fn prepare_nodes_shrink(&mut self, _nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /*
@@ -460,22 +458,22 @@ pub trait DualModuleImpl {
 
     /// create a partitioned dual module (hosting only a subgraph and subset of dual nodes) to be used in the parallel dual module
     fn new_partitioned(_partitioned_initializer: &PartitionedSolverInitializer) -> Self where Self: std::marker::Sized {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// prepare the growing or shrinking state of all nodes and return a list of sync requests in case of mirrored vertices are changed
     fn prepare_all(&mut self) -> &mut Vec<SyncRequest> {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// execute a synchronize event by updating the state of a vertex and also update the internal dual node accordingly
     fn execute_sync_event(&mut self, _sync_event: &SyncRequest) {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// judge whether the current module hosts the dual node
     fn contains_dual_node(&self, _dual_node_ptr: &DualNodePtr) -> bool {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
     /// judge whether the current module hosts any of these dual node
@@ -490,7 +488,12 @@ pub trait DualModuleImpl {
 
     /// judge whether the current module hosts a vertex
     fn contains_vertex(&self, _vertex_index: VertexIndex) -> bool {
-        panic!("this dual module implementation doesn't support this function, please use another dual module")
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
+    }
+
+    /// bias the global dual node indices
+    fn bias_dual_node_index(&mut self, _bias: NodeIndex) {
+        panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
 }
@@ -575,7 +578,6 @@ impl DualModuleInterface {
         let node_idx = self.nodes.len();
         let node_ptr = DualNodePtr::new(DualNode {
             index: node_idx,
-            internal: None,
             class: DualNodeClass::SyndromeVertex {
                 syndrome_index: vertex_idx,
             },
@@ -609,7 +611,6 @@ impl DualModuleInterface {
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let blossom_node_ptr = DualNodePtr::new(DualNode {
             index: self.nodes.len(),
-            internal: None,
             class: DualNodeClass::Blossom {
                 nodes_circle: vec![],
                 touching_children: vec![],
@@ -734,6 +735,22 @@ impl DualModuleInterface {
             self.grow(growth, dual_module_impl);
             length -= growth;
         }
+    }
+
+    /// fuse two interfaces by copying the nodes in `other` into myself
+    pub fn fuse(mut self, mut other: Self) -> Self {
+        let bias = self.nodes.len();
+        for node_ptr in other.nodes.iter() {
+            if let Some(node_ptr) = node_ptr {
+                let mut node = node_ptr.write();
+                node.index += bias;
+                node.dual_variable_cache = (node.get_dual_variable(&other), self.dual_variable_global_progress)
+            }
+        }
+        self.nodes.append(&mut other.nodes);
+        self.sum_dual_variables += other.sum_dual_variables;
+        self.sum_grow_speed += other.sum_grow_speed;
+        self
     }
 
     /// do a sanity check of if all the nodes are in consistent state

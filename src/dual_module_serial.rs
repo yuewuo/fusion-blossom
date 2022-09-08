@@ -851,6 +851,10 @@ impl DualModuleImpl for DualModuleSerial {
         self.get_vertex_index(vertex_index).is_some()
     }
 
+    fn bias_dual_node_index(&mut self, bias: NodeIndex) {
+        self.unit_module_info.as_mut().unwrap().owning_dual_range.bias_by(bias);
+    }
+
     fn execute_sync_event(&mut self, sync_event: &SyncRequest) {
         let active_timestamp = self.active_timestamp;
         debug_assert!(self.contains_vertex(sync_event.vertex_index));

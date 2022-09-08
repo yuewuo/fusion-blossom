@@ -71,6 +71,10 @@ impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output
     pub fn append_by(&mut self, append_count: IndexType) {
         self.range[1] = self.range[1] + append_count;
     }
+    pub fn bias_by(&mut self, bias: IndexType) {
+        self.range[0] = self.range[0] + bias;
+        self.range[1] = self.range[1] + bias;
+    }
     pub fn sanity_check(&self) {
         assert!(self.start() <= self.end(), "invalid vertex range {:?}", self);
     }
