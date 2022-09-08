@@ -79,21 +79,26 @@ pub trait PrimalModuleImpl {
         }
     }
 
-    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, syndrome_vertices: &Vec<usize>, dual_module: &mut D, mut callback: F) -> DualModuleInterface
+    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, syndrome_vertices: &Vec<usize>, dual_module: &mut D, callback: F) -> DualModuleInterface
             where F: FnMut(&mut DualModuleInterface, &mut D, &mut Self, &GroupMaxUpdateLength) {
         let mut interface = DualModuleInterface::new(syndrome_vertices, dual_module);
         self.load(&interface);
+        self.solve_step_callback_interface_loaded(&mut interface, dual_module, callback);
+        interface
+    }
+
+    fn solve_step_callback_interface_loaded<D: DualModuleImpl, F>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D, mut callback: F)
+            where F: FnMut(&mut DualModuleInterface, &mut D, &mut Self, &GroupMaxUpdateLength) {
         let mut group_max_update_length = dual_module.compute_maximum_update_length();
         while !group_max_update_length.is_empty() {
-            callback(&mut interface, dual_module, self, &group_max_update_length);
+            callback(interface, dual_module, self, &group_max_update_length);
             if let Some(length) = group_max_update_length.get_none_zero_growth() {
                 interface.grow(length, dual_module);
             } else {
-                self.resolve(group_max_update_length, &mut interface, dual_module);
+                self.resolve(group_max_update_length, interface, dual_module);
             }
             group_max_update_length = dual_module.compute_maximum_update_length();
         }
-        interface
     }
 
 }

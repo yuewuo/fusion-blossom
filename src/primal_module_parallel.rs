@@ -227,10 +227,14 @@ impl PrimalModuleParallelUnitPtr {
                 , partitioned_syndrome: &Vec<Vec<VertexIndex>>, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
                 -> DualModuleInterface
             where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
-        let mut unit = self.write();
+        let mut primal_unit = self.write();
+        let syndrome_vertices = &partitioned_syndrome[primal_unit.unit_index];
+        let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
+        let mut dual_unit = dual_module_ptr.write();
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads
         let debug_sequential = primal_module_parallel.config.debug_sequential;
-        if let Some((left_child_weak, right_child_weak)) = unit.children.as_ref() {
+        let interface = if let Some((left_child_weak, right_child_weak)) = primal_unit.children.as_ref() {
+            assert!(!primal_unit.is_active, "parent must be inactive at the time of solving children");
             let (left_interface, right_interface) = if debug_sequential {
                 let left_interface = left_child_weak.upgrade_force().iterative_solve_step_callback(primal_module_parallel, partitioned_syndrome
                     , parallel_dual_module, callback);
@@ -246,21 +250,47 @@ impl PrimalModuleParallelUnitPtr {
                         , parallel_dual_module, &mut None)
                 })
             };
-            unimplemented!()
-        } else {  // this is a leaf, proceed it as normal serial one
-            let syndrome_vertices = &partitioned_syndrome[unit.unit_index];
-            let dual_module_ptr = parallel_dual_module.get_unit(unit.unit_index);
-            let mut dual_module = dual_module_ptr.write();
-            let mut interface = unit.serial_module.solve_step_callback(syndrome_vertices, dual_module.deref_mut(), |interface, dual_module, primal_module, group_max_update_length| {
-                if let Some(callback) = callback.as_mut() {
-                    callback(interface, dual_module, primal_module, Some(&group_max_update_length));
+            {  // set children to inactive to avoid being solved twice
+                for child_weak in [left_child_weak, right_child_weak] {
+                    let child_ptr = child_weak.upgrade_force();
+                    let mut child = child_ptr.write();
+                    assert!(child.is_active, "cannot fuse inactive children");
+                    child.is_active = false;
                 }
-            });
-            if let Some(callback) = callback.as_mut() {
-                callback(&interface, &dual_module, &unit.serial_module, None);
             }
+            let mut interface = dual_unit.fuse((left_interface, right_interface));
+            primal_unit.fuse(&mut interface, dual_unit.deref_mut());
+            primal_unit.serial_module.solve_step_callback_interface_loaded(&mut interface, dual_unit.deref_mut()
+                , |interface, dual_module, primal_module, group_max_update_length| {
+                    if let Some(callback) = callback.as_mut() {
+                        callback(interface, dual_module, primal_module, Some(&group_max_update_length));
+                    }
+                });
             interface
+        } else {  // this is a leaf, proceed it as normal serial one
+            assert!(primal_unit.is_active, "leaf must be active to be solved");
+            let interface = primal_unit.serial_module.solve_step_callback(syndrome_vertices, dual_unit.deref_mut()
+                , |interface, dual_module, primal_module, group_max_update_length| {
+                    if let Some(callback) = callback.as_mut() {
+                        callback(interface, dual_module, primal_module, Some(&group_max_update_length));
+                    }
+                });
+            interface
+        };
+        if let Some(callback) = callback.as_mut() {
+            callback(&interface, &dual_unit, &primal_unit.serial_module, None);
         }
+        primal_unit.is_active = true;
+        interface
+    }
+
+}
+
+impl PrimalModuleParallelUnit {
+
+    /// fuse two units together, by copying the right child's content into the left child's content and resolve index
+    pub fn fuse(&mut self, interface: &mut DualModuleInterface, dual_module: &mut impl DualModuleImpl) {
+        unimplemented!()
     }
 
 }

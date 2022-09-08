@@ -323,7 +323,7 @@ pub fn main() {
                             code.set_syndrome(&syndrome_vertices);
                             // println!("syndrome_vertices: {syndrome_vertices:?}");
                             // println!("erasures: {erasures:?}");
-                            dual_module.fuse_all();
+                            dual_module.static_fuse_all();
                             dual_module.load_erasures(&erasures);
                             let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
                             if !disable_blossom {

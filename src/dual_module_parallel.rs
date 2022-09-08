@@ -319,22 +319,22 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         Some(owning_unit_ptr)
     }
 
-    /// fuse them all, may be called at any state (meaning each unit may not necessarily be solved locally)
-    pub fn fuse_all(&mut self) {
+    /// statically fuse them all, may be called at any state (meaning each unit may not necessarily be solved locally)
+    pub fn static_fuse_all(&mut self) {
         for unit_ptr in self.units.iter() {
             let mut unit = unit_ptr.write();
             if let Some((left_child_weak, right_child_weak)) = &unit.children {
-                let left_child_ptr = left_child_weak.upgrade_force();
-                let right_child_ptr = right_child_weak.upgrade_force();
-                let left_child = left_child_ptr.read_recursive();
-                let right_child = right_child_ptr.read_recursive();
-                if !left_child.is_active && !right_child.is_active {
-                    continue  // already fused
+                {  // ignore already fused children and work on others
+                    let left_child_ptr = left_child_weak.upgrade_force();
+                    let right_child_ptr = right_child_weak.upgrade_force();
+                    let left_child = left_child_ptr.read_recursive();
+                    let right_child = right_child_ptr.read_recursive();
+                    if !left_child.is_active && !right_child.is_active {
+                        continue  // already fused, it's ok to just ignore
+                    }
+                    assert!(left_child.is_active && right_child.is_active, "children must be active at the same time if fusing all together");
                 }
-                assert!(left_child.is_active && right_child.is_active, "children must be active at the same time if fusing all together");
-                drop(left_child);  // unlock
-                drop(right_child);  // unlock
-                unit.static_activate();  // activate the unit by fusing its children together
+                unit.static_fuse();
             }
         }
     }
@@ -492,19 +492,30 @@ impl<SerialModule: DualModuleImpl + FusionVisualizer + Send + Sync> FusionVisual
 
 impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialModule> {
 
-    /// active a unit by fusing its children together, only valid when no dynamic creation of dual nodes are applied are syndrome is loaded
-    pub fn static_activate(&mut self) {
-        assert!(!self.is_active, "unit already activated");
+    /// statically fuse the children of this unit
+    pub fn static_fuse(&mut self) {
+        assert!(!self.is_active, "cannot fuse the child an already active unit");
+        let (left_child_weak, right_child_weak) = self.children.as_ref().expect("fuse a standalone unit forbidden");
+        let left_child_ptr = left_child_weak.upgrade_force();
+        let right_child_ptr = right_child_weak.upgrade_force();
+        let mut left_child = left_child_ptr.write();
+        let mut right_child = right_child_ptr.write();
+        assert!(left_child.is_active && right_child.is_active, "cannot fuse inactive pairs");
+        // update active state
         self.is_active = true;
-        {  // deactivate two children
-            let (left_child_weak, right_child_weak) = self.children.as_ref().expect("activate a standalone unit forbidden");
-            left_child_weak.upgrade_force().write().is_active = false;
-            right_child_weak.upgrade_force().write().is_active = false;
-        }
-        {  // set partition unit as enabled
-            let mut partition_unit = self.partition_unit.write();
-            partition_unit.enabled = true;
-        }
+        left_child.is_active = false;
+        right_child.is_active = false;
+        // set partition unit as enabled
+        let mut partition_unit = self.partition_unit.write();
+        partition_unit.enabled = true;
+    }
+
+    /// fuse the children of this unit and also fuse the interfaces of them
+    pub fn fuse(&mut self, interfaces: (DualModuleInterface, DualModuleInterface)) -> DualModuleInterface {
+        self.static_fuse();
+        // TODO: change the index of dual nodes in the right children, and append it to the left
+        let (mut left_interface, mut right_interface) = interfaces;
+        unimplemented!()
     }
 
     /// if any descendant unit mirror or own the vertex
@@ -961,7 +972,7 @@ pub mod tests {
         let partition_info = partition_config.into_info(&initializer);
         // create dual module
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
-        dual_module.fuse_all();
+        dual_module.static_fuse_all();
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
