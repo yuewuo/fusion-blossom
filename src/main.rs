@@ -390,39 +390,37 @@ pub fn main() {
                     ))>::new();
                     let total_rounds = 1000;
                     let max_half_weight: Weight = 500;
-                    // for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
-                    //     for d in [7, 11, 15, 19] {
-                    //         let mut reordered_vertices = vec![];
-                    //         let split_vertical = (d + 1) / 2;
-                    //         for j in 0..split_vertical {
-                    //             reordered_vertices.push(j);
-                    //         }
-                    //         reordered_vertices.push(d);
-                    //         for j in split_vertical..d {
-                    //             reordered_vertices.push(j);
-                    //         }
-                    //         codes.push((format!("2-partition repetition {d} {p}"), (
-                    //             Box::new((|| {
-                    //                 let mut code = CodeCapacityRepetitionCode::new(d, p, max_half_weight);
-                    //                 code.reorder_vertices(&reordered_vertices);
-                    //                 code
-                    //             })()),
-                    //             Box::new(move |initializer, config| {
-                    //                 config.partitions = vec![
-                    //                     VertexRange::new(0, split_vertical + 1),
-                    //                     VertexRange::new(split_vertical + 2, initializer.vertex_num),
-                    //                 ];
-                    //                 config.fusions = vec![
-                    //                     (0, 1),
-                    //                 ];
-                    //             }),
-                    //         )));
-                    //     }
-                    // }
-                    // for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
-                    //     for d in [7, 11, 15, 19] {
-                    for p in [0.499] {
-                        for d in [15] {
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                        for d in [7, 11, 15, 19] {
+                            let mut reordered_vertices = vec![];
+                            let split_vertical = (d + 1) / 2;
+                            for j in 0..split_vertical {
+                                reordered_vertices.push(j);
+                            }
+                            reordered_vertices.push(d);
+                            for j in split_vertical..d {
+                                reordered_vertices.push(j);
+                            }
+                            codes.push((format!("2-partition repetition {d} {p}"), (
+                                Box::new((|| {
+                                    let mut code = CodeCapacityRepetitionCode::new(d, p, max_half_weight);
+                                    code.reorder_vertices(&reordered_vertices);
+                                    code
+                                })()),
+                                Box::new(move |initializer, config| {
+                                    config.partitions = vec![
+                                        VertexRange::new(0, split_vertical + 1),
+                                        VertexRange::new(split_vertical + 2, initializer.vertex_num),
+                                    ];
+                                    config.fusions = vec![
+                                        (0, 1),
+                                    ];
+                                }),
+                            )));
+                        }
+                    }
+                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
+                        for d in [7, 11, 15, 19] {
                             let split_horizontal = (d + 1) / 2;
                             let row_count = d + 1;
                             codes.push((format!("2-partition planar {d} {p}"), (
@@ -543,7 +541,7 @@ pub fn main() {
                             }
                             // try to work on a simple syndrome
                             code.set_syndrome(&syndrome_vertices);
-                            println!("syndrome_vertices: {syndrome_vertices:?}");
+                            // println!("syndrome_vertices: {syndrome_vertices:?}");
                             // println!("erasures: {erasures:?}");
                             dual_module.load_erasures(&erasures);
                             let mut interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
