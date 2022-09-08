@@ -86,8 +86,6 @@ pub struct DualModuleParallelUnit<SerialModule: DualModuleImpl + Send + Sync> {
     pub parent: Option<DualModuleParallelUnitWeak<SerialModule>>,
     /// elevated dual nodes: whose descendent not on the representative path of a dual node
     pub elevated_dual_nodes: PtrWeakHashSet<DualNodeWeak>,
-    /// pending dual nodes to be added when activate
-    pub pending_dual_node_ptrs: Vec<DualNodePtr>,
     /// an empty sync requests queue just to implement the trait
     pub empty_sync_request: Vec<SyncRequest>,
     /// run things in thread pool
@@ -292,6 +290,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
 
     /// find the active ancestor to handle this dual node (should be unique, i.e. any time only one ancestor is active)
     pub fn find_active_ancestor(&self, dual_node_ptr: &DualNodePtr) -> DualModuleParallelUnitPtr<SerialModule> {
+        self.find_active_ancestor_option(dual_node_ptr).unwrap()
+    }
+
+    pub fn find_active_ancestor_option(&self, dual_node_ptr: &DualNodePtr) -> Option<DualModuleParallelUnitPtr<SerialModule>> {
         // find the first active ancestor unit that should handle this dual node
         let representative_vertex = dual_node_ptr.get_representative_vertex();
         let owning_unit_index = self.partition_info.vertex_to_owning_unit[representative_vertex];
@@ -301,11 +303,15 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             if owning_unit.is_active {
                 break  // find an active unit
             }
-            let parent_owning_unit_ptr = owning_unit.parent.clone().unwrap().upgrade_force();
-            drop(owning_unit);
-            owning_unit_ptr = parent_owning_unit_ptr;
+            if let Some(parent_weak) = &owning_unit.parent {
+                let parent_owning_unit_ptr = parent_weak.upgrade_force();
+                drop(owning_unit);
+                owning_unit_ptr = parent_owning_unit_ptr;
+            } else {
+                return None
+            }
         }
-        owning_unit_ptr
+        Some(owning_unit_ptr)
     }
 
     /// fuse them all, may be called at any state (meaning each unit may not necessarily be solved locally)
@@ -353,22 +359,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     // although not the intended way to use it, we do support these common APIs for compatibility with normal primal modules
 
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
-        let unit_ptr = match dual_node_ptr.read_recursive().class {
-            DualNodeClass::Blossom{ .. } => {
-                self.find_active_ancestor(&dual_node_ptr)
-            },
-            DualNodeClass::SyndromeVertex{ syndrome_index } => {
-                let owning_unit_index = self.partition_info.vertex_to_owning_unit[syndrome_index];
-                self.units[owning_unit_index].clone()
-            },
-        };
+        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
         self.thread_pool.scope(|_| {
             let mut unit = unit_ptr.write();
-            if unit.is_active {
-                unit.add_dual_node(&dual_node_ptr);
-            } else {
-                unit.pending_dual_node_ptrs.push(dual_node_ptr.clone());
-            }
+            unit.add_dual_node(&dual_node_ptr);
         })
     }
 
@@ -495,15 +489,6 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         {  // set partition unit as enabled
             let mut partition_unit = self.partition_unit.write();
             partition_unit.enabled = true;
-        }
-        {  // activate all dual nodes of this interface in children as well
-            if !self.pending_dual_node_ptrs.is_empty() {
-                let mut pending_dual_node_ptrs = vec![];
-                std::mem::swap(&mut self.pending_dual_node_ptrs, &mut pending_dual_node_ptrs);
-                for dual_node_ptr in pending_dual_node_ptrs.into_iter() {
-                    self.add_dual_node(&dual_node_ptr);
-                }
-            }
         }
     }
 
@@ -746,7 +731,6 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<Seria
             children: None,  // to be filled later
             parent: None,  // to be filled later
             elevated_dual_nodes: PtrWeakHashSet::new(),
-            pending_dual_node_ptrs: vec![],
             empty_sync_request: vec![],
             enable_parallel_execution: false,
         })
@@ -785,7 +769,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                             debug_assert!(child.whole_range.contains(&representative_vertex), "selected child must contains the vertex");
                             is_owning_dual_node = child.owning_range.contains(&representative_vertex);
                             if !is_owning_dual_node {  // search for the grandsons
-                                let grandson_ptr = if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
+                                let grandson_ptr = if let Some((left_child_weak, right_child_weak)) = child.children.as_ref() {
                                     if representative_vertex < child.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() }
                                 } else { unreachable!() };
                                 drop(child);
@@ -953,24 +937,20 @@ pub mod tests {
                 Some(visualizer)
             }, None => None
         };
-        // create dual module
         let initializer = code.get_initializer();
         let mut partition_config = PartitionConfig::default(&initializer);
         partition_func(&initializer, &mut partition_config);
         println!("partition_config: {partition_config:?}");
         let partition_info = partition_config.into_info(&initializer);
+        // create dual module
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
+        dual_module.fuse_all();
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        dual_module.fuse_all();
-        interface.debug_print_actions = true;
-        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        // grow until end
-        primal_module.solve_visualizer(&mut interface, &mut dual_module, visualizer.as_mut());
+        let interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)
     }

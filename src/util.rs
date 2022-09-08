@@ -220,6 +220,20 @@ pub struct PartitionInfo {
     pub vertex_to_owning_unit: Vec<usize>,
 }
 
+impl PartitionInfo {
+
+    /// split a sequence of syndrome into multiple parts, each corresponds to a unit
+    pub fn partition_syndrome(&self, syndrome_vertices: &Vec<VertexIndex>) -> Vec<Vec<VertexIndex>> {
+        let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| vec![]).collect();
+        for syndrome_vertex in syndrome_vertices.iter() {
+            let unit_index = self.vertex_to_owning_unit[*syndrome_vertex];
+            partitioned_syndrome[unit_index].push(*syndrome_vertex);
+        }
+        partitioned_syndrome
+    }
+
+}
+
 #[derive(Debug, Clone)]
 pub struct PartitionUnitInfo {
     /// the whole range of units

@@ -112,11 +112,8 @@ pub fn main() {
                             code.set_syndrome(&syndrome_vertices);
                             // println!("syndrome_vertices: {syndrome_vertices:?}");
                             // println!("erasures: {erasures:?}");
-                            let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
                             dual_module.load_erasures(&erasures);
-                            // interface.debug_print_actions = true;
-                            primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-                            primal_module.solve_visualizer(&mut interface, &mut dual_module, visualizer.as_mut());
+                            let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
                             if !disable_blossom {
                                 // prepare modified weighted edges
                                 let mut edge_modifier = EdgeWeightModifier::new();
@@ -326,12 +323,9 @@ pub fn main() {
                             code.set_syndrome(&syndrome_vertices);
                             // println!("syndrome_vertices: {syndrome_vertices:?}");
                             // println!("erasures: {erasures:?}");
-                            let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
                             dual_module.fuse_all();
                             dual_module.load_erasures(&erasures);
-                            // interface.debug_print_actions = true;
-                            primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-                            primal_module.solve_visualizer(&mut interface, &mut dual_module, visualizer.as_mut());
+                            let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
                             if !disable_blossom {
                                 // prepare modified weighted edges
                                 let mut edge_modifier = EdgeWeightModifier::new();

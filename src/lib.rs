@@ -39,7 +39,7 @@ pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usiz
         }
     }
     // by default use serial implementation fusion blossom
-    mwpm_solver::SolverSerial::solve_mwpm(initializer, syndrome_vertices)
+    mwpm_solver::SolverSerial::mwpm_solve(initializer, syndrome_vertices)
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)

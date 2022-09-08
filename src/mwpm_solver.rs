@@ -6,7 +6,7 @@
 
 use super::util::*;
 use super::dual_module::{DualModuleInterface, DualModuleImpl};
-use super::primal_module::{PrimalModuleImpl, SubGraphBuilder};
+use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching};
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerial;
 use super::visualize::*;
@@ -53,40 +53,50 @@ impl SolverSerial {
         }
     }
 
-    pub fn load_syndrome(&mut self, syndrome_vertices: &Vec<usize>) {
-        self.interface = DualModuleInterface::new(syndrome_vertices, &mut self.dual_module);
-        self.primal_module.load(&self.interface);
-    }
-
-    pub fn load_syndrome_and_solve(&mut self, syndrome_vertices: &Vec<usize>) {
-        self.load_syndrome(syndrome_vertices);
-        self.primal_module.solve(&mut self.interface, &mut self.dual_module);
+    pub fn solve_perfect_matching(&mut self, syndrome_vertices: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
+        self.primal_module.clear();
+        self.dual_module.clear();
+        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+        self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module)
     }
 
     /// solve subgraph directly
     pub fn solve_subgraph(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<EdgeIndex> {
-        self.load_syndrome_and_solve(syndrome_vertices);
-        let perfect_matching = self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module);
+        self.solve_subgraph_visualizer(syndrome_vertices, None)
+    }
+
+    pub fn solve_subgraph_visualizer(&mut self, syndrome_vertices: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> Vec<EdgeIndex> {
+        let perfect_matching = self.solve_perfect_matching(syndrome_vertices, visualizer);
         self.subgraph_builder.clear();
         self.subgraph_builder.load_perfect_matching(&perfect_matching);
         self.subgraph_builder.get_subgraph()
     }
 
-    pub fn solve(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
-        self.load_syndrome_and_solve(syndrome_vertices);
-        self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module).legacy_get_mwpm_result(&syndrome_vertices)
+    /// solve the minimum weight perfect matching (legacy API, the same output as the blossom V library)
+    pub fn solve_legacy(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+        self.solve_legacy_visualizer(syndrome_vertices, None)
     }
 
-    // utilities to call this solver
-    pub fn solve_mwpm_visualizer(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>, mut visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+    pub fn solve_legacy_visualizer(&mut self, syndrome_vertices: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+        self.primal_module.clear();
+        self.dual_module.clear();
+        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+        let perfect_matching = self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module);
+        perfect_matching.legacy_get_mwpm_result(&syndrome_vertices)
+    }
+
+}
+
+// static functions, not recommended because it doesn't reuse the data structure of dual module
+impl SolverSerial {
+
+    pub fn mwpm_solve(initializer: &SolverInitializer, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
+        Self::mwpm_solve_visualizer(initializer, syndrome_nodes, None)
+    }
+
+    pub fn mwpm_solve_visualizer(initializer: &SolverInitializer, syndrome_nodes: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
         let mut solver = Self::new(initializer);
-        solver.load_syndrome(syndrome_vertices);
-        if let Some(ref mut visualizer) = visualizer { visualizer.snapshot(format!("start"), &solver).unwrap(); }
-        unimplemented!()
-    }
-
-    pub fn solve_mwpm(initializer: &SolverInitializer, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
-        Self::solve_mwpm_visualizer(initializer, syndrome_nodes, None)
+        solver.solve_legacy_visualizer(syndrome_nodes, visualizer)
     }
 
 }

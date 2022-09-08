@@ -169,12 +169,8 @@ pub mod tests {
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), PrimalModuleParallelConfig::default());
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        dual_module.fuse_all();
-        interface.debug_print_actions = true;
-        primal_module.load(&interface);  // load syndrome and connect to the dual module interface
-        // grow until end
-        primal_module.solve_step_callback(&mut interface, &mut dual_module, |interface, dual_module, primal_module, group_max_update_length| {
+        let partitioned_syndrome = partition_info.partition_syndrome(&code.get_syndrome());
+        let interface = primal_module.solve_step_callback(&code.get_syndrome(), &mut dual_module, |interface, dual_module, primal_module, group_max_update_length| {
             println!("group_max_update_length: {:?}", group_max_update_length);
             if let Some(length) = group_max_update_length.get_none_zero_growth() {
                 visualizer.as_mut().map(|v| v.snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module]).unwrap());

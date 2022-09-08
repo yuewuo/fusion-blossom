@@ -2058,6 +2058,7 @@ mod tests {
             visualizer.snapshot_combined(format!("shrink"), vec![&interface, &dual_module]).unwrap();
         }
         // cancel the erasures and grow the dual module in normal case, this should automatically clear the erasures
+        dual_module.clear();
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("after clear"), vec![&interface, &dual_module]).unwrap();
         dual_module.load_erasures(&vec![]);  // no erasures this time, to test if the module recovers correctly

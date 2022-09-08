@@ -555,7 +555,6 @@ impl DualModuleInterface {
             debug_print_actions: false,
             dual_variable_global_progress: 0,
         };
-        dual_module_impl.clear();
         for vertex_idx in syndrome.iter() {
             array.create_syndrome_node(*vertex_idx, dual_module_impl);
         }
