@@ -339,6 +339,9 @@ export async function refresh_snapshot_data() {
         // draw vertices
         for (let [i, vertex] of snapshot.vertices.entries()) {
             if (vertex == null) {
+                if (i < vertex_meshes.length) {  // hide
+                    vertex_meshes[i].visible = false
+                }
                 continue
             }
             let position = fusion_data.positions[i]
@@ -376,6 +379,13 @@ export async function refresh_snapshot_data() {
         edge_caches = []  // clear cache
         for (let [i, edge] of snapshot.edges.entries()) {
             if (edge == null) {
+                if (i < left_edge_meshes.length) {  // hide
+                    for (let j of [0, 1]) {
+                        left_edge_meshes[i][j].visible = false
+                        right_edge_meshes[i][j].visible = false
+                        middle_edge_meshes[i][j].visible = false
+                    }
+                }
                 continue
             }
             const left_position = fusion_data.positions[edge.l]
@@ -448,6 +458,9 @@ export async function refresh_snapshot_data() {
         // draw vertex outlines
         for (let [i, vertex] of snapshot.vertices.entries()) {
             if (vertex == null) {
+                if (i < vertex_outline_meshes.length) {  // hide
+                    vertex_outline_meshes[i].visible = false
+                }
                 continue
             }
             let position = fusion_data.positions[i]
@@ -639,10 +652,10 @@ function is_user_data_valid(user_data) {
     const snapshot_idx = active_snapshot_idx.value
     const snapshot = fusion_data.snapshots[snapshot_idx][1]
     if (user_data.type == "vertex") {
-        return user_data.vertex_index < snapshot.vertices.length
+        return user_data.vertex_index < snapshot.vertices.length && snapshot.vertices[user_data.vertex_index] != null
     }
     if (user_data.type == "edge") {
-        return user_data.edge_index < snapshot.edges.length
+        return user_data.edge_index < snapshot.edges.length && snapshot.edges[user_data.edge_index] != null
     }
     return false
 }
