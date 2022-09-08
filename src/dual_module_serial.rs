@@ -960,6 +960,7 @@ impl DualModuleImpl for DualModuleSerial {
                     }
                     dual_node_internal.boundary.push((is_left, edge_weak.clone()));
                 }
+                self.active_list.push(dual_node_internal_ptr.downgrade());
             }
             
         }

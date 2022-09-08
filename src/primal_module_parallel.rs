@@ -123,19 +123,33 @@ impl PrimalModuleImpl for PrimalModuleParallel {
     }
 
     fn clear(&mut self) {
-        unimplemented!()
+        self.thread_pool.scope(|_| {
+            self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {
+                let mut unit = unit_ptr.write();
+                let partition_unit_info = &unit.partition_info.units[unit_idx];
+                let is_active = partition_unit_info.children.is_none();
+                unit.clear();
+                unit.is_active = is_active;
+            });
+        })
     }
 
     fn load_syndrome_dual_node(&mut self, _dual_node_ptr: &DualNodePtr) {
-        panic!("load interface directly into the parallel primal module is forbidden, use `solve` instead");
+        panic!("load interface directly into the parallel primal module is forbidden, use `parallel_solve` instead");
     }
 
     fn resolve<D: DualModuleImpl>(&mut self, _group_max_update_length: GroupMaxUpdateLength, _interface: &mut DualModuleInterface, _dual_module: &mut D) {
-        panic!("parallel primal module cannot handle global resolve requests, use `solve` instead");
+        panic!("parallel primal module cannot handle global resolve requests, use `parallel_solve` instead");
     }
 
-    fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &mut DualModuleInterface, _dual_module: &mut D) -> IntermediateMatching {
-        unimplemented!()
+    fn intermediate_matching<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D) -> IntermediateMatching {
+        let mut intermediate_matching = IntermediateMatching::new();
+        for unit_ptr in self.units.iter() {
+            let mut unit = unit_ptr.write();
+            if !unit.is_active { continue }  // do not visualize inactive units
+            intermediate_matching.append(&mut unit.serial_module.intermediate_matching(interface, dual_module));
+        }
+        intermediate_matching
     }
 
 }
@@ -575,6 +589,33 @@ pub mod tests {
             }
             reordered_vertices
         })()));
+    }
+
+    fn primal_module_parallel_debug_planar_code_common(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+        let half_weight = 500;
+        let split_horizontal = (d + 1) / 2;
+        let row_count = d + 1;
+        primal_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(d, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |initializer, config| {
+            config.partitions = vec![
+                VertexRange::new(0, split_horizontal * row_count),
+                VertexRange::new((split_horizontal + 1) * row_count, initializer.vertex_num),
+            ];
+            config.fusions = vec![
+                (0, 1),
+            ];
+        }, None);
+    }
+
+    /// 68000 vs 69000 dual variable: probably missing some interface node
+    /// panicked at 'vacating a non-boundary vertex is forbidden', src/dual_module_serial.rs:899:25
+    /// reason: when executing sync events, I forgot to add the new propagated dual module to the active list;
+    /// why it didn't show up before: because usually a node is created when executing sync event, in which case it's automatically in the active list
+    /// if this node already exists before, and it's again synchronized, then it's not in the active list, leading to strange growth 
+    #[test]
+    fn primal_module_parallel_debug_1() {  // cargo test primal_module_parallel_debug_1 -- --nocapture
+        let visualize_filename = format!("primal_module_parallel_debug_1.json");
+        let syndrome_vertices = vec![88, 89, 102, 103, 105, 106, 118, 120, 122, 134, 138];  // indices are before the reorder
+        primal_module_parallel_debug_planar_code_common(15, visualize_filename, syndrome_vertices, 10);
     }
 
 }

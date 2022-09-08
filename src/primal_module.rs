@@ -130,6 +130,11 @@ impl IntermediateMatching {
         }
     }
 
+    pub fn append(&mut self, other: &mut Self) {
+        self.peer_matchings.append(&mut other.peer_matchings);
+        self.virtual_matchings.append(&mut other.virtual_matchings);
+    }
+
     /// expand the intermediate matching into a perfect matching with only syndrome nodes
     pub fn get_perfect_matching(&self) -> PerfectMatching {
         let mut perfect_matching = PerfectMatching::new();
