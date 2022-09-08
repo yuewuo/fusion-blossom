@@ -71,7 +71,7 @@ impl Default for PrimalModuleParallelConfig {
 pub mod primal_module_parallel_default_configs {
     // pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
     pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
-    pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
+    pub fn debug_sequential() -> bool { true }  // by default enabled: only disable when you need to debug and get visualizer to work
 }
 
 impl PrimalModuleParallel {
@@ -92,6 +92,16 @@ impl PrimalModuleParallel {
                 PrimalModuleParallelUnitPtr::new_wrapper(primal_module, unit_index)
             }).collect_into_vec(&mut units);
         });
+        // fill in the children and parent references
+        for unit_index in 0..unit_count {
+            let mut unit = units[unit_index].write();
+            if let Some((left_children_index, right_children_index)) = &partition_info.units[unit_index].children {
+                unit.children = Some((units[*left_children_index].downgrade(), units[*right_children_index].downgrade()))
+            }
+            if let Some(parent_index) = &partition_info.units[unit_index].parent {
+                unit.parent = Some(units[*parent_index].downgrade());
+            }
+        }
         Self {
             units: units,
             config: config,
@@ -155,7 +165,7 @@ impl PrimalModuleParallel {
 
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>
             (&mut self, syndrome_vertices: &Vec<usize>, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F) -> DualModuleInterface
-            where F: FnMut(&DualModuleInterface, &DualModuleParallel<DualSerialModule>, &Self, &GroupMaxUpdateLength) {
+            where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, &GroupMaxUpdateLength) {
         let partitioned_syndrome = self.partition_info.partition_syndrome(syndrome_vertices);
         let last_unit_ptr = self.units.last().unwrap().clone();
         let thread_pool = Arc::clone(&self.thread_pool);
@@ -176,17 +186,18 @@ impl PrimalModuleParallelUnitPtr {
 
     /// create a simple wrapper over a serial dual module
     pub fn new_wrapper(serial_module: PrimalModuleSerial, unit_index: usize) -> Self {
-        unimplemented!()
-        // Self::new(PrimalModuleParallelUnit {
-        //     unit_index: unit_index,
-        //     serial_module: serial_module,
-        // })
+        Self::new(PrimalModuleParallelUnit {
+            unit_index: unit_index,
+            serial_module: serial_module,
+            children: None,  // to be filled later
+            parent: None,  // to be filled later
+        })
     }
 
     /// call on the last primal node, and it will spawn tasks on the previous ones
     fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
                 , partitioned_syndrome: &Vec<Vec<VertexIndex>>, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
-            -> DualModuleInterface where F: FnMut(&DualModuleInterface, &DualModuleParallel<DualSerialModule>, &PrimalModuleParallel, &GroupMaxUpdateLength) {
+            -> DualModuleInterface where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, &GroupMaxUpdateLength) {
         let mut unit = self.write();
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads
         let debug_sequential = primal_module_parallel.config.debug_sequential;
@@ -211,11 +222,12 @@ impl PrimalModuleParallelUnitPtr {
             let syndrome_vertices = &partitioned_syndrome[unit.unit_index];
             let dual_module_ptr = parallel_dual_module.get_unit(unit.unit_index);
             let mut dual_module = dual_module_ptr.write();
-            unit.serial_module.solve_step_callback(syndrome_vertices, dual_module.deref_mut(), |interface, _dual_module, _primal_module, group_max_update_length| {
+            let interface = unit.serial_module.solve_step_callback(syndrome_vertices, dual_module.deref_mut(), |interface, dual_module, primal_module, group_max_update_length| {
                 if let Some(callback) = callback.as_mut() {
-                    callback(interface, parallel_dual_module, primal_module_parallel, &group_max_update_length);
+                    callback(interface, dual_module, primal_module, &group_max_update_length);
                 }
-            })
+            });
+            interface
         }
     }
 
@@ -255,7 +267,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), PrimalModuleParallelConfig::default());
         // try to work on a simple syndrome
         code.set_syndrome(&syndrome_vertices);
-        let interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        let interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)
     }
