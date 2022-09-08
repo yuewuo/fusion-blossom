@@ -151,15 +151,20 @@ impl PrimalModuleParallel {
             (&mut self, syndrome_vertices: &Vec<usize>, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>
             , visualizer: Option<&mut Visualizer>) -> DualModuleInterface {
         if let Some(visualizer) = visualizer {
-            let interface = self.parallel_solve_step_callback(syndrome_vertices, parallel_dual_module, |interface, dual_module, primal_module, group_max_update_length| {
-                println!("group_max_update_length: {:?}", group_max_update_length);
-                if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                    visualizer.snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module]).unwrap();
-                } else {
-                    let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                    visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![interface, dual_module, primal_module]).unwrap();
-                };
-            });
+            let interface = self.parallel_solve_step_callback(syndrome_vertices, parallel_dual_module
+                , |interface, dual_module, primal_module, group_max_update_length| {
+                    if let Some(group_max_update_length) = group_max_update_length {
+                        println!("group_max_update_length: {:?}", group_max_update_length);
+                        if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                            visualizer.snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module]).unwrap();
+                        } else {
+                            let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
+                            visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![interface, dual_module, primal_module]).unwrap();
+                        };
+                    } else {
+                        visualizer.snapshot_combined(format!("unit solved"), vec![interface, dual_module, primal_module]).unwrap();
+                    }
+                });
             visualizer.snapshot_combined(format!("solved"), vec![&interface, parallel_dual_module, self]).unwrap();
             interface
         } else {
@@ -169,7 +174,7 @@ impl PrimalModuleParallel {
 
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>
             (&mut self, syndrome_vertices: &Vec<usize>, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F) -> DualModuleInterface
-            where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, &GroupMaxUpdateLength) {
+            where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
         let partitioned_syndrome = self.partition_info.partition_syndrome(syndrome_vertices);
         let last_unit_ptr = self.units.last().unwrap().clone();
         let thread_pool = Arc::clone(&self.thread_pool);
@@ -220,7 +225,8 @@ impl PrimalModuleParallelUnitPtr {
     /// call on the last primal node, and it will spawn tasks on the previous ones
     fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
                 , partitioned_syndrome: &Vec<Vec<VertexIndex>>, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
-            -> DualModuleInterface where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, &GroupMaxUpdateLength) {
+                -> DualModuleInterface
+            where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
         let mut unit = self.write();
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads
         let debug_sequential = primal_module_parallel.config.debug_sequential;
@@ -245,11 +251,14 @@ impl PrimalModuleParallelUnitPtr {
             let syndrome_vertices = &partitioned_syndrome[unit.unit_index];
             let dual_module_ptr = parallel_dual_module.get_unit(unit.unit_index);
             let mut dual_module = dual_module_ptr.write();
-            let interface = unit.serial_module.solve_step_callback(syndrome_vertices, dual_module.deref_mut(), |interface, dual_module, primal_module, group_max_update_length| {
+            let mut interface = unit.serial_module.solve_step_callback(syndrome_vertices, dual_module.deref_mut(), |interface, dual_module, primal_module, group_max_update_length| {
                 if let Some(callback) = callback.as_mut() {
-                    callback(interface, dual_module, primal_module, &group_max_update_length);
+                    callback(interface, dual_module, primal_module, Some(&group_max_update_length));
                 }
             });
+            if let Some(callback) = callback.as_mut() {
+                callback(&interface, &dual_module, &unit.serial_module, None);
+            }
             interface
         }
     }
