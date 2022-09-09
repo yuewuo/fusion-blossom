@@ -60,7 +60,7 @@ pub struct CodeCapacityPlanarCodeVerticalPartitionHalf {
 
 impl CodeCapacityPlanarCodeVerticalPartitionHalf {
     pub fn new(d: usize, partition_row: usize) -> Self {
-        Self { d: d, partition_row: partition_row }
+        Self { d, partition_row }
     }
 }
 
@@ -94,7 +94,7 @@ pub struct CodeCapacityPlanarCodeVerticalPartitionFour {
 
 impl CodeCapacityPlanarCodeVerticalPartitionFour {
     pub fn new(d: usize, partition_row: usize, partition_column: usize) -> Self {
-        Self { d: d, partition_row: partition_row, partition_column }
+        Self { d, partition_row, partition_column }
     }
 }
 
@@ -173,7 +173,7 @@ pub struct CodeCapacityRepetitionCodePartitionHalf {
 
 impl CodeCapacityRepetitionCodePartitionHalf {
     pub fn new(d: usize, partition_index: usize) -> Self {
-        Self { d: d, partition_index: partition_index }
+        Self { d, partition_index }
     }
 }
 
@@ -203,6 +203,51 @@ impl ExamplePartition for CodeCapacityRepetitionCodePartitionHalf {
         config.fusions = vec![
             (0, 1),
         ];
+        config
+    }
+}
+
+/// evenly partition along the time axis
+pub struct PhenomenologicalPlanarCodeTimePartition {
+    d: usize,
+    noisy_measurements: usize,
+    /// the number of partition
+    partition_num: usize,
+}
+
+impl PhenomenologicalPlanarCodeTimePartition {
+    pub fn new(d: usize, noisy_measurements: usize, partition_num: usize) -> Self {
+        Self { d, noisy_measurements, partition_num }
+    }
+}
+
+impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
+    fn build_partition(&mut self, code: &Box<dyn ExampleCode>) -> PartitionConfig {
+        let (d, noisy_measurements, partition_num) = (self.d, self.noisy_measurements, self.partition_num);
+        let round_vertex_num = d * (d + 1);
+        let vertex_num = round_vertex_num * (noisy_measurements + 1);
+        assert_eq!(code.immutable_vertices_edges().0.len(), vertex_num, "code size incompatible");
+        assert!(partition_num >= 1 && partition_num <= noisy_measurements + 1);
+        let partition_length = (noisy_measurements + 1) / partition_num;
+        let mut config = PartitionConfig::default(vertex_num);
+        config.partitions.clear();
+        for partition_index in 0..partition_num {
+            if partition_index < partition_num - 1 {
+                config.partitions.push(VertexRange::new_length(
+                    partition_index * partition_length * round_vertex_num, (partition_length - 1) * round_vertex_num
+                ));
+            } else {
+                config.partitions.push(VertexRange::new(partition_index * partition_length * round_vertex_num, vertex_num));
+            }
+        }
+        config.fusions.clear();
+        for unit_index in partition_num..(2 * partition_num - 1) {
+            if unit_index == partition_num {
+                config.fusions.push((0, 1));
+            } else {
+                config.fusions.push((unit_index - 1, unit_index - partition_num + 1));
+            }
+        }
         config
     }
 }
@@ -292,6 +337,18 @@ pub mod tests {
         let half_weight = 500;
         example_partition_standard_syndrome(Box::new(CodeCapacityPlanarCode::new(11, 0.1, half_weight)), visualize_filename
             , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionFour{ d: 11, partition_row: 7, partition_column: 6 });
+    }
+
+    /// phenomenological time axis split
+    #[test]
+    fn example_partition_basic_5() {  // cargo test example_partition_basic_5 -- --nocapture
+        let visualize_filename = format!("example_partition_basic_5.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![352, 365];  // indices are before the reorder
+        let half_weight = 500;
+        let noisy_measurements = 10;
+        example_partition_standard_syndrome(Box::new(PhenomenologicalPlanarCode::new(11, noisy_measurements, 0.1, half_weight)), visualize_filename
+            , syndrome_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition{ d: 11, noisy_measurements, partition_num: 2 });
     }
 
 

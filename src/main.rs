@@ -67,7 +67,7 @@ enum Commands {
         #[clap(long, action)]
         enable_visualizer: bool,
         /// the method to verify the correctness of the decoding result
-        #[clap(long, arg_enum, default_value_t = Verifier::None)]
+        #[clap(long, arg_enum, default_value_t = Verifier::BlossomV)]
         verifier: Verifier,
         /// the number of iterations to run
         #[clap(short = 't', long, default_value_t = 1000)]
@@ -157,6 +157,8 @@ pub enum PartitionStrategy {
     CodeCapacityPlanarCodeVerticalPartitionFour,
     /// partition a repetition code into left and right half
     CodeCapacityRepetitionCodePartitionHalf,
+    /// partition a phenomenological (or circuit-level) planar code with time axis
+    PhenomenologicalPlanarCodeTimePartition,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -349,11 +351,13 @@ impl ExampleCodeType {
 impl PartitionStrategy {
     fn build(&self, code: &mut Box<dyn ExampleCode>, d: usize, noisy_measurements: usize) -> (SolverInitializer, PartitionConfig) {
         use example_partition::*;
+        let partition_num = 10;
         let partition_config = match self {
             Self::None => NoPartition::new().build_apply(code),
             Self::CodeCapacityPlanarCodeVerticalPartitionHalf => CodeCapacityPlanarCodeVerticalPartitionHalf::new(d, d / 2).build_apply(code),
             Self::CodeCapacityPlanarCodeVerticalPartitionFour => CodeCapacityPlanarCodeVerticalPartitionFour::new(d, d / 2, d / 2).build_apply(code),
             Self::CodeCapacityRepetitionCodePartitionHalf => CodeCapacityRepetitionCodePartitionHalf::new(d, d / 2).build_apply(code),
+            Self::PhenomenologicalPlanarCodeTimePartition => PhenomenologicalPlanarCodeTimePartition::new(d, noisy_measurements, partition_num).build_apply(code),
         };
         (code.get_initializer(), partition_config)
     }
