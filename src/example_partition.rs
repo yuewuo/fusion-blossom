@@ -163,6 +163,50 @@ impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionFour {
     }
 }
 
+/// partition into top half and bottom half
+#[derive(Default)]
+pub struct CodeCapacityRepetitionCodePartitionHalf {
+    d: usize,
+    /// the position of splitting: in the visualization tool, the left (non-virtual) vertex is the 1st column, the right (non-virtual) vertex is the (d-1)-th column
+    partition_index: usize,
+}
+
+impl CodeCapacityRepetitionCodePartitionHalf {
+    pub fn new(d: usize, partition_index: usize) -> Self {
+        Self { d: d, partition_index: partition_index }
+    }
+}
+
+impl ExamplePartition for CodeCapacityRepetitionCodePartitionHalf {
+    fn build_reordered_vertices(&mut self, code: &Box<dyn ExampleCode>) -> Option<Vec<VertexIndex>> {
+        let (d, partition_index) = (self.d, self.partition_index);
+        assert_eq!(code.immutable_vertices_edges().0.len(), d + 1, "code size incompatible");
+        assert!(partition_index > 1 && partition_index < d);
+        let mut reordered_vertices = vec![];
+        let split_vertical = partition_index - 1;
+        for j in 0..split_vertical {
+            reordered_vertices.push(j);
+        }
+        reordered_vertices.push(d);
+        for j in split_vertical..d {
+            reordered_vertices.push(j);
+        }
+        Some(reordered_vertices)
+    }
+    fn build_partition(&mut self, _code: &Box<dyn ExampleCode>) -> PartitionConfig {
+        let (d, partition_index) = (self.d, self.partition_index);
+        let mut config = PartitionConfig::default(d + 1);
+        config.partitions = vec![
+            VertexRange::new(0, partition_index),
+            VertexRange::new(partition_index + 1, d + 1),
+        ];
+        config.fusions = vec![
+            (0, 1),
+        ];
+        config
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -228,6 +272,17 @@ pub mod tests {
             , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionHalf{ d: 11, partition_row: 7 });
     }
 
+    /// split a repetition code into 2 parts
+    #[test]
+    fn example_partition_basic_3() {  // cargo test example_partition_basic_3 -- --nocapture
+        let visualize_filename = format!("example_partition_basic_3.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
+        let half_weight = 500;
+        example_partition_standard_syndrome(Box::new(CodeCapacityRepetitionCode::new(11, 0.1, half_weight)), visualize_filename
+            , syndrome_vertices, true, 5 * half_weight, CodeCapacityRepetitionCodePartitionHalf{ d: 11, partition_index: 6 });
+    }
+
     /// split into 4
     #[test]
     fn example_partition_basic_4() {  // cargo test example_partition_basic_4 -- --nocapture
@@ -238,5 +293,6 @@ pub mod tests {
         example_partition_standard_syndrome(Box::new(CodeCapacityPlanarCode::new(11, 0.1, half_weight)), visualize_filename
             , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionFour{ d: 11, partition_row: 7, partition_column: 6 });
     }
+
 
 }

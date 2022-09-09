@@ -81,7 +81,17 @@ enum Commands {
 #[derive(Subcommand, Clone)]
 enum TestCommands {
     /// test serial implementation
-    Serial,
+    Serial {
+        /// print out the command to test
+        #[clap(short = 'v', long, action)]
+        verbose: bool,
+    },
+    /// test parallel dual module only, with serial primal module
+    DualParallel {
+        /// print out the command to test
+        #[clap(short = 'v', long, action)]
+        verbose: bool,
+    },
 }
 
 fn create_clap_parser<'a>(color_choice: clap::ColorChoice) -> clap::Command<'a> {
@@ -143,10 +153,12 @@ pub enum ExampleCodeType {
 pub enum PartitionStrategy {
     /// no partition
     None,
-    /// partition into top half and bottom half
+    /// partition a planar code into top half and bottom half
     CodeCapacityPlanarCodeVerticalPartitionHalf,
-    /// partition into 4 pieces: top left and right, bottom left and right
+    /// partition a planar code into 4 pieces: top left and right, bottom left and right
     CodeCapacityPlanarCodeVerticalPartitionFour,
+    /// partition a repetition code into left and right half
+    CodeCapacityRepetitionCodePartitionHalf,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -190,7 +202,8 @@ impl Cli {
                 pb.message(format!("{pb_message} ").as_str());
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements);
-                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_config);
+                let partition_info = partition_config.into_info(&initializer);
+                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info);
                 let mut result_verifier = verifier.build(&initializer);
                 for round in 0..(total_rounds as u64) {
                     primal_dual_solver.clear();
@@ -213,7 +226,7 @@ impl Cli {
             },
             Commands::Test { command } => {
                 match command {
-                    TestCommands::Serial => {
+                    TestCommands::Serial { verbose } => {
                         let mut parameters = vec![];
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                             for d in [3, 7, 11, 15, 19] {
@@ -246,15 +259,60 @@ impl Cli {
                                     , format!("--pb-message"), format!("circuit-level {d} {p}")]);
                             }
                         }
-                        let global = vec![format!("--verifier"), format!("blossom-v")];
+                        let command_head = vec![format!(""), format!("benchmark")];
+                        let command_tail = vec![format!("--verifier"), format!("blossom-v")];
                         for parameter in parameters.iter() {
-                            Cli::parse_from([format!(""), format!("benchmark")].iter().chain(parameter.iter()).chain(global.iter())).run();
+                            execute_as_cli(command_head.iter().chain(parameter.iter()).chain(command_tail.iter()), verbose);
+                        }
+                    },
+                    TestCommands::DualParallel { verbose } => {
+                        let mut parameters = vec![];
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for d in [7, 11, 15, 19] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-repetition-code")
+                                    , format!("--partition-strategy"), format!("code-capacity-repetition-code-partition-half")
+                                    , format!("--pb-message"), format!("2-partition repetition {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
+                            for d in [7, 11, 15, 19] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
+                                    , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-half")
+                                    , format!("--pb-message"), format!("2-partition planar {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // complex partition into 4 blocks
+                            for d in [7, 11, 15, 19] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
+                                    , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-four")
+                                    , format!("--pb-message"), format!("4-partition planar {d} {p}")]);
+                            }
+                        }
+                        let command_head = vec![format!(""), format!("benchmark")];
+                        let command_tail = vec![format!("--verifier"), format!("blossom-v"), format!("--primal-dual-type"), format!("dual-parallel")];
+                        for parameter in parameters.iter() {
+                            execute_as_cli(command_head.iter().chain(parameter.iter()).chain(command_tail.iter()), verbose);
                         }
                     },
                 }
             },
         }
     }
+}
+
+pub fn execute_as_cli<'a>(iter: impl Iterator<Item=&'a String> + Clone, verbose: bool) {
+    if verbose {
+        print!("[command]");
+        for word in iter.clone() {
+            if word.contains(char::is_whitespace) {
+                print!("\"{word}\" ")
+            } else {
+                print!("{word} ")
+            }
+        }
+        println!();
+    }
+    Cli::parse_from(iter).run();
 }
 
 pub fn main() {
@@ -270,216 +328,6 @@ pub fn main() {
     match matches.subcommand() {
         Some(("test", matches)) => {
             match matches.subcommand() {
-                Some(("parallel_dual", matches)) => {
-                    if cfg!(not(feature = "blossom_v")) {
-                        panic!("need blossom V library, see README.md")
-                    }
-                    let enable_visualizer = matches.is_present("enable_visualizer");
-                    let disable_blossom = matches.is_present("disable_blossom");
-                    let mut codes = Vec::<(String, (
-                        Box<dyn ExampleCode>,
-                        Box<dyn Fn(&SolverInitializer, &mut PartitionConfig)>,
-                    ))>::new();
-                    let total_rounds = 1000;
-                    let max_half_weight: Weight = 500;
-                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
-                        for d in [7, 11, 15, 19] {
-                            let mut reordered_vertices = vec![];
-                            let split_vertical = (d + 1) / 2;
-                            for j in 0..split_vertical {
-                                reordered_vertices.push(j);
-                            }
-                            reordered_vertices.push(d);
-                            for j in split_vertical..d {
-                                reordered_vertices.push(j);
-                            }
-                            codes.push((format!("2-partition repetition {d} {p}"), (
-                                Box::new((|| {
-                                    let mut code = CodeCapacityRepetitionCode::new(d, p, max_half_weight);
-                                    code.reorder_vertices(&reordered_vertices);
-                                    code
-                                })()),
-                                Box::new(move |initializer, config| {
-                                    config.partitions = vec![
-                                        VertexRange::new(0, split_vertical + 1),
-                                        VertexRange::new(split_vertical + 2, initializer.vertex_num),
-                                    ];
-                                    config.fusions = vec![
-                                        (0, 1),
-                                    ];
-                                }),
-                            )));
-                        }
-                    }
-                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
-                        for d in [7, 11, 15, 19] {
-                            let split_horizontal = (d + 1) / 2;
-                            let row_count = d + 1;
-                            codes.push((format!("2-partition planar {d} {p}"), (
-                                Box::new((|| {
-                                    let code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
-                                    code
-                                })()),
-                                Box::new(move |initializer, config| {
-                                    config.partitions = vec![
-                                        VertexRange::new(0, split_horizontal * row_count),
-                                        VertexRange::new((split_horizontal + 1) * row_count, initializer.vertex_num),
-                                    ];
-                                    config.fusions = vec![
-                                        (0, 1),
-                                    ];
-                                }),
-                            )));
-                        }
-                    }
-                    for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // complex partition into 4 blocks
-                        for d in [7, 11, 15, 19] {
-                            let mut reordered_vertices = vec![];
-                            let row_count = d + 1;
-                            let split_horizontal = (d + 1) / 2;
-                            let split_vertical = (d + 1) / 2;
-                            let start_1 = 0;
-                            for i in 0..split_horizontal {  // left-top block
-                                for j in 0..split_vertical {
-                                    reordered_vertices.push(i * row_count + j);
-                                }
-                                reordered_vertices.push(i * row_count + (row_count-1));
-                            }
-                            let end_1 = reordered_vertices.len();
-                            for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
-                                reordered_vertices.push(i * row_count + split_vertical);
-                            }
-                            let start_2 = reordered_vertices.len();
-                            for i in 0..split_horizontal {  // right-top block
-                                for j in (split_vertical+1)..(row_count-1) {
-                                    reordered_vertices.push(i * row_count + j);
-                                }
-                            }
-                            let end_2 = reordered_vertices.len();
-                            {  // the big interface between top and bottom
-                                for j in 0..row_count {
-                                    reordered_vertices.push(split_horizontal * row_count + j);
-                                }
-                            }
-                            let start_3 = reordered_vertices.len();
-                            for i in (split_horizontal+1)..(row_count-1) {  // left-bottom block
-                                for j in 0..split_vertical {
-                                    reordered_vertices.push(i * row_count + j);
-                                }
-                                reordered_vertices.push(i * row_count + (row_count-1));
-                            }
-                            let end_3 = reordered_vertices.len();
-                            for i in (split_horizontal+1)..(row_count-1) {  // interface between the left-bottom block and the right-bottom block
-                                reordered_vertices.push(i * row_count + split_vertical);
-                            }
-                            let start_4 = reordered_vertices.len();
-                            for i in (split_horizontal+1)..(row_count-1) {  // right-bottom block
-                                for j in (split_vertical+1)..(row_count-1) {
-                                    reordered_vertices.push(i * row_count + j);
-                                }
-                            }
-                            let end_4 = reordered_vertices.len();
-                            codes.push((format!("4-partition planar {d} {p}"), (
-                                Box::new((|| {
-                                    let mut code = CodeCapacityPlanarCode::new(d, p, max_half_weight);
-                                    code.reorder_vertices(&reordered_vertices);
-                                    code
-                                })()),
-                                Box::new(move |_initializer, config| {
-                                    config.partitions = vec![
-                                        VertexRange::new(start_1, end_1),
-                                        VertexRange::new(start_2, end_2),
-                                        VertexRange::new(start_3, end_3),
-                                        VertexRange::new(start_4, end_4),
-                                    ];
-                                    config.fusions = vec![
-                                        (0, 1),
-                                        (2, 3),
-                                        (4, 5),
-                                    ];
-                                }),
-                            )));
-                        }
-                    }
-                    if enable_visualizer {  // print visualizer file path only once
-                        print_visualize_link(&static_visualize_data_filename());
-                    }
-                    let codes_len = codes.len();
-                    for (code_idx, (code_name, (code, partition_func))) in codes.iter_mut().enumerate() {
-                        let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
-                        pb.message(format!("{code_name} [{code_idx}/{codes_len}] ").as_str());
-                        // create dual module
-                        let mut initializer = code.get_initializer();
-                        let config = dual_module_parallel::DualModuleParallelConfig::default();
-                        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
-                        partition_func(&initializer, &mut partition_config);
-                        let partition_info = partition_config.into_info(&initializer);
-                        let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, Arc::clone(&partition_info), config);
-                        // create primal module
-                        let mut primal_module = PrimalModuleSerial::new(&initializer);
-                        primal_module.debug_resolve_only_one = false;  // to enable debug mode
-                        let mut subgraph_builder = SubGraphBuilder::new(&initializer);
-                        for round in 0..total_rounds {
-                            dual_module.clear();
-                            primal_module.clear();
-                            pb.set(round);
-                            let (syndrome_vertices, erasures) = code.generate_random_errors(round);
-                            let mut visualizer = None;
-                            if enable_visualizer {
-                                let mut new_visualizer = Visualizer::new(Some(visualize_data_folder() + static_visualize_data_filename().as_str())).unwrap();
-                                new_visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-                                visualizer = Some(new_visualizer);
-                            }
-                            // println!("syndrome_vertices: {syndrome_vertices:?}");
-                            // println!("erasures: {erasures:?}");
-                            dual_module.static_fuse_all();
-                            dual_module.load_erasures(&erasures);
-                            let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
-                            if !disable_blossom {
-                                // prepare modified weighted edges
-                                let mut edge_modifier = EdgeWeightModifier::new();
-                                for edge_index in erasures.iter() {
-                                    let (vertex_idx_1, vertex_idx_2, original_weight) = &initializer.weighted_edges[*edge_index];
-                                    edge_modifier.push_modified_edge(*edge_index, *original_weight);
-                                    initializer.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
-                                }
-                                // use blossom V to compute ground truth
-                                let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&initializer, &syndrome_vertices);
-                                let blossom_details = fusion_blossom::detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
-                                let mut blossom_total_weight = 0;
-                                for detail in blossom_details.iter() {
-                                    blossom_total_weight += detail.weight;
-                                }
-                                // if blossom_total_weight > 0 { println!("w {} {}", interface.sum_dual_variables, blossom_total_weight); }
-                                assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
-                                // also construct the perfect matching from fusion blossom to compare them
-                                let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
-                                let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-                                let fusion_details = fusion_blossom::detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
-                                let mut fusion_total_weight = 0;
-                                for detail in fusion_details.iter() {
-                                    fusion_total_weight += detail.weight;
-                                }
-                                // recover those weighted_edges
-                                while edge_modifier.has_modified_edges() {
-                                    let (edge_index, original_weight) = edge_modifier.pop_modified_edge();
-                                    let (vertex_idx_1, vertex_idx_2, _) = &initializer.weighted_edges[edge_index];
-                                    initializer.weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
-                                }
-                                // compare with ground truth from the blossom V algorithm
-                                assert_eq!(fusion_total_weight, blossom_total_weight, "unexpected final dual variable sum");
-                                // also test subgraph builder
-                                subgraph_builder.clear();
-                                subgraph_builder.load_erasures(&erasures);
-                                subgraph_builder.load_perfect_matching(&fusion_mwpm);
-                                // println!("blossom_total_weight: {blossom_total_weight} = {} = {fusion_total_weight}", subgraph_builder.total_weight());
-                                assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
-                            }
-                        }
-                        pb.finish();
-                        println!("");
-                    }
-                },
                 Some(("parallel", matches)) => {
                     if cfg!(not(feature = "blossom_v")) {
                         panic!("need blossom V library, see README.md")
@@ -713,18 +561,14 @@ impl ExampleCodeType {
 
 impl PartitionStrategy {
     fn build(&self, code: &mut Box<dyn ExampleCode>, d: usize, noisy_measurements: usize) -> (SolverInitializer, PartitionConfig) {
-        // reorder vertices here, e.g. using [`ExampleCode::reorder_vertices`]
-        match self {
-            _ => { }
-        };
-        let initializer = code.get_initializer();
         use example_partition::*;
         let partition_config = match self {
             Self::None => NoPartition::new().build_apply(code),
             Self::CodeCapacityPlanarCodeVerticalPartitionHalf => CodeCapacityPlanarCodeVerticalPartitionHalf::new(d, d / 2).build_apply(code),
             Self::CodeCapacityPlanarCodeVerticalPartitionFour => CodeCapacityPlanarCodeVerticalPartitionFour::new(d, d / 2, d / 2).build_apply(code),
+            Self::CodeCapacityRepetitionCodePartitionHalf => CodeCapacityRepetitionCodePartitionHalf::new(d, d / 2).build_apply(code),
         };
-        (initializer, partition_config)
+        (code.get_initializer(), partition_config)
     }
 }
 
@@ -764,13 +608,46 @@ impl PrimalDualSolver for SolverSerial {
     fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
 }
 
+struct SolverDualParallel {
+    dual_module: DualModuleParallel<DualModuleSerial>,
+    primal_module: PrimalModuleSerial,
+    interface: DualModuleInterface,
+}
+
+impl SolverDualParallel {
+    fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Self {
+        let config = dual_module_parallel::DualModuleParallelConfig::default();
+        Self {
+            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), config),
+            primal_module: PrimalModuleSerial::new(&initializer),
+            interface: DualModuleInterface::new_empty(),
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverDualParallel {
+    fn clear(&mut self) {
+        self.dual_module.clear();
+        self.primal_module.clear();
+    }
+    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, visualizer: Option<&mut Visualizer>) {
+        self.dual_module.static_fuse_all();
+        self.dual_module.load_erasures(&erasures);
+        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+    }
+    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
+    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
+}
+
+
 impl PrimalDualType {
-    fn build(&self, initializer: &SolverInitializer, partition_config: &PartitionConfig) -> Box<dyn PrimalDualSolver> {
+    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Box<dyn PrimalDualSolver> {
         match self {
             Self::Serial => {
-                assert_eq!(partition_config.partitions.len(), 1, "no partition is supported by serial algorithm, consider using other primal-dual-type");
+                assert_eq!(partition_info.config.partitions.len(), 1, "no partition is supported by serial algorithm, consider using other primal-dual-type");
                 Box::new(SolverSerial::new(initializer))
             },
+            Self::DualParallel => Box::new(SolverDualParallel::new(initializer, partition_info)),
             _ => unimplemented!()
         }
     }
