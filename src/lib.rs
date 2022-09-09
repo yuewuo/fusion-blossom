@@ -24,9 +24,11 @@ pub mod primal_module_serial;
 pub mod mwpm_solver;
 pub mod dual_module_parallel;
 pub mod primal_module_parallel;
+pub mod example_partition;
 
 use util::*;
 use complete_graph::*;
+
 
 /// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`mwpm_solver::SolverSerial`] object)
 pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {

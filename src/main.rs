@@ -10,6 +10,7 @@ use fusion_blossom::dual_module::*;
 use fusion_blossom::primal_module::*;
 use fusion_blossom::dual_module_parallel;
 use fusion_blossom::primal_module_parallel;
+use fusion_blossom::example_partition;
 use pbr::ProgressBar;
 
 use dual_module_serial::DualModuleSerial;
@@ -142,6 +143,10 @@ pub enum ExampleCodeType {
 pub enum PartitionStrategy {
     /// no partition
     None,
+    /// partition into top half and bottom half
+    CodeCapacityPlanarCodeVerticalPartitionHalf,
+    /// partition into 4 pieces: top left and right, bottom left and right
+    CodeCapacityPlanarCodeVerticalPartitionFour,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -406,7 +411,7 @@ pub fn main() {
                         // create dual module
                         let mut initializer = code.get_initializer();
                         let config = dual_module_parallel::DualModuleParallelConfig::default();
-                        let mut partition_config = PartitionConfig::default(&initializer);
+                        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
                         partition_func(&initializer, &mut partition_config);
                         let partition_info = partition_config.into_info(&initializer);
                         let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, Arc::clone(&partition_info), config);
@@ -615,7 +620,7 @@ pub fn main() {
                         let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
                         pb.message(format!("{code_name} [{code_idx}/{codes_len}] ").as_str());
                         let mut initializer = code.get_initializer();
-                        let mut partition_config = PartitionConfig::default(&initializer);
+                        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
                         partition_func(&initializer, &mut partition_config);
                         let partition_info = partition_config.into_info(&initializer);
                         // create dual module
@@ -713,8 +718,11 @@ impl PartitionStrategy {
             _ => { }
         };
         let initializer = code.get_initializer();
+        use example_partition::*;
         let partition_config = match self {
-            Self::None => PartitionConfig::default(&initializer),
+            Self::None => NoPartition::new().build_apply(code),
+            Self::CodeCapacityPlanarCodeVerticalPartitionHalf => CodeCapacityPlanarCodeVerticalPartitionHalf::new(d, d / 2).build_apply(code),
+            Self::CodeCapacityPlanarCodeVerticalPartitionFour => CodeCapacityPlanarCodeVerticalPartitionFour::new(d, d / 2, d / 2).build_apply(code),
         };
         (initializer, partition_config)
     }
@@ -759,7 +767,10 @@ impl PrimalDualSolver for SolverSerial {
 impl PrimalDualType {
     fn build(&self, initializer: &SolverInitializer, partition_config: &PartitionConfig) -> Box<dyn PrimalDualSolver> {
         match self {
-            Self::Serial => Box::new(SolverSerial::new(initializer)),
+            Self::Serial => {
+                assert_eq!(partition_config.partitions.len(), 1, "no partition is supported by serial algorithm, consider using other primal-dual-type");
+                Box::new(SolverSerial::new(initializer))
+            },
             _ => unimplemented!()
         }
     }

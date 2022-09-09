@@ -345,7 +345,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
     fn new(initializer: &SolverInitializer) -> Self {
-        Self::new_config(initializer, PartitionConfig::default(initializer).into_info(initializer), DualModuleParallelConfig::default())
+        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(initializer), DualModuleParallelConfig::default())
     }
 
     /// clear all growth and existing dual nodes
@@ -976,7 +976,7 @@ pub mod tests {
         println!("{syndrome_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
-            syndrome_vertices = code.translated_syndrome_to_reordered(reordered_vertices, syndrome_vertices);
+            syndrome_vertices = translated_syndrome_to_reordered(reordered_vertices, &syndrome_vertices);
         }
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
@@ -987,7 +987,7 @@ pub mod tests {
             }, None => None
         };
         let initializer = code.get_initializer();
-        let mut partition_config = PartitionConfig::default(&initializer);
+        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
         partition_func(&initializer, &mut partition_config);
         println!("partition_config: {partition_config:?}");
         let partition_info = partition_config.into_info(&initializer);

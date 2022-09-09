@@ -56,6 +56,9 @@ impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output
         debug_assert!(end >= start, "invalid range [{}, {})", start, end);
         Self { range: [start, end], }
     }
+    pub fn new_length(start: IndexType, length: IndexType) -> Self {
+        Self::new(start, start + length)
+    }
     pub fn iter(&self) -> std::ops::Range<IndexType> {
         self.range[0].. self.range[1]
     }
@@ -135,9 +138,9 @@ pub struct PartitionConfig {
 
 impl PartitionConfig {
 
-    pub fn default(initializer: &SolverInitializer) -> Self {
+    pub fn default(vertex_num: usize) -> Self {
         Self {
-            partitions: vec![VertexRange::new(0, initializer.vertex_num)],
+            partitions: vec![VertexRange::new(0, vertex_num)],
             fusions: vec![],
         }
     }
@@ -275,6 +278,24 @@ pub struct PartitionedSolverInitializer {
     pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight, EdgeIndex)>,
     /// the virtual vertices
     pub virtual_vertices: Vec<VertexIndex>,
+}
+
+/// perform index transformation
+pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<usize>> {
+    let mut old_to_new: Vec<Option<usize>> = (0..reordered_vertices.len()).map(|_| None).collect();
+    for (new_index, old_index) in reordered_vertices.iter().enumerate() {
+        assert_eq!(old_to_new[*old_index], None, "duplicate vertex found {}", old_index);
+        old_to_new[*old_index] = Some(new_index);
+    }
+    old_to_new
+}
+
+/// translate syndrome vertices into the current new index given reordered_vertices
+pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_syndrome_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
+    let old_to_new = build_old_to_new(reordered_vertices);
+    old_syndrome_vertices.iter().map(|old_index| {
+        old_to_new[*old_index].unwrap()
+    }).collect()
 }
 
 impl SolverInitializer {

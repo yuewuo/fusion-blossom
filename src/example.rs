@@ -61,15 +61,6 @@ pub fn weight_of_p(p: f64) -> f64 {
     ((1. - p) / p).ln()
 }
 
-fn build_old_to_new(sequential_vertices: &Vec<VertexIndex>) -> Vec<Option<usize>> {
-    let mut old_to_new: Vec<Option<usize>> = (0..sequential_vertices.len()).map(|_| None).collect();
-    for (new_index, old_index) in sequential_vertices.iter().enumerate() {
-        assert_eq!(old_to_new[*old_index], None, "duplicate vertex found {}", old_index);
-        old_to_new[*old_index] = Some(new_index);
-    }
-    old_to_new
-}
-
 pub trait ExampleCode {
 
     /// get mutable references to vertices and edges
@@ -275,14 +266,6 @@ pub trait ExampleCode {
             let (old_left, old_right) = edge.vertices;
             edge.vertices = (old_to_new[old_left].unwrap(), old_to_new[old_right].unwrap());
         }
-    }
-
-    /// translate syndrome into the current new index
-    fn translated_syndrome_to_reordered(&self, sequential_vertices: &Vec<VertexIndex>, old_syndrome_vertices: Vec<VertexIndex>) -> Vec<VertexIndex> {
-        let old_to_new = build_old_to_new(sequential_vertices);
-        old_syndrome_vertices.iter().map(|old_index| {
-            old_to_new[*old_index].unwrap()
-        }).collect()
     }
 
 }

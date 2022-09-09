@@ -119,7 +119,7 @@ impl PrimalModuleParallel {
 impl PrimalModuleImpl for PrimalModuleParallel {
 
     fn new(initializer: &SolverInitializer) -> Self {
-        Self::new_config(initializer, PartitionConfig::default(initializer).into_info(initializer), PrimalModuleParallelConfig::default())
+        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(initializer), PrimalModuleParallelConfig::default())
     }
 
     fn clear(&mut self) {
@@ -392,7 +392,7 @@ pub mod tests {
         println!("{syndrome_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
-            syndrome_vertices = code.translated_syndrome_to_reordered(reordered_vertices, syndrome_vertices);
+            syndrome_vertices = translated_syndrome_to_reordered(reordered_vertices, &syndrome_vertices);
         }
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
@@ -403,7 +403,7 @@ pub mod tests {
             }, None => None
         };
         let initializer = code.get_initializer();
-        let mut partition_config = PartitionConfig::default(&initializer);
+        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
         partition_func(&initializer, &mut partition_config);
         let partition_info = partition_config.into_info(&initializer);
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());

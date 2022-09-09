@@ -1,0 +1,242 @@
+//! Example Partition
+//! 
+//! This module contains example partition for some of the example codes
+//! 
+
+use super::util::*;
+use super::example::*;
+
+
+pub trait ExamplePartition {
+
+    /// customize partition, note that this process may re-order the vertices in `code`
+    fn build_apply(&mut self, code: &mut Box<dyn ExampleCode>) -> PartitionConfig {
+        // first apply reorder
+        if let Some(reordered_vertices) = self.build_reordered_vertices(code) {
+            code.reorder_vertices(&reordered_vertices);
+        }
+        self.build_partition(code)
+    }
+
+    fn re_index_syndrome_vertices(&mut self, code: &Box<dyn ExampleCode>, syndrome_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
+        if let Some(reordered_vertices) = self.build_reordered_vertices(code) {
+            translated_syndrome_to_reordered(&reordered_vertices, syndrome_vertices)
+        } else {
+            syndrome_vertices.clone()
+        }
+    }
+
+    /// build reorder vertices 
+    fn build_reordered_vertices(&mut self, _code: &Box<dyn ExampleCode>) -> Option<Vec<VertexIndex>> { None }
+
+    /// build the partition, using the indices after reordered vertices
+    fn build_partition(&mut self, code: &Box<dyn ExampleCode>) -> PartitionConfig;
+
+}
+
+/// no partition
+pub struct NoPartition { }
+
+impl NoPartition {
+    pub fn new() -> Self {
+        Self { }
+    }
+}
+
+impl ExamplePartition for NoPartition {
+    fn build_partition(&mut self, code: &Box<dyn ExampleCode>) -> PartitionConfig {
+        let (vertices, _) = code.immutable_vertices_edges();
+        PartitionConfig::default(vertices.len())
+    }
+}
+
+/// partition into top half and bottom half
+#[derive(Default)]
+pub struct CodeCapacityPlanarCodeVerticalPartitionHalf {
+    d: usize,
+    /// the row of splitting: in the visualization tool, the top row is the 1st row, the bottom row is the d-th row
+    partition_row: usize,
+}
+
+impl CodeCapacityPlanarCodeVerticalPartitionHalf {
+    pub fn new(d: usize, partition_row: usize) -> Self {
+        Self { d: d, partition_row: partition_row }
+    }
+}
+
+impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionHalf {
+    fn build_partition(&mut self, code: &Box<dyn ExampleCode>) -> PartitionConfig {
+        let (vertices, _) = code.immutable_vertices_edges();
+        let (d, partition_row) = (self.d, self.partition_row);
+        assert_eq!(vertices.len(), d * (d + 1), "code size incompatible");
+        let mut config = PartitionConfig::default(vertices.len());
+        assert!(partition_row > 1 && partition_row < d);
+        config.partitions = vec![
+            VertexRange::new(0, (partition_row - 1) * (d + 1)),
+            VertexRange::new(partition_row * (d + 1), d * (d + 1)),
+        ];
+        config.fusions = vec![
+            (0, 1),
+        ];
+        config
+    }
+}
+
+/// partition into 4 pieces: top left and right, bottom left and right
+#[derive(Default)]
+pub struct CodeCapacityPlanarCodeVerticalPartitionFour {
+    d: usize,
+    /// the row of splitting: in the visualization tool, the top row is the 1st row, the bottom row is the d-th row
+    partition_row: usize,
+    /// the row of splitting: in the visualization tool, the left (non-virtual) column is the 1st column, the right (non-virtual) column is the (d-1)-th column
+    partition_column: usize,
+}
+
+impl CodeCapacityPlanarCodeVerticalPartitionFour {
+    pub fn new(d: usize, partition_row: usize, partition_column: usize) -> Self {
+        Self { d: d, partition_row: partition_row, partition_column }
+    }
+}
+
+impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionFour {
+    fn build_reordered_vertices(&mut self, code: &Box<dyn ExampleCode>) -> Option<Vec<VertexIndex>> {
+        let (d, partition_row, partition_column) = (self.d, self.partition_row, self.partition_column);
+        assert_eq!(code.immutable_vertices_edges().0.len(), d * (d + 1), "code size incompatible");
+        assert!(partition_row > 1 && partition_row < d);
+        let mut reordered_vertices = vec![];
+        let split_horizontal = partition_row - 1;
+        let split_vertical = partition_column - 1;
+        for i in 0..split_horizontal {  // left-top block
+            for j in 0..split_vertical {
+                reordered_vertices.push(i * (d+1) + j);
+            }
+            reordered_vertices.push(i * (d+1) + d);
+        }
+        for i in 0..split_horizontal {  // interface between the left-top block and the right-top block
+            reordered_vertices.push(i * (d+1) + split_vertical);
+        }
+        for i in 0..split_horizontal {  // right-top block
+            for j in (split_vertical+1)..d {
+                reordered_vertices.push(i * (d+1) + j);
+            }
+        }
+        {  // the big interface between top and bottom
+            for j in 0..(d+1) {
+                reordered_vertices.push(split_horizontal * (d+1) + j);
+            }
+        }
+        for i in (split_horizontal+1)..d {  // left-bottom block
+            for j in 0..split_vertical {
+                reordered_vertices.push(i * (d+1) + j);
+            }
+            reordered_vertices.push(i * (d+1) + d);
+        }
+        for i in (split_horizontal+1)..d {  // interface between the left-bottom block and the right-bottom block
+            reordered_vertices.push(i * (d+1) + split_vertical);
+        }
+        for i in (split_horizontal+1)..d {  // right-bottom block
+            for j in (split_vertical+1)..d {
+                reordered_vertices.push(i * (d+1) + j);
+            }
+        }
+        Some(reordered_vertices)
+    }
+    fn build_partition(&mut self, _code: &Box<dyn ExampleCode>) -> PartitionConfig {
+        let (d, partition_row, partition_column) = (self.d, self.partition_row, self.partition_column);
+        let mut config = PartitionConfig::default(d * (d + 1));
+        let b0_count = (partition_row - 1) * partition_column;
+        let b1_count = (partition_row - 1) * (d - partition_column);
+        let b2_count = (d - partition_row) * partition_column;
+        let b3_count = (d - partition_row) * (d - partition_column);
+        config.partitions = vec![
+            VertexRange::new_length(0, b0_count),
+            VertexRange::new_length(b0_count + (partition_row - 1), b1_count),
+            VertexRange::new_length(partition_row * (d + 1), b2_count),
+            VertexRange::new_length(partition_row * (d + 1) + b2_count + (d - partition_row), b3_count),
+        ];
+        config.fusions = vec![
+            (0, 1),
+            (2, 3),
+            (4, 5),
+        ];
+        config
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use super::super::visualize::*;
+    use super::super::primal_module_parallel::*;
+    use super::super::dual_module_parallel::*;
+    use super::super::dual_module::*;
+    use super::super::dual_module_serial::*;
+    use std::sync::Arc;
+
+    pub fn example_partition_basic_standard_syndrome_optional_viz(mut code: Box<dyn ExampleCode>, visualize_filename: Option<String>
+            , mut syndrome_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)
+            -> (DualModuleInterface, PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
+        println!("{syndrome_vertices:?}");
+        if re_index_syndrome {
+            syndrome_vertices = partition.re_index_syndrome_vertices(&code, &syndrome_vertices);
+        }
+        let partition_config = partition.build_apply(&mut code);
+        let mut visualizer = match visualize_filename.as_ref() {
+            Some(visualize_filename) => {
+                let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
+                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(&visualize_filename);
+                Some(visualizer)
+            }, None => None
+        };
+        let initializer = code.get_initializer();
+        let partition_info = partition_config.into_info(&initializer);
+        let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
+        let mut primal_config = PrimalModuleParallelConfig::default();
+        primal_config.debug_sequential = true;
+        let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
+        code.set_syndrome(&syndrome_vertices);
+        let interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
+        (interface, primal_module, dual_module)
+    }
+
+    pub fn example_partition_standard_syndrome(code: Box<dyn ExampleCode>, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
+            , re_index_syndrome: bool, final_dual: Weight, partition: impl ExamplePartition)
+            -> (DualModuleInterface, PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
+        example_partition_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), syndrome_vertices, re_index_syndrome
+            , final_dual, partition)
+    }
+
+    /// test a simple case
+    #[test]
+    fn example_partition_basic_1() {  // cargo test example_partition_basic_1 -- --nocapture
+        let visualize_filename = format!("example_partition_basic_1.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let half_weight = 500;
+        example_partition_standard_syndrome(Box::new(CodeCapacityPlanarCode::new(11, 0.1, half_weight)), visualize_filename
+            , syndrome_vertices, true, 9 * half_weight, NoPartition::new());
+    }
+
+    /// split into 2
+    #[test]
+    fn example_partition_basic_2() {  // cargo test example_partition_basic_2 -- --nocapture
+        let visualize_filename = format!("example_partition_basic_2.json");
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let half_weight = 500;
+        example_partition_standard_syndrome(Box::new(CodeCapacityPlanarCode::new(11, 0.1, half_weight)), visualize_filename
+            , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionHalf{ d: 11, partition_row: 7 });
+    }
+
+    /// split into 4
+    #[test]
+    fn example_partition_basic_4() {  // cargo test example_partition_basic_4 -- --nocapture
+        let visualize_filename = format!("example_partition_basic_4.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        let half_weight = 500;
+        example_partition_standard_syndrome(Box::new(CodeCapacityPlanarCode::new(11, 0.1, half_weight)), visualize_filename
+            , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionFour{ d: 11, partition_row: 7, partition_column: 6 });
+    }
+
+}
