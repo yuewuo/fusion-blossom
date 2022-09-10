@@ -45,8 +45,7 @@ impl NoPartition {
 
 impl ExamplePartition for NoPartition {
     fn build_partition(&mut self, code: &Box<dyn ExampleCode>) -> PartitionConfig {
-        let (vertices, _) = code.immutable_vertices_edges();
-        PartitionConfig::default(vertices.len())
+        PartitionConfig::default(code.vertex_num())
     }
 }
 
@@ -66,10 +65,9 @@ impl CodeCapacityPlanarCodeVerticalPartitionHalf {
 
 impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionHalf {
     fn build_partition(&mut self, code: &Box<dyn ExampleCode>) -> PartitionConfig {
-        let (vertices, _) = code.immutable_vertices_edges();
         let (d, partition_row) = (self.d, self.partition_row);
-        assert_eq!(vertices.len(), d * (d + 1), "code size incompatible");
-        let mut config = PartitionConfig::default(vertices.len());
+        assert_eq!(code.vertex_num(), d * (d + 1), "code size incompatible");
+        let mut config = PartitionConfig::default(code.vertex_num());
         assert!(partition_row > 1 && partition_row < d);
         config.partitions = vec![
             VertexRange::new(0, (partition_row - 1) * (d + 1)),
@@ -101,7 +99,7 @@ impl CodeCapacityPlanarCodeVerticalPartitionFour {
 impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionFour {
     fn build_reordered_vertices(&mut self, code: &Box<dyn ExampleCode>) -> Option<Vec<VertexIndex>> {
         let (d, partition_row, partition_column) = (self.d, self.partition_row, self.partition_column);
-        assert_eq!(code.immutable_vertices_edges().0.len(), d * (d + 1), "code size incompatible");
+        assert_eq!(code.vertex_num(), d * (d + 1), "code size incompatible");
         assert!(partition_row > 1 && partition_row < d);
         let mut reordered_vertices = vec![];
         let split_horizontal = partition_row - 1;
@@ -180,7 +178,7 @@ impl CodeCapacityRepetitionCodePartitionHalf {
 impl ExamplePartition for CodeCapacityRepetitionCodePartitionHalf {
     fn build_reordered_vertices(&mut self, code: &Box<dyn ExampleCode>) -> Option<Vec<VertexIndex>> {
         let (d, partition_index) = (self.d, self.partition_index);
-        assert_eq!(code.immutable_vertices_edges().0.len(), d + 1, "code size incompatible");
+        assert_eq!(code.vertex_num(), d + 1, "code size incompatible");
         assert!(partition_index > 1 && partition_index < d);
         let mut reordered_vertices = vec![];
         let split_vertical = partition_index - 1;
@@ -226,7 +224,7 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
         let (d, noisy_measurements, partition_num) = (self.d, self.noisy_measurements, self.partition_num);
         let round_vertex_num = d * (d + 1);
         let vertex_num = round_vertex_num * (noisy_measurements + 1);
-        assert_eq!(code.immutable_vertices_edges().0.len(), vertex_num, "code size incompatible");
+        assert_eq!(code.vertex_num(), vertex_num, "code size incompatible");
         assert!(partition_num >= 1 && partition_num <= noisy_measurements + 1);
         let partition_length = (noisy_measurements + 1) / partition_num;
         let mut config = PartitionConfig::default(vertex_num);

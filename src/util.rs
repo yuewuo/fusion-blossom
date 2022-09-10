@@ -31,7 +31,7 @@ cfg_if::cfg_if! {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolverInitializer {
     /// the number of vertices
     pub vertex_num: VertexIndex,
@@ -39,6 +39,20 @@ pub struct SolverInitializer {
     pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
     /// the virtual vertices
     pub virtual_vertices: Vec<VertexIndex>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyndromePattern {
+    /// the vertices corresponding to non-trivial measurements
+    pub syndrome_vertices: Vec<VertexIndex>,
+    /// the edges that experience erasures, i.e. known errors
+    pub erasures: Vec<EdgeIndex>,
+}
+
+impl SyndromePattern {
+    pub fn new(syndrome_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
+        Self { syndrome_vertices, erasures }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

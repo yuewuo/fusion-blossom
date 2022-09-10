@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use crate::serde_json;
 use crate::rand_xoshiro::rand_core::SeedableRng;
 use crate::derivative::Derivative;
+use std::fs::File;
+use std::io::{self, BufRead};
 
 
 /// Vertex corresponds to a stabilizer measurement bit
@@ -67,6 +69,9 @@ pub trait ExampleCode {
     fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>);
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>);
 
+    /// get the number of vertices
+    fn vertex_num(&self) -> usize { self.immutable_vertices_edges().0.len() }
+
     /// generic method that automatically computes integer weights from probabilities,
     /// scales such that the maximum integer weight is 10000 and the minimum is 1
     fn compute_weights(&mut self, max_half_weight: Weight) {
@@ -88,8 +93,8 @@ pub trait ExampleCode {
     }
 
     /// sanity check to avoid duplicate edges that are hard to debug
-    fn sanity_check(&mut self) -> Result<(), String> {
-        let (vertices, edges) = self.vertices_edges();
+    fn sanity_check(&self) -> Result<(), String> {
+        let (vertices, edges) = self.immutable_vertices_edges();
         // check the graph is reasonable
         if vertices.len() == 0 || edges.len() == 0 {
             return Err(format!("empty graph"));
@@ -159,8 +164,8 @@ pub trait ExampleCode {
     }
 
     /// gather all positions of vertices
-    fn get_positions(&mut self) -> Vec<VisualizePosition> {
-        let (vertices, _edges) = self.vertices_edges();
+    fn get_positions(&self) -> Vec<VisualizePosition> {
+        let (vertices, _edges) = self.immutable_vertices_edges();
         let mut positions = Vec::with_capacity(vertices.len());
         for vertex in vertices.iter() {
             positions.push(vertex.position.clone());
@@ -168,7 +173,7 @@ pub trait ExampleCode {
         positions
     }
 
-    /// generate standard interface to instantiate Fussion blossom solver
+    /// generate standard interface to instantiate Fusion blossom solver
     fn get_initializer(&self) -> SolverInitializer {
         let (vertices, edges) = self.immutable_vertices_edges();
         let vertex_num = vertices.len();
@@ -346,7 +351,6 @@ impl CodeCapacityRepetitionCode {
         }
         code
     }
-
 
 }
 
@@ -614,6 +618,93 @@ impl CircuitLevelPlanarCode {
         }
         for i in 0..vertex_num {
             code.vertices[i].position = positions[i].clone();
+        }
+        code
+    }
+
+}
+
+/// read from file, including the error patterns;
+/// the point is to avoid bad cache performance, because generating random error requires iterating over a large memory space,
+/// invalidating all cache. also, this can reduce the time of decoding by prepare the data before hand and could be shared between
+/// different partition configurations
+pub struct ErrorPatternReader {
+    /// vertices in the code
+    pub vertices: Vec<CodeVertex>,
+    /// nearest-neighbor edges in the decoding graph
+    pub edges: Vec<CodeEdge>,
+    /// pre-generated syndrome patterns
+    pub syndrome_patterns: Vec<SyndromePattern>,
+    /// cursor of current errors
+    pub syndrome_index: usize,
+}
+
+impl ExampleCode for ErrorPatternReader {
+    fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
+    fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
+    fn generate_random_errors(&mut self, _seed: u64) -> (Vec<VertexIndex>, Vec<EdgeIndex>) {
+        assert!(self.syndrome_index < self.syndrome_patterns.len(), "reading syndrome pattern more than in the file, consider generate the file with more data points");
+        let syndrome_pattern = self.syndrome_patterns[self.syndrome_index].clone();
+        self.syndrome_index += 1;
+        (syndrome_pattern.syndrome_vertices, syndrome_pattern.erasures)
+    }
+}
+
+impl ErrorPatternReader {
+
+    pub fn new(mut config: serde_json::Value) -> Self {
+        let mut filename = format!("tmp/syndrome_patterns.txt");
+        let config = config.as_object_mut().expect("config must be JSON object");
+        config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
+        if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
+        let file = File::open(filename).unwrap();
+        let mut syndrome_patterns = vec![];
+        let mut initializer: Option<SolverInitializer> = None;
+        let mut positions: Option<Vec<VisualizePosition>> = None;
+        for (line_index, line) in io::BufReader::new(file).lines().enumerate() {
+            if let Ok(value) = line {
+                match line_index {
+                    0 => {
+                        assert!(value.starts_with("Syndrome Pattern v1.0 "), "incompatible file version");
+                    },
+                    1 => {
+                        initializer = Some(serde_json::from_str(&value).unwrap());
+                    },
+                    2 => {
+                        positions = Some(serde_json::from_str(&value).unwrap());
+                    },
+                    _ => {
+                        let syndrome_pattern: SyndromePattern = serde_json::from_str(&value).unwrap();
+                        syndrome_patterns.push(syndrome_pattern);
+                    }
+                }
+            }
+        }
+        let initializer = initializer.expect("initializer not present in file");
+        let positions = positions.expect("positions not present in file");
+        let mut code = Self {
+            vertices: Vec::with_capacity(initializer.vertex_num),
+            edges: Vec::with_capacity(initializer.weighted_edges.len()),
+            syndrome_patterns: syndrome_patterns,
+            syndrome_index: 0,
+        };
+        for (left_vertex, right_vertex, weight) in initializer.weighted_edges.iter() {
+            assert!(weight % 2 == 0, "weight must be even number");
+            code.edges.push(CodeEdge {
+                vertices: (*left_vertex, *right_vertex),
+                p: 0.,  // doesn't matter
+                pe: 0.,  // doesn't matter
+                half_weight: weight / 2,
+            });
+        }
+        // automatically create the vertices and nearest-neighbor connection
+        code.fill_vertices(initializer.vertex_num);
+        // set virtual vertices and positions
+        for vertex_index in 0..initializer.vertex_num {
+            code.vertices[vertex_index].position = positions[vertex_index].clone();
+        }
+        for vertex_index in initializer.virtual_vertices {
+            code.vertices[vertex_index].is_virtual = true;
         }
         code
     }

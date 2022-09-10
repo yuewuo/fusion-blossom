@@ -5,7 +5,7 @@
 
 use crate::serde_json;
 use std::fs::File;
-use crate::serde::{Serialize};
+use crate::serde::{Serialize, Deserialize};
 use std::io::{Write, Seek, SeekFrom};
 use crate::chrono::Local;
 use crate::urlencoding;
@@ -15,7 +15,7 @@ pub trait FusionVisualizer {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value;
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisualizePosition {
     /// vertical axis, -i is up, +i is down (left-up corner is smallest i,j)
     pub i: f64,

@@ -66,6 +66,9 @@ enum Commands {
         /// example code type
         #[clap(short = 'c', long, arg_enum, default_value_t = ExampleCodeType::CodeCapacityPlanarCode)]
         code_type: ExampleCodeType,
+        /// the configuration of the code builder
+        #[clap(long, default_value_t = json!({}))]
+        code_config: serde_json::Value,
         /// logging to the default visualizer file at visualize/data/static.json
         #[clap(long, action)]
         enable_visualizer: bool,
@@ -73,7 +76,7 @@ enum Commands {
         #[clap(long, arg_enum, default_value_t = Verifier::BlossomV)]
         verifier: Verifier,
         /// the number of iterations to run
-        #[clap(short = 't', long, default_value_t = 1000)]
+        #[clap(short = 'r', long, default_value_t = 1000)]
         total_rounds: usize,
         /// select the combination of primal and dual module
         #[clap(short = 'p', long, arg_enum, default_value_t = PrimalDualType::Serial)]
@@ -151,6 +154,8 @@ pub enum ExampleCodeType {
     PhenomenologicalPlanarCode,
     /// planar surface code with circuit-level noise model
     CircuitLevelPlanarCode,
+    /// read from error pattern file, generated using option `--primal-dual-type error-pattern-logger`
+    ErrorPatternReader,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -193,14 +198,14 @@ impl Cli {
     pub fn run(self) {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
-                    , partition_strategy, pb_message, primal_dual_config } => {
+                    , partition_strategy, pb_message, primal_dual_config, code_config } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
                         panic!("need blossom V library, see README.md")
                     }
                 }
-                let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight);
+                let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight, code_config);
                 if pe != 0. { code.set_erasure_probability(pe); }
                 if enable_visualizer {  // print visualizer file path only once
                     print_visualize_link(&static_visualize_data_filename());
@@ -211,7 +216,7 @@ impl Cli {
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements);
                 let partition_info = partition_config.into_info(&initializer);
-                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, primal_dual_config);
+                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
                 for round in 0..(total_rounds as u64) {
                     primal_dual_solver.clear();
@@ -345,12 +350,27 @@ pub fn execute_in_cli<'a>(iter: impl Iterator<Item=&'a String> + Clone, print_co
 }
 
 impl ExampleCodeType {
-    fn build(&self, d: usize, p: f64, noisy_measurements: usize, max_half_weight: Weight) -> Box<dyn ExampleCode> {
+    fn build(&self, d: usize, p: f64, noisy_measurements: usize, max_half_weight: Weight, code_config: serde_json::Value) -> Box<dyn ExampleCode> {
         match self {
-            Self::CodeCapacityRepetitionCode => Box::new(CodeCapacityRepetitionCode::new(d, p, max_half_weight)),
-            Self::CodeCapacityPlanarCode => Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight)),
-            Self::PhenomenologicalPlanarCode => Box::new(PhenomenologicalPlanarCode::new(d, noisy_measurements, p, max_half_weight)),
-            Self::CircuitLevelPlanarCode => Box::new(CircuitLevelPlanarCode::new(d, noisy_measurements, p, max_half_weight)),
+            Self::CodeCapacityRepetitionCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(CodeCapacityRepetitionCode::new(d, p, max_half_weight))
+            },
+            Self::CodeCapacityPlanarCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(CodeCapacityPlanarCode::new(d, p, max_half_weight))
+            },
+            Self::PhenomenologicalPlanarCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(PhenomenologicalPlanarCode::new(d, noisy_measurements, p, max_half_weight))
+            },
+            Self::CircuitLevelPlanarCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(CircuitLevelPlanarCode::new(d, noisy_measurements, p, max_half_weight))
+            },
+            Self::ErrorPatternReader => {
+                Box::new(ErrorPatternReader::new(code_config))
+            },
             _ => unimplemented!()
         }
     }
@@ -474,13 +494,16 @@ struct SolverErrorPatternLogger {
 }
 
 impl SolverErrorPatternLogger {
-    fn new(initializer: &SolverInitializer, mut config: serde_json::Value) -> Self {
-        let mut filename = format!("tmp/error_patterns.txt");
+    fn new(initializer: &SolverInitializer, code: &Box<dyn ExampleCode>, mut config: serde_json::Value) -> Self {
+        let mut filename = format!("tmp/syndrome_patterns.txt");
         let config = config.as_object_mut().expect("config must be JSON object");
         config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
         if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
         let mut file = File::create(filename).unwrap();
+        file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
         file.write_all(serde_json::to_string(initializer).unwrap().as_bytes()).unwrap();
+        file.write_all(b"\n").unwrap();
+        file.write_all(serde_json::to_string(&code.get_positions()).unwrap().as_bytes()).unwrap();
         file.write_all(b"\n").unwrap();
         Self {
             file: file,
@@ -491,10 +514,7 @@ impl SolverErrorPatternLogger {
 impl PrimalDualSolver for SolverErrorPatternLogger {
     fn clear(&mut self) { }
     fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, _visualizer: Option<&mut Visualizer>) {
-        self.file.write_all(serde_json::to_string(&serde_json::json!({
-            "syndrome_vertices": syndrome_vertices,
-            "erasures": erasures,
-        })).unwrap().as_bytes()).unwrap();
+        self.file.write_all(serde_json::to_string(&serde_json::json!(SyndromePattern::new(syndrome_vertices.clone(), erasures.clone()))).unwrap().as_bytes()).unwrap();
         self.file.write_all(b"\n").unwrap();
     }
     fn perfect_matching(&mut self) -> PerfectMatching {
@@ -504,7 +524,7 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
 }
 
 impl PrimalDualType {
-    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>
+    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, code: &Box<dyn ExampleCode>
             , primal_dual_config: serde_json::Value) -> Box<dyn PrimalDualSolver> {
         match self {
             Self::Serial => {
@@ -521,7 +541,7 @@ impl PrimalDualType {
                 Box::new(SolverParallel::new(initializer, partition_info))
             },
             Self::ErrorPatternLogger => {
-                Box::new(SolverErrorPatternLogger::new(initializer, primal_dual_config))
+                Box::new(SolverErrorPatternLogger::new(initializer, code, primal_dual_config))
             },
         }
     }
