@@ -64,6 +64,9 @@ enum Commands {
         /// logging to the default visualizer file at visualize/data/static.json
         #[clap(long, action)]
         enable_visualizer: bool,
+        /// print syndrome patterns
+        #[clap(long, action)]
+        print_syndrome_pattern: bool,
         /// the method to verify the correctness of the decoding result
         #[clap(long, arg_enum, default_value_t = Verifier::BlossomV)]
         verifier: Verifier,
@@ -199,7 +202,7 @@ impl Cli {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
                     , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
-                    , benchmark_profiler_output } => {
+                    , benchmark_profiler_output, print_syndrome_pattern } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
@@ -226,6 +229,9 @@ impl Cli {
                     pb.set(round);
                     let seed = if use_deterministic_seed { round } else { rng.gen() };
                     let syndrome_pattern = code.generate_random_errors(seed);
+                    if print_syndrome_pattern {
+                        println!("syndrome_pattern: {:?}", syndrome_pattern);
+                    }
                     // create a new visualizer each round
                     let mut visualizer = None;
                     if enable_visualizer {

@@ -349,4 +349,16 @@ pub mod tests {
             , syndrome_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition{ d: 11, noisy_measurements, partition_num: 2 });
     }
 
+    /// a demo to show how partition works in phenomenological planar code
+    #[test]
+    fn example_partition_demo_1() {  // cargo test example_partition_demo_1 -- --nocapture
+        let visualize_filename = format!("example_partition_demo_1.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let half_weight = 500;
+        let noisy_measurements = 51;
+        example_partition_standard_syndrome(Box::new(PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight)), visualize_filename
+            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition{ d: 7, noisy_measurements, partition_num: 3 });
+    }
+
 }
