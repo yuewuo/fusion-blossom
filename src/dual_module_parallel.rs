@@ -345,7 +345,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
     fn new(initializer: &SolverInitializer) -> Self {
-        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(initializer), DualModuleParallelConfig::default())
+        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), DualModuleParallelConfig::default())
     }
 
     /// clear all growth and existing dual nodes
@@ -990,7 +990,7 @@ pub mod tests {
         let mut partition_config = PartitionConfig::default(initializer.vertex_num);
         partition_func(&initializer, &mut partition_config);
         println!("partition_config: {partition_config:?}");
-        let partition_info = partition_config.into_info(&initializer);
+        let partition_info = partition_config.into_info();
         // create dual module
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
         dual_module.static_fuse_all();

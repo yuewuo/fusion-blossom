@@ -277,7 +277,7 @@ pub mod tests {
             }, None => None
         };
         let initializer = code.get_initializer();
-        let partition_info = partition_config.into_info(&initializer);
+        let partition_info = partition_config.into_info();
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;

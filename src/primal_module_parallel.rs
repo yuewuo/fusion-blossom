@@ -13,6 +13,7 @@ use super::visualize::*;
 use super::dual_module::*;
 use std::sync::Arc;
 use std::ops::DerefMut;
+use std::time::Instant;
 
 
 pub struct PrimalModuleParallel {
@@ -24,6 +25,8 @@ pub struct PrimalModuleParallel {
     pub partition_info: Arc<PartitionInfo>,
     /// thread pool used to execute async functions in parallel
     pub thread_pool: Arc<rayon::ThreadPool>,
+    /// the time of primal module creation or cleared
+    pub last_clear_time: Instant,
 }
 
 pub struct PrimalModuleParallelUnit {
@@ -39,6 +42,8 @@ pub struct PrimalModuleParallelUnit {
     pub children: Option<(PrimalModuleParallelUnitWeak, PrimalModuleParallelUnitWeak)>,
     /// parent dual module
     pub parent: Option<PrimalModuleParallelUnitWeak>,
+    /// record the time of events
+    pub event_time: Option<PrimalModuleParallelUnitEventTime>,
 }
 
 pub type PrimalModuleParallelUnitPtr = ArcRwLock<PrimalModuleParallelUnit>;
@@ -54,6 +59,27 @@ impl std::fmt::Debug for PrimalModuleParallelUnitPtr {
 impl std::fmt::Debug for PrimalModuleParallelUnitWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         self.upgrade_force().fmt(f)
+    }
+}
+
+/// the time of critical events, for profiling purposes
+#[derive(Debug, Clone, Serialize)]
+pub struct PrimalModuleParallelUnitEventTime {
+    /// unit starts executing
+    pub start: f64,
+    /// unit done children execution
+    pub children_return: f64,
+    /// unit ends executing
+    pub end: f64,
+}
+
+impl PrimalModuleParallelUnitEventTime {
+    pub fn new() -> Self {
+        Self {
+            start: 0.,
+            children_return: 0.,
+            end: 0.,
+        }
     }
 }
 
@@ -111,6 +137,7 @@ impl PrimalModuleParallel {
             config: config,
             partition_info: partition_info,
             thread_pool: Arc::new(thread_pool),
+            last_clear_time: Instant::now(),
         }
     }
 
@@ -119,7 +146,7 @@ impl PrimalModuleParallel {
 impl PrimalModuleImpl for PrimalModuleParallel {
 
     fn new(initializer: &SolverInitializer) -> Self {
-        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(initializer), PrimalModuleParallelConfig::default())
+        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), PrimalModuleParallelConfig::default())
     }
 
     fn clear(&mut self) {
@@ -150,6 +177,13 @@ impl PrimalModuleImpl for PrimalModuleParallel {
             intermediate_matching.append(&mut unit.serial_module.intermediate_matching(interface, dual_module));
         }
         intermediate_matching
+    }
+
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        let event_time_vec: Vec<_> = self.units.iter().map(|ptr| ptr.read_recursive().event_time.clone()).collect();
+        json!({
+            "event_time_vec": event_time_vec,
+        })
     }
 
 }
@@ -233,6 +267,7 @@ impl PrimalModuleParallelUnitPtr {
             serial_module: serial_module,
             children: None,  // to be filled later
             parent: None,  // to be filled later
+            event_time: None,
         })
     }
 
@@ -242,6 +277,8 @@ impl PrimalModuleParallelUnitPtr {
                 -> DualModuleInterface
             where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
         let mut primal_unit = self.write();
+        let mut event_time = PrimalModuleParallelUnitEventTime::new();
+        event_time.start = primal_module_parallel.last_clear_time.elapsed().as_secs_f64();
         let syndrome_pattern = &partitioned_syndrome[primal_unit.unit_index];
         let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
         let mut dual_unit = dual_module_ptr.write();
@@ -264,6 +301,7 @@ impl PrimalModuleParallelUnitPtr {
                         , parallel_dual_module, &mut None)
                 })
             };
+            event_time.children_return = primal_module_parallel.last_clear_time.elapsed().as_secs_f64();
             {  // set children to inactive to avoid being solved twice
                 for child_weak in [left_child_weak, right_child_weak] {
                     let child_ptr = child_weak.upgrade_force();
@@ -289,6 +327,7 @@ impl PrimalModuleParallelUnitPtr {
                 });
             interface
         } else {  // this is a leaf, proceed it as normal serial one
+            event_time.children_return = primal_module_parallel.last_clear_time.elapsed().as_secs_f64();  // no children
             assert!(primal_unit.is_active, "leaf must be active to be solved");
             let interface = primal_unit.serial_module.solve_step_callback(syndrome_pattern, dual_unit.deref_mut()
                 , |interface, dual_module, primal_module, group_max_update_length| {
@@ -302,6 +341,8 @@ impl PrimalModuleParallelUnitPtr {
             callback(&interface, &dual_unit, &primal_unit.serial_module, None);
         }
         primal_unit.is_active = true;
+        event_time.end = primal_module_parallel.last_clear_time.elapsed().as_secs_f64();
+        primal_unit.event_time = Some(event_time);
         interface
     }
 
@@ -405,7 +446,7 @@ pub mod tests {
         let initializer = code.get_initializer();
         let mut partition_config = PartitionConfig::default(initializer.vertex_num);
         partition_func(&initializer, &mut partition_config);
-        let partition_info = partition_config.into_info(&initializer);
+        let partition_info = partition_config.into_info();
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;

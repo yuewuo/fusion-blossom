@@ -6,6 +6,9 @@ use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
 use serde::{Serialize, Deserialize};
 use std::collections::BTreeSet;
 use std::time::Instant;
+use std::fs::File;
+use std::io::prelude::*;
+use super::mwpm_solver::PrimalDualSolver;
 
 
 cfg_if::cfg_if! {
@@ -151,6 +154,8 @@ impl std::fmt::Debug for PartitionUnitWeak {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PartitionConfig {
+    /// the number of vertices
+    pub vertex_num: usize,
     /// detailed plan of partitioning serial modules: each serial module possesses a list of vertices, including all interface vertices
     pub partitions: Vec<VertexRange>,
     /// detailed plan of interfacing vertices
@@ -161,18 +166,19 @@ impl PartitionConfig {
 
     pub fn default(vertex_num: usize) -> Self {
         Self {
+            vertex_num: vertex_num,
             partitions: vec![VertexRange::new(0, vertex_num)],
             fusions: vec![],
         }
     }
 
-    pub fn into_info(self, initializer: &SolverInitializer) -> Arc<PartitionInfo> {
+    pub fn into_info(self) -> Arc<PartitionInfo> {
         assert!(self.partitions.len() > 0, "at least one partition must exist");
         let mut whole_ranges = vec![];
         let mut owning_ranges = vec![];
         for partition in self.partitions.iter() {
             partition.sanity_check();
-            assert!(partition.end() <= initializer.vertex_num, "invalid vertex index {} in partitions", partition.end());
+            assert!(partition.end() <= self.vertex_num, "invalid vertex index {} in partitions", partition.end());
             whole_ranges.push(partition.clone());
             owning_ranges.push(partition.clone());
         }
@@ -197,7 +203,7 @@ impl PartitionConfig {
         // check that the final node has the full range
         let last_unit_index = self.partitions.len() + self.fusions.len() - 1;
         assert!(whole_ranges[last_unit_index].start() == 0, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
-        assert!(whole_ranges[last_unit_index].end() == initializer.vertex_num, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
+        assert!(whole_ranges[last_unit_index].end() == self.vertex_num, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
         // construct partition info
         let mut partition_unit_info: Vec<_> = (0..self.partitions.len() + self.fusions.len()).map(|i| {
             PartitionUnitInfo {
@@ -223,7 +229,7 @@ impl PartitionConfig {
             descendants.extend(partition_unit_info[*right_index].descendants.iter());
             partition_unit_info[unit_index].descendants.extend(descendants.iter());
         }
-        let mut vertex_to_owning_unit: Vec<_> = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
+        let mut vertex_to_owning_unit: Vec<_> = (0..self.vertex_num).map(|_| usize::MAX).collect();
         for (unit_index, unit_range) in partition_unit_info.iter().map(|x| x.owning_range).enumerate() {
             for vertex_index in unit_range.iter() {
                 vertex_to_owning_unit[vertex_index] = unit_index;
@@ -238,6 +244,7 @@ impl PartitionConfig {
 
 }
 
+#[derive(Debug, Clone)]
 pub struct PartitionInfo {
     /// the initial configuration that creates this info
     pub config: PartitionConfig,
@@ -623,15 +630,24 @@ pub struct BenchmarkProfiler {
     pub sum_syndrome: usize,
     /// noisy measurement round
     pub noisy_measurements: usize,
+    /// the file to output the profiler results
+    pub benchmark_profiler_output: Option<File>,
 }
 
 impl BenchmarkProfiler {
-    pub fn new(noisy_measurements: usize) -> Self {
+    pub fn new(noisy_measurements: usize, detail_log_file: Option<(String, &PartitionInfo)>) -> Self {
+        let benchmark_profiler_output = detail_log_file.map(|(filename, partition_info)| {
+            let mut file = File::create(filename).unwrap();
+            file.write_all(serde_json::to_string(&partition_info.config).unwrap().as_bytes()).unwrap();
+            file.write_all(b"\n").unwrap();
+            file
+        });
         Self {
             records: vec![],
             sum_decoding_time: 0.,
             sum_syndrome: 0,
             noisy_measurements: noisy_measurements,
+            benchmark_profiler_output: benchmark_profiler_output,
         }
     }
     /// record the beginning of a decoding procedure
@@ -645,11 +661,23 @@ impl BenchmarkProfiler {
         self.records.last_mut().unwrap().record_begin();
     }
     /// record the ending of a decoding procedure
-    pub fn end(&mut self) {
+    pub fn end(&mut self, solver: Option<&Box<dyn PrimalDualSolver>>) {
         let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
         last_entry.record_end();
         self.sum_decoding_time += last_entry.decoding_time.unwrap();
         self.sum_syndrome += last_entry.syndrome_pattern.syndrome_vertices.len();
+        if let Some(file) = self.benchmark_profiler_output.as_mut() {
+            let mut value = json!({
+                "decoding_time": last_entry.decoding_time.unwrap(),
+                "syndrome_num": last_entry.syndrome_pattern.syndrome_vertices.len(),
+            });
+            if let Some(solver) = solver {
+                let solver_profile = solver.generate_profiler_report();
+                value.as_object_mut().unwrap().insert(format!("solver_profile"), solver_profile);
+            }
+            file.write_all(serde_json::to_string(&value).unwrap().as_bytes()).unwrap();
+            file.write_all(b"\n").unwrap();
+        }
     }
     /// print out a brief one-line statistics
     pub fn brief(&self) -> String {

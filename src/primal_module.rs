@@ -119,6 +119,9 @@ pub trait PrimalModuleImpl {
         }
     }
 
+    /// performance profiler report
+    fn generate_profiler_report(&self) -> serde_json::Value { json!({}) }
+
 }
 
 impl IntermediateMatching {

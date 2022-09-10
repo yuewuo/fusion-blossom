@@ -452,6 +452,9 @@ pub trait DualModuleImpl {
         panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
+    /// performance profiler report
+    fn generate_profiler_report(&self) -> serde_json::Value { json!({}) }
+
     /*
      * the following apis are only required when this dual module can be used as a partitioned one
      */

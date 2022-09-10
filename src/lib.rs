@@ -42,7 +42,7 @@ pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromeP
         }
     }
     // by default use serial implementation fusion blossom
-    mwpm_solver::SolverSerial::mwpm_solve(initializer, syndrome_pattern)
+    mwpm_solver::LegacySolverSerial::mwpm_solve(initializer, syndrome_pattern)
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)

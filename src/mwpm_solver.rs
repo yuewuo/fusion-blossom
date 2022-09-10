@@ -9,14 +9,20 @@ use super::dual_module::{DualModuleInterface, DualModuleImpl};
 use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching};
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerial;
+use super::dual_module_parallel::*;
+use super::example::*;
+use super::primal_module_parallel::*;
 use super::visualize::*;
 use crate::derivative::Derivative;
+use std::fs::File;
+use std::io::prelude::*;
+use std::sync::Arc;
 
 
 /// a serial solver
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct SolverSerial {
+pub struct LegacySolverSerial {
     initializer: SolverInitializer,
     /// a serial implementation of the primal module
     #[derivative(Debug="ignore")]
@@ -30,13 +36,13 @@ pub struct SolverSerial {
     subgraph_builder: SubGraphBuilder,
 }
 
-impl Clone for SolverSerial {
+impl Clone for LegacySolverSerial {
     fn clone(&self) -> Self {
         Self::new(&self.initializer)  // create independent instances of the solver
     }
 }
 
-impl SolverSerial {
+impl LegacySolverSerial {
 
     /// create a new decoder
     pub fn new(initializer: &SolverInitializer) -> Self {
@@ -88,7 +94,7 @@ impl SolverSerial {
 }
 
 // static functions, not recommended because it doesn't reuse the data structure of dual module
-impl SolverSerial {
+impl LegacySolverSerial {
 
     pub fn mwpm_solve(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
         Self::mwpm_solve_visualizer(initializer, syndrome_pattern, None)
@@ -106,5 +112,156 @@ impl FusionVisualizer for SolverSerial {
         let mut value = self.primal_module.snapshot(abbrev);
         snapshot_combine_values(&mut value, self.dual_module.snapshot(abbrev), abbrev);
         value
+    }
+}
+
+pub trait PrimalDualSolver {
+    fn clear(&mut self);
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
+    fn perfect_matching(&mut self) -> PerfectMatching;
+    fn sum_dual_variables(&self) -> Weight;
+    fn generate_profiler_report(&self) -> serde_json::Value;
+}
+
+pub struct SolverSerial {
+    dual_module: DualModuleSerial,
+    primal_module: PrimalModuleSerial,
+    interface: DualModuleInterface,
+}
+
+impl SolverSerial {
+    pub fn new(initializer: &SolverInitializer) -> Self {
+        Self {
+            dual_module: DualModuleSerial::new(&initializer),
+            primal_module: PrimalModuleSerial::new(&initializer),
+            interface: DualModuleInterface::new_empty(),
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverSerial {
+    fn clear(&mut self) {
+        self.dual_module.clear();
+        self.primal_module.clear();
+    }
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
+    }
+    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
+    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        json!({
+            "dual": self.dual_module.generate_profiler_report(),
+            "primal": self.primal_module.generate_profiler_report(),
+        })
+    }
+}
+
+pub struct SolverDualParallel {
+    dual_module: DualModuleParallel<DualModuleSerial>,
+    primal_module: PrimalModuleSerial,
+    interface: DualModuleInterface,
+}
+
+impl SolverDualParallel {
+    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Self {
+        let config = DualModuleParallelConfig::default();
+        Self {
+            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), config),
+            primal_module: PrimalModuleSerial::new(&initializer),
+            interface: DualModuleInterface::new_empty(),
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverDualParallel {
+    fn clear(&mut self) {
+        self.dual_module.clear();
+        self.primal_module.clear();
+    }
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        self.dual_module.static_fuse_all();
+        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
+    }
+    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
+    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        json!({
+            "dual": self.dual_module.generate_profiler_report(),
+            "primal": self.primal_module.generate_profiler_report(),
+        })
+    }
+}
+
+pub struct SolverParallel {
+    dual_module: DualModuleParallel<DualModuleSerial>,
+    primal_module: PrimalModuleParallel,
+    interface: DualModuleInterface,
+}
+
+impl SolverParallel {
+    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Self {
+        let dual_config = DualModuleParallelConfig::default();
+        let primal_config = PrimalModuleParallelConfig::default();
+        Self {
+            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), dual_config),
+            primal_module: PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config),
+            interface: DualModuleInterface::new_empty(),
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverParallel {
+    fn clear(&mut self) {
+        self.dual_module.clear();
+        self.primal_module.clear();
+    }
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        self.interface = self.primal_module.parallel_solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
+    }
+    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
+    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        json!({
+            "dual": self.dual_module.generate_profiler_report(),
+            "primal": self.primal_module.generate_profiler_report(),
+        })
+    }
+}
+
+pub struct SolverErrorPatternLogger {
+    file: File,
+}
+
+impl SolverErrorPatternLogger {
+    pub fn new(initializer: &SolverInitializer, code: &Box<dyn ExampleCode>, mut config: serde_json::Value) -> Self {
+        let mut filename = format!("tmp/syndrome_patterns.txt");
+        let config = config.as_object_mut().expect("config must be JSON object");
+        config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
+        if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
+        let mut file = File::create(filename).unwrap();
+        file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
+        file.write_all(serde_json::to_string(initializer).unwrap().as_bytes()).unwrap();
+        file.write_all(b"\n").unwrap();
+        file.write_all(serde_json::to_string(&code.get_positions()).unwrap().as_bytes()).unwrap();
+        file.write_all(b"\n").unwrap();
+        Self {
+            file: file,
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverErrorPatternLogger {
+    fn clear(&mut self) { }
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, _visualizer: Option<&mut Visualizer>) {
+        self.file.write_all(serde_json::to_string(&serde_json::json!(syndrome_pattern)).unwrap().as_bytes()).unwrap();
+        self.file.write_all(b"\n").unwrap();
+    }
+    fn perfect_matching(&mut self) -> PerfectMatching {
+        panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
+    }
+    fn sum_dual_variables(&self) -> Weight { panic!("error pattern logger do not actually solve the problem") }
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        json!({})
     }
 }

@@ -4,22 +4,13 @@ extern crate pbr;
 use fusion_blossom::example::*;
 use fusion_blossom::util::*;
 use fusion_blossom::visualize::*;
-use fusion_blossom::dual_module_serial;
-use fusion_blossom::primal_module_serial;
 use fusion_blossom::dual_module::*;
 use fusion_blossom::primal_module::*;
-use fusion_blossom::dual_module_parallel;
-use fusion_blossom::primal_module_parallel;
 use fusion_blossom::example_partition;
+use fusion_blossom::mwpm_solver::*;
 use pbr::ProgressBar;
-use std::fs::File;
-use std::io::prelude::*;
 use rand::{Rng, thread_rng};
 
-use dual_module_serial::DualModuleSerial;
-use primal_module_serial::PrimalModuleSerial;
-use dual_module_parallel::DualModuleParallel;
-use primal_module_parallel::PrimalModuleParallel;
 use std::sync::Arc;
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
@@ -97,6 +88,8 @@ enum Commands {
         /// use deterministic seed for debugging purpose
         #[clap(long, action)]
         use_deterministic_seed: bool,
+        #[clap(long)]
+        benchmark_profiler_output: Option<String>,
     },
     /// built-in tests
     Test {
@@ -205,7 +198,8 @@ impl Cli {
     pub fn run(self) {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
-                    , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed } => {
+                    , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
+                    , benchmark_profiler_output } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
@@ -219,10 +213,10 @@ impl Cli {
                 }
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements, partition_config);
-                let partition_info = partition_config.into_info(&initializer);
+                let partition_info = partition_config.into_info();
                 let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
-                let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements);
+                let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, partition_info.as_ref())));
                 // prepare progress bar display
                 let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
                 pb.message(format!("{pb_message} ").as_str());
@@ -243,7 +237,7 @@ impl Cli {
                     // println!("erasures: {erasures:?}");
                     benchmark_profiler.begin(&syndrome_pattern);
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
-                    benchmark_profiler.end();
+                    benchmark_profiler.end(Some(&primal_dual_solver));
                     if pb_message.is_empty() {
                         pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
                     }
@@ -421,135 +415,6 @@ impl PartitionStrategy {
         };
         (code.get_initializer(), partition_config)
     }
-}
-
-trait PrimalDualSolver {
-    fn clear(&mut self);
-    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
-    fn perfect_matching(&mut self) -> PerfectMatching;
-    fn sum_dual_variables(&self) -> Weight;
-}
-
-struct SolverSerial {
-    dual_module: DualModuleSerial,
-    primal_module: PrimalModuleSerial,
-    interface: DualModuleInterface,
-}
-
-impl SolverSerial {
-    fn new(initializer: &SolverInitializer) -> Self {
-        Self {
-            dual_module: DualModuleSerial::new(&initializer),
-            primal_module: PrimalModuleSerial::new(&initializer),
-            interface: DualModuleInterface::new_empty(),
-        }
-    }
-}
-
-impl PrimalDualSolver for SolverSerial {
-    fn clear(&mut self) {
-        self.dual_module.clear();
-        self.primal_module.clear();
-    }
-    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
-    }
-    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
-    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
-}
-
-struct SolverDualParallel {
-    dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleSerial,
-    interface: DualModuleInterface,
-}
-
-impl SolverDualParallel {
-    fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Self {
-        let config = dual_module_parallel::DualModuleParallelConfig::default();
-        Self {
-            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), config),
-            primal_module: PrimalModuleSerial::new(&initializer),
-            interface: DualModuleInterface::new_empty(),
-        }
-    }
-}
-
-impl PrimalDualSolver for SolverDualParallel {
-    fn clear(&mut self) {
-        self.dual_module.clear();
-        self.primal_module.clear();
-    }
-    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        self.dual_module.static_fuse_all();
-        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
-    }
-    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
-    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
-}
-
-struct SolverParallel {
-    dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleParallel,
-    interface: DualModuleInterface,
-}
-
-impl SolverParallel {
-    fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Self {
-        let dual_config = dual_module_parallel::DualModuleParallelConfig::default();
-        let primal_config = primal_module_parallel::PrimalModuleParallelConfig::default();
-        Self {
-            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), dual_config),
-            primal_module: PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config),
-            interface: DualModuleInterface::new_empty(),
-        }
-    }
-}
-
-impl PrimalDualSolver for SolverParallel {
-    fn clear(&mut self) {
-        self.dual_module.clear();
-        self.primal_module.clear();
-    }
-    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        self.interface = self.primal_module.parallel_solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
-    }
-    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
-    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
-}
-
-struct SolverErrorPatternLogger {
-    file: File,
-}
-
-impl SolverErrorPatternLogger {
-    fn new(initializer: &SolverInitializer, code: &Box<dyn ExampleCode>, mut config: serde_json::Value) -> Self {
-        let mut filename = format!("tmp/syndrome_patterns.txt");
-        let config = config.as_object_mut().expect("config must be JSON object");
-        config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
-        if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
-        let mut file = File::create(filename).unwrap();
-        file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
-        file.write_all(serde_json::to_string(initializer).unwrap().as_bytes()).unwrap();
-        file.write_all(b"\n").unwrap();
-        file.write_all(serde_json::to_string(&code.get_positions()).unwrap().as_bytes()).unwrap();
-        file.write_all(b"\n").unwrap();
-        Self {
-            file: file,
-        }
-    }
-}
-
-impl PrimalDualSolver for SolverErrorPatternLogger {
-    fn clear(&mut self) { }
-    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, _visualizer: Option<&mut Visualizer>) {
-        self.file.write_all(serde_json::to_string(&serde_json::json!(syndrome_pattern)).unwrap().as_bytes()).unwrap();
-        self.file.write_all(b"\n").unwrap();
-    }
-    fn perfect_matching(&mut self) -> PerfectMatching {
-        panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
-    }
-    fn sum_dual_variables(&self) -> Weight { panic!("error pattern logger do not actually solve the problem") }
 }
 
 impl PrimalDualType {
