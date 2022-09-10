@@ -12,6 +12,8 @@ use fusion_blossom::dual_module_parallel;
 use fusion_blossom::primal_module_parallel;
 use fusion_blossom::example_partition;
 use pbr::ProgressBar;
+use std::fs::File;
+use std::io::prelude::*;
 
 use dual_module_serial::DualModuleSerial;
 use primal_module_serial::PrimalModuleSerial;
@@ -20,6 +22,7 @@ use primal_module_parallel::PrimalModuleParallel;
 use std::sync::Arc;
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
+use serde_json::json;
 
 
 pub fn main() {
@@ -75,6 +78,9 @@ enum Commands {
         /// select the combination of primal and dual module
         #[clap(short = 'p', long, arg_enum, default_value_t = PrimalDualType::Serial)]
         primal_dual_type: PrimalDualType,
+        /// the configuration of primal and dual module
+        #[clap(long, default_value_t = json!({}))]
+        primal_dual_config: serde_json::Value,
         /// partition strategy
         #[clap(long, arg_enum, default_value_t = PartitionStrategy::None)]
         partition_strategy: PartitionStrategy,
@@ -169,6 +175,8 @@ pub enum PrimalDualType {
     DualParallel,
     /// parallel primal and dual
     Parallel,
+    /// log error into a file for later fetch
+    ErrorPatternLogger,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -185,7 +193,7 @@ impl Cli {
     pub fn run(self) {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
-                    , partition_strategy, pb_message } => {
+                    , partition_strategy, pb_message, primal_dual_config } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
@@ -203,7 +211,7 @@ impl Cli {
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements);
                 let partition_info = partition_config.into_info(&initializer);
-                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info);
+                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
                 for round in 0..(total_rounds as u64) {
                     primal_dual_solver.clear();
@@ -326,7 +334,7 @@ pub fn execute_in_cli<'a>(iter: impl Iterator<Item=&'a String> + Clone, print_co
         print!("[command]");
         for word in iter.clone() {
             if word.contains(char::is_whitespace) {
-                print!("\"{word}\" ")
+                print!("'{word}' ")
             } else {
                 print!("{word} ")
             }
@@ -461,15 +469,60 @@ impl PrimalDualSolver for SolverParallel {
     fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
 }
 
+struct SolverErrorPatternLogger {
+    file: File,
+}
+
+impl SolverErrorPatternLogger {
+    fn new(initializer: &SolverInitializer, mut config: serde_json::Value) -> Self {
+        let mut filename = format!("tmp/error_patterns.txt");
+        let config = config.as_object_mut().expect("config must be JSON object");
+        config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
+        if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
+        let mut file = File::create(filename).unwrap();
+        file.write_all(serde_json::to_string(initializer).unwrap().as_bytes()).unwrap();
+        file.write_all(b"\n").unwrap();
+        Self {
+            file: file,
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverErrorPatternLogger {
+    fn clear(&mut self) { }
+    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, _visualizer: Option<&mut Visualizer>) {
+        self.file.write_all(serde_json::to_string(&serde_json::json!({
+            "syndrome_vertices": syndrome_vertices,
+            "erasures": erasures,
+        })).unwrap().as_bytes()).unwrap();
+        self.file.write_all(b"\n").unwrap();
+    }
+    fn perfect_matching(&mut self) -> PerfectMatching {
+        panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
+    }
+    fn sum_dual_variables(&self) -> Weight { panic!("error pattern logger do not actually solve the problem") }
+}
+
 impl PrimalDualType {
-    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Box<dyn PrimalDualSolver> {
+    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>
+            , primal_dual_config: serde_json::Value) -> Box<dyn PrimalDualSolver> {
         match self {
             Self::Serial => {
+                assert_eq!(primal_dual_config, json!({}));
                 assert_eq!(partition_info.config.partitions.len(), 1, "no partition is supported by serial algorithm, consider using other primal-dual-type");
                 Box::new(SolverSerial::new(initializer))
             },
-            Self::DualParallel => Box::new(SolverDualParallel::new(initializer, partition_info)),
-            Self::Parallel => Box::new(SolverParallel::new(initializer, partition_info)),
+            Self::DualParallel => {
+                assert_eq!(primal_dual_config, json!({}));
+                Box::new(SolverDualParallel::new(initializer, partition_info))
+            },
+            Self::Parallel => {
+                assert_eq!(primal_dual_config, json!({}));
+                Box::new(SolverParallel::new(initializer, partition_info))
+            },
+            Self::ErrorPatternLogger => {
+                Box::new(SolverErrorPatternLogger::new(initializer, primal_dual_config))
+            },
         }
     }
 }

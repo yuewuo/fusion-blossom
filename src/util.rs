@@ -31,7 +31,7 @@ cfg_if::cfg_if! {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SolverInitializer {
     /// the number of vertices
     pub vertex_num: VertexIndex,

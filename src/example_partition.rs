@@ -351,5 +351,4 @@ pub mod tests {
             , syndrome_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition{ d: 11, noisy_measurements, partition_num: 2 });
     }
 
-
 }
