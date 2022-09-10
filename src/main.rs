@@ -87,6 +87,9 @@ enum Commands {
         /// partition strategy
         #[clap(long, arg_enum, default_value_t = PartitionStrategy::None)]
         partition_strategy: PartitionStrategy,
+        /// the configuration of the partition strategy
+        #[clap(long, default_value_t = json!({}))]
+        partition_config: serde_json::Value,
         /// message on the progress bar
         #[clap(long, default_value_t = format!(""))]
         pb_message: String,
@@ -198,7 +201,7 @@ impl Cli {
     pub fn run(self) {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
-                    , partition_strategy, pb_message, primal_dual_config, code_config } => {
+                    , partition_strategy, pb_message, primal_dual_config, code_config, partition_config } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
@@ -214,7 +217,7 @@ impl Cli {
                 let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
                 pb.message(format!("{pb_message} ").as_str());
                 // create initializer and solver
-                let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements);
+                let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements, partition_config);
                 let partition_info = partition_config.into_info(&initializer);
                 let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
@@ -377,15 +380,32 @@ impl ExampleCodeType {
 }
 
 impl PartitionStrategy {
-    fn build(&self, code: &mut Box<dyn ExampleCode>, d: usize, noisy_measurements: usize) -> (SolverInitializer, PartitionConfig) {
+    fn build(&self, code: &mut Box<dyn ExampleCode>, d: usize, noisy_measurements: usize, mut partition_config: serde_json::Value) -> (SolverInitializer, PartitionConfig) {
         use example_partition::*;
-        let partition_num = 10;
         let partition_config = match self {
-            Self::None => NoPartition::new().build_apply(code),
-            Self::CodeCapacityPlanarCodeVerticalPartitionHalf => CodeCapacityPlanarCodeVerticalPartitionHalf::new(d, d / 2).build_apply(code),
-            Self::CodeCapacityPlanarCodeVerticalPartitionFour => CodeCapacityPlanarCodeVerticalPartitionFour::new(d, d / 2, d / 2).build_apply(code),
-            Self::CodeCapacityRepetitionCodePartitionHalf => CodeCapacityRepetitionCodePartitionHalf::new(d, d / 2).build_apply(code),
-            Self::PhenomenologicalPlanarCodeTimePartition => PhenomenologicalPlanarCodeTimePartition::new(d, noisy_measurements, partition_num).build_apply(code),
+            Self::None => {
+                assert_eq!(partition_config, json!({}), "config not supported");
+                NoPartition::new().build_apply(code)
+            },
+            Self::CodeCapacityPlanarCodeVerticalPartitionHalf => {
+                assert_eq!(partition_config, json!({}), "config not supported");
+                CodeCapacityPlanarCodeVerticalPartitionHalf::new(d, d / 2).build_apply(code)
+            },
+            Self::CodeCapacityPlanarCodeVerticalPartitionFour => {
+                assert_eq!(partition_config, json!({}), "config not supported");
+                CodeCapacityPlanarCodeVerticalPartitionFour::new(d, d / 2, d / 2).build_apply(code)
+            },
+            Self::CodeCapacityRepetitionCodePartitionHalf => {
+                assert_eq!(partition_config, json!({}), "config not supported");
+                CodeCapacityRepetitionCodePartitionHalf::new(d, d / 2).build_apply(code)
+            },
+            Self::PhenomenologicalPlanarCodeTimePartition => {
+                let config = partition_config.as_object_mut().expect("config must be JSON object");
+                let mut partition_num = 10;
+                config.remove("partition_num").map(|value| partition_num = value.as_u64().expect("partition_num: usize") as usize);
+                if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
+                PhenomenologicalPlanarCodeTimePartition::new(d, noisy_measurements, partition_num).build_apply(code)
+            },
         };
         (code.get_initializer(), partition_config)
     }

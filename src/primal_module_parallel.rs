@@ -73,8 +73,8 @@ impl Default for PrimalModuleParallelConfig {
 }
 
 pub mod primal_module_parallel_default_configs {
-    // pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
-    pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
+    pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
+    // pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
     pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
 }
 

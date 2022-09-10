@@ -61,8 +61,8 @@ impl Default for DualModuleParallelConfig {
 }
 
 pub mod dual_module_parallel_default_configs {
-    // pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
-    pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
+    pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
+    // pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
     pub fn edges_in_fusion_unit() -> bool { true }  // by default use the software-friendly approach because of removing duplicate edges
     pub fn enable_parallel_execution() -> bool { false }  // by default disabled: parallel execution may cause too much context switch, yet not much speed benefit
 }
