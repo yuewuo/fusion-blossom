@@ -5,6 +5,7 @@ use crate::parking_lot::{RwLock, RawRwLock};
 use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
 use serde::{Serialize, Deserialize};
 use std::collections::BTreeSet;
+use std::time::Instant;
 
 
 cfg_if::cfg_if! {
@@ -52,6 +53,12 @@ pub struct SyndromePattern {
 impl SyndromePattern {
     pub fn new(syndrome_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
         Self { syndrome_vertices, erasures }
+    }
+    pub fn new_vertices(syndrome_vertices: Vec<VertexIndex>) -> Self {
+        Self::new(syndrome_vertices, vec![])
+    }
+    pub fn new_empty() -> Self {
+        Self::new(vec![], vec![])
     }
 }
 
@@ -244,12 +251,13 @@ pub struct PartitionInfo {
 impl PartitionInfo {
 
     /// split a sequence of syndrome into multiple parts, each corresponds to a unit
-    pub fn partition_syndrome(&self, syndrome_vertices: &Vec<VertexIndex>) -> Vec<Vec<VertexIndex>> {
-        let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| vec![]).collect();
-        for syndrome_vertex in syndrome_vertices.iter() {
+    pub fn partition_syndrome(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
+        let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| SyndromePattern::new_empty()).collect();
+        for syndrome_vertex in syndrome_pattern.syndrome_vertices.iter() {
             let unit_index = self.vertex_to_owning_unit[*syndrome_vertex];
-            partitioned_syndrome[unit_index].push(*syndrome_vertex);
+            partitioned_syndrome[unit_index].syndrome_vertices.push(*syndrome_vertex);
         }
+        // TODO: partition edges
         partitioned_syndrome
     }
 
@@ -602,5 +610,66 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
     }
     fn clone(view: &Self::Strong) -> Self::Strong {
         view.clone()
+    }
+}
+
+/// record the decoding time of multiple syndrome patterns
+pub struct BenchmarkProfiler {
+    /// each record corresponds to a different syndrome pattern
+    pub records: Vec<BenchmarkProfilerEntry>,
+}
+
+impl BenchmarkProfiler {
+    pub fn new() -> Self {
+        Self {
+            records: vec![],
+        }
+    }
+    /// record the beginning of a decoding procedure
+    pub fn begin(&mut self, syndrome_pattern: &SyndromePattern) {
+        // sanity check last entry, if exists, is complete
+        if let Some(last_entry) = self.records.last() {
+            assert!(last_entry.is_complete(), "the last benchmark profiler entry is not complete, make sure to call `begin` and `end` in pairs");
+        }
+        let entry = BenchmarkProfilerEntry::new(syndrome_pattern);
+        self.records.push(entry);
+        self.records.last_mut().unwrap().record_begin();
+    }
+    /// record the ending of a decoding procedure
+    pub fn end(&mut self) {
+        let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
+        last_entry.record_end();
+    }
+}
+
+pub struct BenchmarkProfilerEntry {
+    /// the syndrome pattern of this decoding problem
+    pub syndrome_pattern: SyndromePattern,
+    /// the time of beginning a decoding procedure
+    begin_time: Option<Instant>,
+    /// interval between calling [`Self::record_begin`] to calling [`Self::record_end`]
+    pub decoding_time: Option<f64>,
+}
+
+impl BenchmarkProfilerEntry {
+    pub fn new(syndrome_pattern: &SyndromePattern) -> Self {
+        Self {
+            syndrome_pattern: syndrome_pattern.clone(),
+            begin_time: None,
+            decoding_time: None,
+        }
+    }
+    /// record the beginning of a decoding procedure
+    pub fn record_begin(&mut self) {
+        assert_eq!(self.begin_time, None, "do not call `record_begin` twice on the same entry");
+        self.begin_time = Some(Instant::now());
+    }
+    /// record the ending of a decoding procedure
+    pub fn record_end(&mut self) {
+        let begin_time = self.begin_time.as_ref().expect("make sure to call `record_begin` before calling `record_end`");
+        self.decoding_time = Some(begin_time.elapsed().as_secs_f64());
+    }
+    pub fn is_complete(&self) -> bool {
+        self.decoding_time.is_some()
     }
 }

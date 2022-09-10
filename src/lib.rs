@@ -31,7 +31,7 @@ use complete_graph::*;
 
 
 /// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`mwpm_solver::SolverSerial`] object)
-pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
     // sanity check
     assert!(initializer.vertex_num > 1, "at least one vertex required");
     let max_safe_weight = ((Weight::MAX as usize) / initializer.vertex_num) as Weight;
@@ -41,7 +41,7 @@ pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usiz
         }
     }
     // by default use serial implementation fusion blossom
-    mwpm_solver::SolverSerial::mwpm_solve(initializer, syndrome_vertices)
+    mwpm_solver::SolverSerial::mwpm_solve(initializer, syndrome_pattern)
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)

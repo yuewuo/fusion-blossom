@@ -2044,12 +2044,9 @@ mod tests {
         let mut dual_module = DualModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.vertices[64].is_syndrome = true;
+        code.set_erasures(&vec![110, 78, 57, 142, 152, 163, 164]);
         let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
-        // generate erasures and load them to the dual module
-        let erasures = vec![110, 78, 57, 142, 152, 163, 164];
-        dual_module.load_erasures(&erasures);
-        visualizer.snapshot_combined(format!("load erasure"), vec![&interface, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         for _ in 0..3 {
             interface.grow_iterative(2 * half_weight, &mut dual_module);
@@ -2065,9 +2062,9 @@ mod tests {
         }
         // cancel the erasures and grow the dual module in normal case, this should automatically clear the erasures
         dual_module.clear();
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+         // no erasures this time, to test if the module recovers correctly
+        let mut interface = DualModuleInterface::new(&SyndromePattern::new_vertices(code.get_syndrome().syndrome_vertices), &mut dual_module);
         visualizer.snapshot_combined(format!("after clear"), vec![&interface, &dual_module]).unwrap();
-        dual_module.load_erasures(&vec![]);  // no erasures this time, to test if the module recovers correctly
         for _ in 0..3 {
             interface.grow_iterative(2 * half_weight, &mut dual_module);
             visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();

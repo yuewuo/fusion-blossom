@@ -44,6 +44,8 @@ pub struct CodeEdge {
     pub pe: f64,
     /// the integer weight of this edge
     pub half_weight: Weight,
+    /// whether this edge is erased
+    pub is_erasure: bool,
 }
 
 impl CodeEdge {
@@ -53,6 +55,7 @@ impl CodeEdge {
             p: 0.,
             pe: 0.,
             half_weight: 0,
+            is_erasure: false,
         }
     }
 }
@@ -194,8 +197,8 @@ pub trait ExampleCode {
         }
     }
 
-    /// set syndrome
-    fn set_syndrome(&mut self, syndrome_vertices: &Vec<usize>) {
+    /// set syndrome vertices
+    fn set_syndrome_vertices(&mut self, syndrome_vertices: &Vec<VertexIndex>) {
         let (vertices, _edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
             vertex.is_syndrome = false;
@@ -206,8 +209,26 @@ pub trait ExampleCode {
         }
     }
 
-    /// get current syndrome array
-    fn get_syndrome(&self) -> Vec<usize> {
+    /// set erasure edges
+    fn set_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+        let (_vertices, edges) = self.vertices_edges();
+        for edge in edges.iter_mut() {
+            edge.is_erasure = false;
+        }
+        for edge_idx in erasures.iter() {
+            let edge = &mut edges[*edge_idx];
+            edge.is_erasure = true;
+        }
+    }
+
+    /// set syndrome
+    fn set_syndrome(&mut self, syndrome_pattern: &SyndromePattern) {
+        self.set_syndrome_vertices(&syndrome_pattern.syndrome_vertices);
+        self.set_erasures(&syndrome_pattern.erasures);
+    }
+
+    /// get current syndrome vertices
+    fn get_syndrome_vertices(&self) -> Vec<VertexIndex> {
         let (vertices, _edges) = self.immutable_vertices_edges();
         let mut syndrome = Vec::new();
         for (vertex_idx, vertex) in vertices.iter().enumerate() {
@@ -217,20 +238,37 @@ pub trait ExampleCode {
         }
         syndrome
     }
-    
+
+    /// get current erasure edges
+    fn get_erasures(&self) -> Vec<EdgeIndex> {
+        let (_vertices, edges) = self.immutable_vertices_edges();
+        let mut erasures = Vec::new();
+        for (edge_idx, edge) in edges.iter().enumerate() {
+            if edge.is_erasure {
+                erasures.push(edge_idx);
+            }
+        }
+        erasures
+    }
+
+    /// get current syndrome
+    fn get_syndrome(&self) -> SyndromePattern {
+        SyndromePattern::new(self.get_syndrome_vertices(), self.get_erasures())
+    }
+
     /// generate random errors based on the edge probabilities and a seed for pseudo number generator
-    fn generate_random_errors(&mut self, seed: u64) -> (Vec<VertexIndex>, Vec<EdgeIndex>) {
+    fn generate_random_errors(&mut self, seed: u64) -> SyndromePattern {
         let mut rng = DeterministicRng::seed_from_u64(seed);
         let (vertices, edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
             vertex.is_syndrome = false;
         }
-        let mut erasures = Vec::<EdgeIndex>::new();
-        for (edge_idx, edge) in edges.iter().enumerate() {
+        for (edge_idx, edge) in edges.iter_mut().enumerate() {
             let p = if rng.next_f64() < edge.pe {
-                erasures.push(edge_idx);
+                edge.is_erasure = true;
                 0.5  // when erasure happens, there are 50% chance of error
             } else {
+                edge.is_erasure = false;
                 edge.p
             };
             if rng.next_f64() < p {
@@ -245,7 +283,7 @@ pub trait ExampleCode {
                 }
             }
         }
-        (self.get_syndrome(), erasures)
+        self.get_syndrome()
     }
 
     fn is_virtual(&self, vertex_idx: usize) -> bool {
@@ -642,11 +680,11 @@ pub struct ErrorPatternReader {
 impl ExampleCode for ErrorPatternReader {
     fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
-    fn generate_random_errors(&mut self, _seed: u64) -> (Vec<VertexIndex>, Vec<EdgeIndex>) {
+    fn generate_random_errors(&mut self, _seed: u64) -> SyndromePattern {
         assert!(self.syndrome_index < self.syndrome_patterns.len(), "reading syndrome pattern more than in the file, consider generate the file with more data points");
         let syndrome_pattern = self.syndrome_patterns[self.syndrome_index].clone();
         self.syndrome_index += 1;
-        (syndrome_pattern.syndrome_vertices, syndrome_pattern.erasures)
+        syndrome_pattern
     }
 }
 
@@ -695,6 +733,7 @@ impl ErrorPatternReader {
                 p: 0.,  // doesn't matter
                 pe: 0.,  // doesn't matter
                 half_weight: weight / 2,
+                is_erasure: false,  // doesn't matter
             });
         }
         // automatically create the vertices and nearest-neighbor connection

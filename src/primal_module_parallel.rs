@@ -157,15 +157,15 @@ impl PrimalModuleImpl for PrimalModuleParallel {
 impl PrimalModuleParallel {
 
     pub fn parallel_solve<DualSerialModule: DualModuleImpl + Send + Sync>
-            (&mut self, syndrome_vertices: &Vec<usize>, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>) -> DualModuleInterface {
-        self.parallel_solve_step_callback(syndrome_vertices, parallel_dual_module, |_, _, _, _| {})
+            (&mut self, syndrome_pattern: &SyndromePattern, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>) -> DualModuleInterface {
+        self.parallel_solve_step_callback(syndrome_pattern, parallel_dual_module, |_, _, _, _| {})
     }
 
     pub fn parallel_solve_visualizer<DualSerialModule: DualModuleImpl + Send + Sync + FusionVisualizer>
-            (&mut self, syndrome_vertices: &Vec<usize>, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>
+            (&mut self, syndrome_pattern: &SyndromePattern, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>
             , visualizer: Option<&mut Visualizer>) -> DualModuleInterface {
         if let Some(visualizer) = visualizer {
-            let interface = self.parallel_solve_step_callback(syndrome_vertices, parallel_dual_module
+            let interface = self.parallel_solve_step_callback(syndrome_pattern, parallel_dual_module
                 , |interface, dual_module, primal_module, group_max_update_length| {
                     if let Some(group_max_update_length) = group_max_update_length {
                         println!("group_max_update_length: {:?}", group_max_update_length);
@@ -182,14 +182,14 @@ impl PrimalModuleParallel {
             visualizer.snapshot_combined(format!("solved"), vec![&interface, parallel_dual_module, self]).unwrap();
             interface
         } else {
-            self.parallel_solve(syndrome_vertices, parallel_dual_module)
+            self.parallel_solve(syndrome_pattern, parallel_dual_module)
         }
     }
 
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>
-            (&mut self, syndrome_vertices: &Vec<usize>, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F) -> DualModuleInterface
+            (&mut self, syndrome_pattern: &SyndromePattern, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F) -> DualModuleInterface
             where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
-        let partitioned_syndrome = self.partition_info.partition_syndrome(syndrome_vertices);
+        let partitioned_syndrome = self.partition_info.partition_syndrome(syndrome_pattern);
         let last_unit_ptr = self.units.last().unwrap().clone();
         let thread_pool = Arc::clone(&self.thread_pool);
         thread_pool.scope(|_| {
@@ -238,11 +238,11 @@ impl PrimalModuleParallelUnitPtr {
 
     /// call on the last primal node, and it will spawn tasks on the previous ones
     fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
-                , partitioned_syndrome: &Vec<Vec<VertexIndex>>, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
+                , partitioned_syndrome: &Vec<SyndromePattern>, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
                 -> DualModuleInterface
             where F: FnMut(&DualModuleInterface, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
         let mut primal_unit = self.write();
-        let syndrome_vertices = &partitioned_syndrome[primal_unit.unit_index];
+        let syndrome_pattern = &partitioned_syndrome[primal_unit.unit_index];
         let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
         let mut dual_unit = dual_module_ptr.write();
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads
@@ -278,7 +278,7 @@ impl PrimalModuleParallelUnitPtr {
                 callback(&interface, &dual_unit, &primal_unit.serial_module, None);
             }
             primal_unit.break_matching_with_mirror(&mut interface, dual_unit.deref_mut());
-            for syndrome_vertex in syndrome_vertices.iter() {
+            for syndrome_vertex in syndrome_pattern.syndrome_vertices.iter() {
                 primal_unit.serial_module.load_syndrome(*syndrome_vertex, &mut interface, dual_unit.deref_mut());
             }
             primal_unit.serial_module.solve_step_callback_interface_loaded(&mut interface, dual_unit.deref_mut()
@@ -290,7 +290,7 @@ impl PrimalModuleParallelUnitPtr {
             interface
         } else {  // this is a leaf, proceed it as normal serial one
             assert!(primal_unit.is_active, "leaf must be active to be solved");
-            let interface = primal_unit.serial_module.solve_step_callback(syndrome_vertices, dual_unit.deref_mut()
+            let interface = primal_unit.serial_module.solve_step_callback(syndrome_pattern, dual_unit.deref_mut()
                 , |interface, dual_module, primal_module, group_max_update_length| {
                     if let Some(callback) = callback.as_mut() {
                         callback(interface, dual_module, primal_module, Some(&group_max_update_length));
@@ -410,7 +410,7 @@ pub mod tests {
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)

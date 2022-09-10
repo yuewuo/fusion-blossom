@@ -468,7 +468,7 @@ mod tests {
         visualizer.set_positions(positions, true);  // automatic center all vertices
         let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
         let mut dual_module = DualModuleSerial::new(&initializer);
-        let interface = DualModuleInterface::new(&syndrome_vertices, &mut dual_module);
+        let interface = DualModuleInterface::new(&SyndromePattern::new_vertices(syndrome_vertices), &mut dual_module);
         // grow edges
         for &edge_index in grow_edges.iter() {
             let mut edge = dual_module.edges[edge_index].write_force();
@@ -501,7 +501,7 @@ mod tests {
             let mut dual_module = DualModuleSerial::new(&initializer);
             // hardcode syndrome          1   2   0   3    5    4    6    7
             let syndrome_vertices = vec![25, 33, 20, 76, 203, 187, 243, 315];
-            code.set_syndrome(&syndrome_vertices);
+            code.set_syndrome_vertices(&syndrome_vertices);
             // create dual nodes and grow them by half length
             let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
             // save snapshot

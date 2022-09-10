@@ -282,7 +282,7 @@ pub mod tests {
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)

@@ -570,10 +570,13 @@ impl DualModuleInterface {
     }
 
     /// a dual module interface MUST be created given a concrete implementation of the dual module
-    pub fn new(syndrome: &Vec<VertexIndex>, dual_module_impl: &mut impl DualModuleImpl) -> Self {
+    pub fn new(syndrome_pattern: &SyndromePattern, dual_module_impl: &mut impl DualModuleImpl) -> Self {
         let mut array = Self::new_empty();
-        for vertex_idx in syndrome.iter() {
+        for vertex_idx in syndrome_pattern.syndrome_vertices.iter() {
             array.create_syndrome_node(*vertex_idx, dual_module_impl);
+        }
+        if !syndrome_pattern.erasures.is_empty() {
+            dual_module_impl.load_erasures(&syndrome_pattern.erasures);
         }
         array
     }

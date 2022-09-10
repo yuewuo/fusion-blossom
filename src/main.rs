@@ -221,10 +221,11 @@ impl Cli {
                 let partition_info = partition_config.into_info(&initializer);
                 let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
+                let mut benchmark_profiler = BenchmarkProfiler::new();
                 for round in 0..(total_rounds as u64) {
                     primal_dual_solver.clear();
                     pb.set(round);
-                    let (syndrome_vertices, erasures) = code.generate_random_errors(round);
+                    let syndrome_pattern = code.generate_random_errors(round);
                     // create a new visualizer each round
                     let mut visualizer = None;
                     if enable_visualizer {
@@ -234,8 +235,10 @@ impl Cli {
                     }
                     // println!("syndrome_vertices: {syndrome_vertices:?}");
                     // println!("erasures: {erasures:?}");
-                    primal_dual_solver.solve_visualizer(&syndrome_vertices, &erasures, visualizer.as_mut());
-                    result_verifier.verify(&mut primal_dual_solver, &syndrome_vertices, &erasures);
+                    benchmark_profiler.begin(&syndrome_pattern);
+                    primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
+                    benchmark_profiler.end();
+                    result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                 }
                 pb.finish();
                 println!("");
@@ -413,7 +416,7 @@ impl PartitionStrategy {
 
 trait PrimalDualSolver {
     fn clear(&mut self);
-    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, visualizer: Option<&mut Visualizer>);
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
     fn perfect_matching(&mut self) -> PerfectMatching;
     fn sum_dual_variables(&self) -> Weight;
 }
@@ -439,9 +442,8 @@ impl PrimalDualSolver for SolverSerial {
         self.dual_module.clear();
         self.primal_module.clear();
     }
-    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, visualizer: Option<&mut Visualizer>) {
-        self.dual_module.load_erasures(&erasures);
-        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
     }
     fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
     fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
@@ -469,10 +471,9 @@ impl PrimalDualSolver for SolverDualParallel {
         self.dual_module.clear();
         self.primal_module.clear();
     }
-    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, visualizer: Option<&mut Visualizer>) {
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
         self.dual_module.static_fuse_all();
-        self.dual_module.load_erasures(&erasures);
-        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
     }
     fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
     fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
@@ -501,9 +502,8 @@ impl PrimalDualSolver for SolverParallel {
         self.dual_module.clear();
         self.primal_module.clear();
     }
-    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, visualizer: Option<&mut Visualizer>) {
-        self.dual_module.load_erasures(&erasures);
-        self.interface = self.primal_module.parallel_solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        self.interface = self.primal_module.parallel_solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
     }
     fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
     fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
@@ -533,8 +533,8 @@ impl SolverErrorPatternLogger {
 
 impl PrimalDualSolver for SolverErrorPatternLogger {
     fn clear(&mut self) { }
-    fn solve_visualizer(&mut self, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>, _visualizer: Option<&mut Visualizer>) {
-        self.file.write_all(serde_json::to_string(&serde_json::json!(SyndromePattern::new(syndrome_vertices.clone(), erasures.clone()))).unwrap().as_bytes()).unwrap();
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, _visualizer: Option<&mut Visualizer>) {
+        self.file.write_all(serde_json::to_string(&serde_json::json!(syndrome_pattern)).unwrap().as_bytes()).unwrap();
         self.file.write_all(b"\n").unwrap();
     }
     fn perfect_matching(&mut self) -> PerfectMatching {
@@ -581,13 +581,13 @@ impl Verifier {
 }
 
 trait ResultVerifier {
-    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>);
+    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern);
 }
 
 struct VerifierNone { }
 
 impl ResultVerifier for VerifierNone {
-    fn verify(&mut self, _primal_dual_solver: &mut Box<dyn PrimalDualSolver>, _syndrome_vertices: &Vec<VertexIndex>, _erasures: &Vec<EdgeIndex>) { }
+    fn verify(&mut self, _primal_dual_solver: &mut Box<dyn PrimalDualSolver>, _syndrome_pattern: &SyndromePattern) { }
 }
 
 struct VerifierBlossomV {
@@ -596,17 +596,17 @@ struct VerifierBlossomV {
 }
 
 impl ResultVerifier for VerifierBlossomV {
-    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_vertices: &Vec<VertexIndex>, erasures: &Vec<EdgeIndex>) {
+    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern) {
         // prepare modified weighted edges
         let mut edge_modifier = EdgeWeightModifier::new();
-        for edge_index in erasures.iter() {
+        for edge_index in syndrome_pattern.erasures.iter() {
             let (vertex_idx_1, vertex_idx_2, original_weight) = &self.initializer.weighted_edges[*edge_index];
             edge_modifier.push_modified_edge(*edge_index, *original_weight);
             self.initializer.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
         }
         // use blossom V to compute ground truth
-        let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&self.initializer, &syndrome_vertices);
-        let blossom_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&self.initializer, &syndrome_pattern.syndrome_vertices);
+        let blossom_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.syndrome_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             blossom_total_weight += detail.weight;
@@ -615,8 +615,8 @@ impl ResultVerifier for VerifierBlossomV {
         assert_eq!(primal_dual_solver.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
         // also construct the perfect matching from fusion blossom to compare them
         let fusion_mwpm = primal_dual_solver.perfect_matching();
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
-        let fusion_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_pattern.syndrome_vertices);
+        let fusion_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             fusion_total_weight += detail.weight;
@@ -631,7 +631,7 @@ impl ResultVerifier for VerifierBlossomV {
         }
         // also test subgraph builder
         self.subgraph_builder.clear();
-        self.subgraph_builder.load_erasures(&erasures);
+        self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
         self.subgraph_builder.load_perfect_matching(&fusion_mwpm);
         // println!("blossom_total_weight: {blossom_total_weight} = {} = {fusion_total_weight}", self.subgraph_builder.total_weight());
         assert_eq!(self.subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");

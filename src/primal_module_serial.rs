@@ -1041,7 +1041,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2 * half_weight, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)
@@ -1167,7 +1167,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
@@ -1211,7 +1211,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
@@ -1255,7 +1255,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
@@ -1299,7 +1299,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
@@ -1342,7 +1342,7 @@ pub mod tests {
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
@@ -1401,7 +1401,7 @@ pub mod tests {
         // create primal module
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
-        code.set_syndrome(&syndrome_vertices);
+        code.set_syndrome_vertices(&syndrome_vertices);
         let mut interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);

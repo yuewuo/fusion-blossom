@@ -42,7 +42,7 @@ impl SolverSerial {
     pub fn new(initializer: &SolverInitializer) -> Self {
         let mut dual_module = DualModuleSerial::new(initializer);
         let primal_module = PrimalModuleSerial::new(initializer);
-        let interface = DualModuleInterface::new(&vec![], &mut dual_module);  // initialize with empty syndrome
+        let interface = DualModuleInterface::new_empty();
         let subgraph_builder = SubGraphBuilder::new(initializer);
         Self {
             initializer: initializer.clone(),
@@ -53,36 +53,36 @@ impl SolverSerial {
         }
     }
 
-    pub fn solve_perfect_matching(&mut self, syndrome_vertices: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
+    pub fn solve_perfect_matching(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
         self.primal_module.clear();
         self.dual_module.clear();
-        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
         self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module)
     }
 
     /// solve subgraph directly
-    pub fn solve_subgraph(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<EdgeIndex> {
-        self.solve_subgraph_visualizer(syndrome_vertices, None)
+    pub fn solve_subgraph(&mut self, syndrome_pattern: &SyndromePattern) -> Vec<EdgeIndex> {
+        self.solve_subgraph_visualizer(syndrome_pattern, None)
     }
 
-    pub fn solve_subgraph_visualizer(&mut self, syndrome_vertices: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> Vec<EdgeIndex> {
-        let perfect_matching = self.solve_perfect_matching(syndrome_vertices, visualizer);
+    pub fn solve_subgraph_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<EdgeIndex> {
+        let perfect_matching = self.solve_perfect_matching(syndrome_pattern, visualizer);
         self.subgraph_builder.clear();
         self.subgraph_builder.load_perfect_matching(&perfect_matching);
         self.subgraph_builder.get_subgraph()
     }
 
     /// solve the minimum weight perfect matching (legacy API, the same output as the blossom V library)
-    pub fn solve_legacy(&mut self, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
-        self.solve_legacy_visualizer(syndrome_vertices, None)
+    pub fn solve_legacy(&mut self, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
+        self.solve_legacy_visualizer(syndrome_pattern, None)
     }
 
-    pub fn solve_legacy_visualizer(&mut self, syndrome_vertices: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+    pub fn solve_legacy_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
         self.primal_module.clear();
         self.dual_module.clear();
-        self.interface = self.primal_module.solve_visualizer(syndrome_vertices, &mut self.dual_module, visualizer);
+        self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
         let perfect_matching = self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module);
-        perfect_matching.legacy_get_mwpm_result(&syndrome_vertices)
+        perfect_matching.legacy_get_mwpm_result(&syndrome_pattern.syndrome_vertices)
     }
 
 }
@@ -90,13 +90,13 @@ impl SolverSerial {
 // static functions, not recommended because it doesn't reuse the data structure of dual module
 impl SolverSerial {
 
-    pub fn mwpm_solve(initializer: &SolverInitializer, syndrome_nodes: &Vec<usize>) -> Vec<usize> {
-        Self::mwpm_solve_visualizer(initializer, syndrome_nodes, None)
+    pub fn mwpm_solve(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
+        Self::mwpm_solve_visualizer(initializer, syndrome_pattern, None)
     }
 
-    pub fn mwpm_solve_visualizer(initializer: &SolverInitializer, syndrome_nodes: &Vec<usize>, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+    pub fn mwpm_solve_visualizer(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
         let mut solver = Self::new(initializer);
-        solver.solve_legacy_visualizer(syndrome_nodes, visualizer)
+        solver.solve_legacy_visualizer(syndrome_pattern, visualizer)
     }
 
 }

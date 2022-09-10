@@ -74,14 +74,14 @@ pub trait PrimalModuleImpl {
         intermediate_matching.get_perfect_matching()
     }
 
-    fn solve<D: DualModuleImpl>(&mut self, syndrome_vertices: &Vec<usize>, dual_module: &mut D) -> DualModuleInterface {
-        self.solve_step_callback(syndrome_vertices, dual_module, |_, _, _, _| {})
+    fn solve<D: DualModuleImpl>(&mut self, syndrome_pattern: &SyndromePattern, dual_module: &mut D) -> DualModuleInterface {
+        self.solve_step_callback(syndrome_pattern, dual_module, |_, _, _, _| {})
     }
 
-    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(&mut self, syndrome_vertices: &Vec<usize>, dual_module: &mut D
+    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(&mut self, syndrome_pattern: &SyndromePattern, dual_module: &mut D
             , visualizer: Option<&mut Visualizer>) -> DualModuleInterface where Self: FusionVisualizer + Sized {
         if let Some(visualizer) = visualizer {
-            let interface = self.solve_step_callback(syndrome_vertices, dual_module, |interface, dual_module, primal_module, group_max_update_length| {
+            let interface = self.solve_step_callback(syndrome_pattern, dual_module, |interface, dual_module, primal_module, group_max_update_length| {
                 println!("group_max_update_length: {:?}", group_max_update_length);
                 if let Some(length) = group_max_update_length.get_none_zero_growth() {
                     visualizer.snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module]).unwrap();
@@ -93,13 +93,13 @@ pub trait PrimalModuleImpl {
             visualizer.snapshot_combined(format!("solved"), vec![&interface, dual_module, self]).unwrap();
             interface
         } else {
-            self.solve(syndrome_vertices, dual_module)
+            self.solve(syndrome_pattern, dual_module)
         }
     }
 
-    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, syndrome_vertices: &Vec<usize>, dual_module: &mut D, callback: F) -> DualModuleInterface
+    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, syndrome_pattern: &SyndromePattern, dual_module: &mut D, callback: F) -> DualModuleInterface
             where F: FnMut(&mut DualModuleInterface, &mut D, &mut Self, &GroupMaxUpdateLength) {
-        let mut interface = DualModuleInterface::new(syndrome_vertices, dual_module);
+        let mut interface = DualModuleInterface::new(syndrome_pattern, dual_module);
         self.load(&interface);
         self.solve_step_callback_interface_loaded(&mut interface, dual_module, callback);
         interface
