@@ -263,7 +263,7 @@ pub trait ExampleCode {
         for vertex in vertices.iter_mut() {
             vertex.is_syndrome = false;
         }
-        for (edge_idx, edge) in edges.iter_mut().enumerate() {
+        for edge in edges.iter_mut() {
             let p = if rng.next_f64() < edge.pe {
                 edge.is_erasure = true;
                 0.5  // when erasure happens, there are 50% chance of error

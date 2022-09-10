@@ -39,6 +39,7 @@ clap = { version = "3.2.18", features = ["cargo", "derive"] }
 pbr = "1.0.4"
 rayon = "1.5.3"
 weak-table = "0.3.2"
+rand = "0.8.5"
 
 [build-dependencies]
 cc = "1.0.66"

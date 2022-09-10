@@ -10,6 +10,7 @@ extern crate derivative;
 extern crate urlencoding;
 extern crate rayon;
 extern crate weak_table;
+extern crate rand;
 
 pub mod blossom_v;
 pub mod util;

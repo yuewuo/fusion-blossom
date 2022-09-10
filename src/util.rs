@@ -617,12 +617,21 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
 pub struct BenchmarkProfiler {
     /// each record corresponds to a different syndrome pattern
     pub records: Vec<BenchmarkProfilerEntry>,
+    /// summation of all decoding time
+    pub sum_decoding_time: f64,
+    /// syndrome count
+    pub sum_syndrome: usize,
+    /// noisy measurement round
+    pub noisy_measurements: usize,
 }
 
 impl BenchmarkProfiler {
-    pub fn new() -> Self {
+    pub fn new(noisy_measurements: usize) -> Self {
         Self {
             records: vec![],
+            sum_decoding_time: 0.,
+            sum_syndrome: 0,
+            noisy_measurements: noisy_measurements,
         }
     }
     /// record the beginning of a decoding procedure
@@ -639,6 +648,15 @@ impl BenchmarkProfiler {
     pub fn end(&mut self) {
         let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
         last_entry.record_end();
+        self.sum_decoding_time += last_entry.decoding_time.unwrap();
+        self.sum_syndrome += last_entry.syndrome_pattern.syndrome_vertices.len();
+    }
+    /// print out a brief one-line statistics
+    pub fn brief(&self) -> String {
+        let total = self.sum_decoding_time / (self.records.len() as f64);
+        let per_round = total / (1. + self.noisy_measurements as f64);
+        let per_syndrome = self.sum_decoding_time / (self.sum_syndrome as f64);
+        format!("total: {total:.3e}, round: {per_round:.3e}, syndrome: {per_syndrome:.3e},")
     }
 }
 

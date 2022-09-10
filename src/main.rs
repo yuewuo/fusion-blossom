@@ -14,6 +14,7 @@ use fusion_blossom::example_partition;
 use pbr::ProgressBar;
 use std::fs::File;
 use std::io::prelude::*;
+use rand::{Rng, thread_rng};
 
 use dual_module_serial::DualModuleSerial;
 use primal_module_serial::PrimalModuleSerial;
@@ -93,6 +94,9 @@ enum Commands {
         /// message on the progress bar
         #[clap(long, default_value_t = format!(""))]
         pb_message: String,
+        /// use deterministic seed for debugging purpose
+        #[clap(long, action)]
+        use_deterministic_seed: bool,
     },
     /// built-in tests
     Test {
@@ -201,7 +205,7 @@ impl Cli {
     pub fn run(self) {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
-                    , partition_strategy, pb_message, primal_dual_config, code_config, partition_config } => {
+                    , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
@@ -213,19 +217,21 @@ impl Cli {
                 if enable_visualizer {  // print visualizer file path only once
                     print_visualize_link(&static_visualize_data_filename());
                 }
-                // prepare progress bar display
-                let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
-                pb.message(format!("{pb_message} ").as_str());
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements, partition_config);
                 let partition_info = partition_config.into_info(&initializer);
                 let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
-                let mut benchmark_profiler = BenchmarkProfiler::new();
+                let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements);
+                // prepare progress bar display
+                let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
+                pb.message(format!("{pb_message} ").as_str());
+                let mut rng = thread_rng();
                 for round in 0..(total_rounds as u64) {
                     primal_dual_solver.clear();
                     pb.set(round);
-                    let syndrome_pattern = code.generate_random_errors(round);
+                    let seed = if use_deterministic_seed { round } else { rng.gen() };
+                    let syndrome_pattern = code.generate_random_errors(seed);
                     // create a new visualizer each round
                     let mut visualizer = None;
                     if enable_visualizer {
@@ -238,6 +244,9 @@ impl Cli {
                     benchmark_profiler.begin(&syndrome_pattern);
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
                     benchmark_profiler.end();
+                    if pb_message.is_empty() {
+                        pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
+                    }
                     result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                 }
                 pb.finish();

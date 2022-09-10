@@ -40,7 +40,7 @@ impl SolverSerial {
 
     /// create a new decoder
     pub fn new(initializer: &SolverInitializer) -> Self {
-        let mut dual_module = DualModuleSerial::new(initializer);
+        let dual_module = DualModuleSerial::new(initializer);
         let primal_module = PrimalModuleSerial::new(initializer);
         let interface = DualModuleInterface::new_empty();
         let subgraph_builder = SubGraphBuilder::new(initializer);
