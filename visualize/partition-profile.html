@@ -114,15 +114,6 @@ h3 {
     height: 580px;
     margin: 10px;
 }
-.job-block {
-    height: 80px;
-    margin: 10px;
-}
-.job-entry {
-    background-color: blue;
-    height: 80px;
-    border-radius: 20px;
-}
 </style>
 </head>
 <body>
@@ -137,10 +128,10 @@ h3 {
             :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
         <!-- use SVG to enable direct download of rendered profile -->
-        <svg v-if="round_select != null" :width="svg_width" :height="svg_height" xmlns="http://www.w3.org/2000/svg" style="stroke-width:0;">
+        <svg v-if="round_select != null" :width="svg_width" :height="svg_height" xmlns="http://www.w3.org/2000/svg" style="stroke-width:0;font: 14px sans-serif;">
             <defs>
-                <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
-                    <polygon points="0 0, 6 2, 0 4" style="fill:purple;"/>
+                <marker id="arrowhead" markerWidth="5" markerHeight="4" refX="3.5" refY="2" orient="auto">
+                    <polygon points="0 0, 5 2, 0 4" style="fill:purple;"/>
                 </marker>
             </defs>
             <rect :width="length_scale * selected_profile.decoding_time" :height="decoding_time_height"
@@ -152,14 +143,23 @@ h3 {
                 <rect :width="length_scale * (event_time.end - event_time.children_return)" :height="job_height"
                     :x="left_panel + margin + length_scale * event_time.children_return" :y="job_y_bias + display_index * (job_height + margin)"
                     style="fill:blue;" rx="10" ry="10"/>
-                <line v-if="info.left_event_time != null"
+                <line v-if="info.left_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.left_event_time.end" :y1="job_y_bias + info.left_display_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin)"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
-                <line v-if="info.right_event_time != null"
+                <line v-if="info.right_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.right_event_time.end" :y1="job_y_bias + info.right_display_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin) + job_height"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
+            </g>
+            <!-- left panel -->
+            <text :x="left_panel + margin - 10" :y="job_y_bias - 20" class="vertex" text-anchor="end">vertex range</text>
+            <text :x="left_panel + margin" :y="job_y_bias" class="vertex" text-anchor="end">{{ display_info_vec[0][1].owning_range[0] }}</text>
+            <g v-for="([event_time, info], display_index) in display_info_vec">
+                <text :x="left_panel + margin" :y="job_y_bias + (display_index + 1) * (job_height + margin)"
+                    text-anchor="end">{{ info.owning_range[1] }}</text>
+                <text :x="margin" :y="job_y_bias + (display_index + 0.5) * (job_height + margin)"
+                    text-anchor="start" style="fill:blue;">unit {{ display_index_to_unit_index[display_index] }}</text>
             </g>
         </svg>
     </q-scroll-area>
@@ -439,6 +439,12 @@ const App = {
                 display_info_vec.push([original_event_time_vec[this.display_index_to_unit_index[i]], info])
             }
             // fill in useful display unit information
+            for (let i=0; i<this.partition_config.partitions.length; ++i) {
+                let unit_index = i
+                let [left_vertex, right_vertex] = this.partition_config.partitions[i]
+                let [_, info] = display_info_vec[this.unit_index_to_display_index[unit_index]]
+                info.owning_range = [left_vertex, right_vertex]
+            }
             for (let i=0; i<this.partition_config.fusions.length; ++i) {
                 let unit_index = i + this.partition_config.partitions.length
                 let [left_index, right_index] = this.partition_config.fusions[i]
@@ -453,7 +459,12 @@ const App = {
                 console.assert(info.left_display_index < info.right_display_index)
                 info.left_event_time = original_event_time_vec[this.display_index_to_unit_index[info.left_display_index]]
                 info.right_event_time = original_event_time_vec[this.display_index_to_unit_index[info.right_display_index]]
+                info.owning_range = [
+                    display_info_vec[info.left_display_index][1].owning_range[1],
+                    display_info_vec[info.right_display_index][1].owning_range[0],
+                ]
             }
+            console.log(display_info_vec)
             return display_info_vec
         },
         vertical_thumb_style() {
