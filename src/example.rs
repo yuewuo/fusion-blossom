@@ -789,7 +789,7 @@ impl<CodeType: ExampleCode + Sync + Send + Clone> ExampleCode for ExampleCodePar
         if self.code_index == 0 {
             // run generator in parallel
             (0..self.codes.len()).into_par_iter().map(|code_index| {
-                self.codes[code_index].write().generate_random_errors(seed + code_index as u64)
+                self.codes[code_index].write().generate_random_errors(seed + (code_index * 1_000_000_000) as u64)
             }).collect_into_vec(&mut self.syndrome_patterns);
         }
         let syndrome_pattern = self.syndrome_patterns[self.code_index].clone();
