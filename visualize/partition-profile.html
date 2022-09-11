@@ -54,6 +54,11 @@ canvas {
     margin-left: 35px;
     width: 530px;
 }
+.small-slider {
+    margin-top: 5px;
+    margin-left: 25px;
+    width: 150px;
+}
 .selector {
     margin-top: 20px;
     margin-left: 25px;
@@ -142,7 +147,7 @@ h3 {
                     style="fill:lightgray;" rx="10" ry="10"/>
                 <rect :width="length_scale * (event_time.end - event_time.children_return)" :height="job_height"
                     :x="left_panel + margin + length_scale * event_time.children_return" :y="job_y_bias + display_index * (job_height + margin)"
-                    style="fill:blue;" rx="10" ry="10"/>
+                    style="fill:lightblue;" rx="10" ry="10"/>
                 <line v-if="info.left_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.left_event_time.end" :y1="job_y_bias + info.left_display_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin)"
@@ -153,13 +158,20 @@ h3 {
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
             </g>
             <!-- left panel -->
-            <text :x="left_panel + margin - 10" :y="job_y_bias - 20" class="vertex" text-anchor="end">vertex range</text>
-            <text :x="left_panel + margin" :y="job_y_bias" class="vertex" text-anchor="end">{{ display_info_vec[0][1].owning_range[0] }}</text>
+            <text :x="left_panel + margin - 10" :y="job_y_bias - 20" text-anchor="end">vertex range</text>
+            <text :x="left_panel + margin" :y="job_y_bias" text-anchor="end">{{ display_info_vec[0][1].owning_range[0] }}</text>
             <g v-for="([event_time, info], display_index) in display_info_vec">
                 <text :x="left_panel + margin" :y="job_y_bias + (display_index + 1) * (job_height + margin)"
                     text-anchor="end">{{ info.owning_range[1] }}</text>
                 <text :x="margin" :y="job_y_bias + (display_index + 0.5) * (job_height + margin)"
-                    text-anchor="start" style="fill:blue;">unit {{ display_index_to_unit_index[display_index] }}</text>
+                    text-anchor="start" style="fill:blue;">job {{ display_index_to_unit_index[display_index] }}</text>
+            </g>
+            <!-- time information -->
+            <text :x="left_panel + length_scale * selected_profile.decoding_time" :y="margin + decoding_time_height / 2 + 5" 
+                text-anchor="end">{{ Number.parseFloat(selected_profile.decoding_time).toExponential(3) }} (s)</text>
+            <g v-for="([event_time, info], display_index) in display_info_vec">
+                <text :x="left_panel + length_scale * event_time.end" :y="job_y_bias + display_index * (job_height + margin) + job_height / 2 + 5"
+                    text-anchor="end">{{ Number.parseFloat(event_time.end).toExponential(3) }} (s)</text>
             </g>
         </svg>
     </q-scroll-area>
@@ -187,6 +199,16 @@ h3 {
         <div class="slider">
             <q-slider v-model="round_select" :min="0" :max="round_num-1" :step="1" snap
                 thumb-size="25px" track-size="8px"></q-slider>
+        </div>
+        <div class="flex-center-div">
+            <div><q-toggle v-model="adaptive_scale" label="adaptive scale" size="md"/></div>
+            <span style="margin: 0 15px 0 15px; line-height: 52px; font-size: 25px;"></span>
+            <q-select rounded outlined v-model="length_scale_selected" :options="length_scale_options" label="unit time" style="width: 150px;"
+                emit-value behavior="menu" map-options dense></q-select>
+            <div class="small-slider">
+                <q-slider v-model="relative_scale_log" :min="-1.2" :max="1.2" :step="0.01" snap color="deep-orange"
+                    thumb-size="25px" track-size="8px"></q-slider>
+            </div>
         </div>
         <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'vertex'">
             <q-card-section class="bg-cyan text-white">
@@ -312,7 +334,15 @@ const App = {
             job_y_bias: computed(() => app.decoding_time_height + 2 * app.margin),
             svg_width: computed(() => app.length_scale.value * app.selected_profile.value.decoding_time + 2 * app.margin + app.left_panel),
             svg_height: computed(() => (app.job_height + app.margin) * app.selected_profile.value.solver_profile.primal.event_time_vec.length + app.job_y_bias.value),
-            length_scale: ref(100),  // how many pixels for each second
+            base_length_scale: ref(100),  // how many pixels for each second
+            relative_scale_log: ref(0),
+            length_scale: computed(() => app.base_length_scale.value * Math.pow(10, app.relative_scale_log.value)),
+            adaptive_scale: ref(true),
+            length_scale_selected: ref("adaptive"),
+            length_scale_options: [{label:"adaptive",value:"adaptive"}
+                , {label:"1us",value:1e-6}, {label:"10us",value:1e-5}, {label:"100us",value:1e-4}
+                , {label:"1ms",value:1e-3}, {label:"10ms",value:1e-2}, {label:"100ms",value:1e-1}
+                , {label:"1s",value:1}, {label:"10s",value:10}, {label:"100s",value:100}, {label:"1000s",value:1000}],
         }
         return app
     },
@@ -392,17 +422,26 @@ const App = {
         for (let unit_index=0; unit_index<this.unit_index_to_display_index.length; ++unit_index) {
             this.display_index_to_unit_index[this.unit_index_to_display_index[unit_index]] = unit_index
         }
-        
     },
     methods: {
         show_round(round_idx) {
             try {
-                // automatic zoom to enable best visualization at first
-                this.length_scale = (this.sizes.canvas_width / this.sizes.scale - 2 * this.margin - this.left_panel) / this.selected_profile.decoding_time
+                if (this.adaptive_scale) {  // automatic zoom to enable best visualization at first
+                    this.base_length_scale = (this.sizes.canvas_width / this.sizes.scale - 2 * this.margin - this.left_panel) / this.selected_profile.decoding_time
+                }
             } catch (e) {
                 this.error_message = "load data error"
                 throw e
             }
+        },
+        set_length_scale(unit_time) {
+            this.relative_scale_log = 0
+            if (unit_time == "adaptive") {
+                this.adaptive_scale = true
+                return
+            }
+            this.adaptive_scale = false
+            this.base_length_scale = (this.sizes.canvas_width / this.sizes.scale - 2 * this.margin - this.left_panel) / unit_time
         },
         update_selected_display() {
             if (this.current_selected == null) return
@@ -424,6 +463,20 @@ const App = {
         },
         lock_view() {
             gui3d.enable_control.value = !this.lock_view
+        },
+        length_scale_selected() {
+            this.set_length_scale(this.length_scale_selected)
+        },
+        adaptive_scale() {
+            if (this.adaptive_scale) {
+                this.relative_scale_log = 0
+                this.length_scale_selected = "adaptive"
+                this.show_round(this.round_select)
+            }
+        },
+        async sizes() {
+            for (const _ of Array(4).keys()) await Vue.nextTick()
+            this.show_round(this.round_select)
         },
     },
     computed: {
@@ -464,7 +517,6 @@ const App = {
                     display_info_vec[info.right_display_index][1].owning_range[0],
                 ]
             }
-            console.log(display_info_vec)
             return display_info_vec
         },
         vertical_thumb_style() {
