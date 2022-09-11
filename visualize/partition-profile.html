@@ -35,6 +35,17 @@ body, html {
     transform-origin: 0 0;
     font-size: 18px;
 }
+.div-svg {
+    position: fixed;
+    height: 100%;
+    overflow-y: hidden;
+    overflow-x: hidden;
+}
+.div-svg-inner {
+    height: calc(100% / var(--s));
+    transform: scale(var(--s));
+    transform-origin: 0 0;
+}
 canvas {
     display: block;
 }
@@ -103,6 +114,15 @@ h3 {
     height: 580px;
     margin: 10px;
 }
+.job-block {
+    height: 80px;
+    margin: 10px;
+}
+.job-entry {
+    background-color: blue;
+    height: 80px;
+    border-radius: 20px;
+}
 </style>
 </head>
 <body>
@@ -111,8 +131,40 @@ h3 {
 <script src="./node_modules/vue/dist/vue.global.prod.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
 
-
-<div class="control-bar" id="app">
+<div id="app">
+<div class="div-svg" :style="{ width: sizes.canvas_width + 'px' }">
+    <q-scroll-area class="div-svg-inner" :style="{ width: sizes.canvas_width / sizes.scale + 'px' }"
+            :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
+            :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
+        <!-- use SVG to enable direct download of rendered profile -->
+        <svg v-if="round_select != null" :width="svg_width" :height="svg_height" xmlns="http://www.w3.org/2000/svg" style="stroke-width:0;">
+            <defs>
+                <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="5" refY="2" orient="auto">
+                    <polygon points="0 0, 6 2, 0 4" style="fill:purple;"/>
+                </marker>
+            </defs>
+            <rect :width="length_scale * selected_profile.decoding_time" :height="decoding_time_height"
+                :x="margin + left_panel" :y="margin" style="fill:red;" rx="10" ry="10"/>
+            <g v-for="([event_time, info], display_index) in display_info_vec">
+                <rect :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
+                    :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + display_index * (job_height + margin)"
+                    style="fill:lightgray;" rx="10" ry="10"/>
+                <rect :width="length_scale * (event_time.end - event_time.children_return)" :height="job_height"
+                    :x="left_panel + margin + length_scale * event_time.children_return" :y="job_y_bias + display_index * (job_height + margin)"
+                    style="fill:blue;" rx="10" ry="10"/>
+                <line v-if="info.left_event_time != null"
+                    :x1="left_panel + margin + length_scale * info.left_event_time.end" :y1="job_y_bias + info.left_display_index * (job_height + margin) + job_height / 2"
+                    :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin)"
+                    style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
+                <line v-if="info.right_event_time != null"
+                    :x1="left_panel + margin + length_scale * info.right_event_time.end" :y1="job_y_bias + info.right_display_index * (job_height + margin) + job_height / 2"
+                    :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin) + job_height"
+                    style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
+            </g>
+        </svg>
+    </q-scroll-area>
+</div>
+<div class="control-bar">
     <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
         <div class="flex-center-div"><h1>Partition Profile</h1></div>
@@ -181,6 +233,7 @@ h3 {
         </q-card>
     </q-scroll-area>
 </div>
+</div>
 
 <script>
 
@@ -234,19 +287,34 @@ const round_profiles = reactive([])
 // create vue3 app
 const App = {
     setup() {
-        return {
+        let app = {
             error_message: ref(null),
             warning_message: ref(null),
             partition_config: partition_config,
             round_profiles: round_profiles,
+            unit_index_to_display_index: reactive({}),
+            display_index_to_unit_index: reactive([]),
+            unit_info_vec: reactive([]),  // local information about units
+            sizes: sizes,
             // round select
             round_num: ref(1),
-            round_select: ref(1),
-            round_select_label: ref(1),
+            round_select: ref(null),
+            round_select_label: ref(0),
             round_labels: reactive([]),
             // job select
             current_selected: ref(null),
+            selected_profile: computed(() => app.round_profiles[app.round_select.value]),
+            // svg configurations
+            margin: 10,
+            decoding_time_height: 20,
+            job_height: 30,
+            left_panel: 100,  // display text information
+            job_y_bias: computed(() => app.decoding_time_height + 2 * app.margin),
+            svg_width: computed(() => app.length_scale.value * app.selected_profile.value.decoding_time + 2 * app.margin + app.left_panel),
+            svg_height: computed(() => (app.job_height + app.margin) * app.selected_profile.value.solver_profile.primal.event_time_vec.length + app.job_y_bias.value),
+            length_scale: ref(100),  // how many pixels for each second
         }
+        return app
     },
     async mounted() {
         // after Vue is loaded, make the page visible
@@ -273,12 +341,64 @@ const App = {
             this.round_labels.push(`[${idx}] decoding time: ${Number.parseFloat(value.decoding_time).toExponential(3)}`)
         }
         this.round_select_label = this.round_labels[0]
-
+        // add keyboard shortcuts
+        document.onkeydown = (event) => {
+            if (!event.metaKey) {
+                if (event.key == "ArrowRight") {
+                    if (this.round_select < this.round_num - 1) {
+                        this.round_select += 1
+                    }
+                } else if (event.key == "ArrowLeft") {
+                    if (this.round_select > 0) {
+                        this.round_select -= 1
+                    }
+                } else {
+                    return  // unrecognized, propagate to other listeners
+                }
+                event.preventDefault()
+                event.stopPropagation()
+            }
+        }
+        // reorder the units for easier dependency drawing
+        this.unit_index_to_display_index = Array(this.partition_config.partitions.length + this.partition_config.fusions.length)
+        this.display_index_to_unit_index = Array(this.partition_config.partitions.length + this.partition_config.fusions.length)
+        for (let i=0; i<this.partition_config.partitions.length; ++i) {
+            this.unit_index_to_display_index[i] = i
+            this.unit_info_vec.push({
+                left_most: i,  // unit index, not display index
+                right_most: i,  // unit index, not display index
+            })
+        }
+        for (let i=0; i<this.partition_config.fusions.length; ++i) {
+            let unit_index = i + this.partition_config.partitions.length
+            let [left_index, right_index] = this.partition_config.fusions[i]
+            let max_left_most = Math.max(this.unit_info_vec[left_index].left_most, this.unit_info_vec[right_index].left_most)
+            let min_right_most = Math.min(this.unit_info_vec[left_index].right_most, this.unit_info_vec[right_index].right_most)
+            let right = Math.max(max_left_most, min_right_most)
+            let left = Math.min(max_left_most, min_right_most)
+            console.assert(right == left + 1, "invalid partition")
+            let display_index = this.unit_index_to_display_index[right]
+            this.unit_index_to_display_index[unit_index] = display_index
+            for (let j=0; j<unit_index; ++j) {
+                if (this.unit_index_to_display_index[j] >= display_index) {
+                    this.unit_index_to_display_index[j] = this.unit_index_to_display_index[j] + 1  // shift everything after to vacate the space
+                }
+            }
+            this.unit_info_vec.push({
+                left_most: Math.min(this.unit_info_vec[left_index].left_most, this.unit_info_vec[right_index].left_most),
+                right_most: Math.max(this.unit_info_vec[left_index].right_most, this.unit_info_vec[right_index].right_most),
+            })
+        }
+        for (let unit_index=0; unit_index<this.unit_index_to_display_index.length; ++unit_index) {
+            this.display_index_to_unit_index[this.unit_index_to_display_index[unit_index]] = unit_index
+        }
+        
     },
     methods: {
         show_round(round_idx) {
             try {
-                console.log(`show_snapshot: ${round_idx}`)
+                // automatic zoom to enable best visualization at first
+                this.length_scale = (this.sizes.canvas_width / this.sizes.scale - 2 * this.margin - this.left_panel) / this.selected_profile.decoding_time
             } catch (e) {
                 this.error_message = "load data error"
                 throw e
@@ -309,6 +429,32 @@ const App = {
     computed: {
         scale() {
             return this.sizes.scale
+        },
+        display_info_vec() {
+            const original_event_time_vec = this.selected_profile.solver_profile.primal.event_time_vec
+            let display_info_vec = []
+            for (let i=0; i<original_event_time_vec.length; ++i) {
+                const unit_index = i
+                let info = { }
+                display_info_vec.push([original_event_time_vec[this.display_index_to_unit_index[i]], info])
+            }
+            // fill in useful display unit information
+            for (let i=0; i<this.partition_config.fusions.length; ++i) {
+                let unit_index = i + this.partition_config.partitions.length
+                let [left_index, right_index] = this.partition_config.fusions[i]
+                let [_, info] = display_info_vec[this.unit_index_to_display_index[unit_index]]
+                info.left_display_index = this.unit_index_to_display_index[left_index]
+                info.right_display_index = this.unit_index_to_display_index[right_index]
+                if (info.left_display_index > info.right_display_index) {  // make sure left_display_index < right_display_index
+                    const left_display_index = info.left_display_index
+                    info.left_display_index = info.right_display_index
+                    info.right_display_index = left_display_index
+                }
+                console.assert(info.left_display_index < info.right_display_index)
+                info.left_event_time = original_event_time_vec[this.display_index_to_unit_index[info.left_display_index]]
+                info.right_event_time = original_event_time_vec[this.display_index_to_unit_index[info.right_display_index]]
+            }
+            return display_info_vec
         },
         vertical_thumb_style() {
             return {
