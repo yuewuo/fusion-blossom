@@ -155,8 +155,12 @@ pub enum ExampleCodeType {
     CodeCapacityPlanarCode,
     /// planar surface code with phenomenological error model
     PhenomenologicalPlanarCode,
+    /// parallel version
+    PhenomenologicalPlanarCodeParallel,
     /// planar surface code with circuit-level noise model
     CircuitLevelPlanarCode,
+    /// parallel version
+    CircuitLevelPlanarCodeParallel,
     /// read from error pattern file, generated using option `--primal-dual-type error-pattern-logger`
     ErrorPatternReader,
 }
@@ -365,7 +369,7 @@ pub fn execute_in_cli<'a>(iter: impl Iterator<Item=&'a String> + Clone, print_co
 }
 
 impl ExampleCodeType {
-    fn build(&self, d: usize, p: f64, noisy_measurements: usize, max_half_weight: Weight, code_config: serde_json::Value) -> Box<dyn ExampleCode> {
+    fn build(&self, d: usize, p: f64, noisy_measurements: usize, max_half_weight: Weight, mut code_config: serde_json::Value) -> Box<dyn ExampleCode> {
         match self {
             Self::CodeCapacityRepetitionCode => {
                 assert_eq!(code_config, json!({}), "config not supported");
@@ -379,9 +383,21 @@ impl ExampleCodeType {
                 assert_eq!(code_config, json!({}), "config not supported");
                 Box::new(PhenomenologicalPlanarCode::new(d, noisy_measurements, p, max_half_weight))
             },
+            Self::PhenomenologicalPlanarCodeParallel => {
+                let mut code_count = 1;
+                let config = code_config.as_object_mut().expect("config must be JSON object");
+                config.remove("code_count").map(|value| code_count = value.as_u64().expect("code_count number") as usize);
+                Box::new(ExampleCodeParallel::new(PhenomenologicalPlanarCode::new(d, noisy_measurements, p, max_half_weight), code_count))
+            },
             Self::CircuitLevelPlanarCode => {
                 assert_eq!(code_config, json!({}), "config not supported");
                 Box::new(CircuitLevelPlanarCode::new(d, noisy_measurements, p, max_half_weight))
+            },
+            Self::CircuitLevelPlanarCodeParallel => {
+                let mut code_count = 1;
+                let config = code_config.as_object_mut().expect("config must be JSON object");
+                config.remove("code_count").map(|value| code_count = value.as_u64().expect("code_count number") as usize);
+                Box::new(ExampleCodeParallel::new(CircuitLevelPlanarCode::new(d, noisy_measurements, p, max_half_weight), code_count))
             },
             Self::ErrorPatternReader => {
                 Box::new(ErrorPatternReader::new(code_config))
