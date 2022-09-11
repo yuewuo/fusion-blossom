@@ -225,7 +225,6 @@ impl Cli {
                 pb.message(format!("{pb_message} ").as_str());
                 let mut rng = thread_rng();
                 for round in 0..(total_rounds as u64) {
-                    primal_dual_solver.clear();
                     pb.set(round);
                     let seed = if use_deterministic_seed { round } else { rng.gen() };
                     let syndrome_pattern = code.generate_random_errors(seed);
@@ -242,6 +241,7 @@ impl Cli {
                     // println!("syndrome_vertices: {syndrome_vertices:?}");
                     // println!("erasures: {erasures:?}");
                     benchmark_profiler.begin(&syndrome_pattern);
+                    primal_dual_solver.clear();  // including the clear operation
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
                     benchmark_profiler.end(Some(&primal_dual_solver));
                     if pb_message.is_empty() {

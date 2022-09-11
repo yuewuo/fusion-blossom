@@ -16,7 +16,9 @@ Cargo.lock
 !/blossomV/blossomV.cpp
 
 # visualization data
-/visualize/data/*.json
+/visualize/data/*
+!/visualize/data/*.py
+!/visualize/data/*.md
 
 # nodejs packages
 node_modules/

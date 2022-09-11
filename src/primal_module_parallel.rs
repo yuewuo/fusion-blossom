@@ -158,7 +158,8 @@ impl PrimalModuleImpl for PrimalModuleParallel {
                 unit.clear();
                 unit.is_active = is_active;
             });
-        })
+        });
+        self.last_clear_time = Instant::now();
     }
 
     fn load_syndrome_dual_node(&mut self, _dual_node_ptr: &DualNodePtr) {

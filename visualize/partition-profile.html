@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+    <title>Partition Profile Visualize</title>
+<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet" type="text/css">
+<link href="https://cdn.jsdelivr.net/npm/animate.css@^4.0.0/animate.min.css" rel="stylesheet" type="text/css">
+<link href="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.prod.css" rel="stylesheet" type="text/css">
+<style>
+body, html {
+    margin: 0;
+    overflow: hidden;
+    height: 100%;
+}
+:root {
+    --s: 1;  /* scale */
+    --control-visibility: hidden;
+}
+.control-bar {
+    position: fixed;
+    width: calc(600px * var(--s));
+    background-color: rgb(250, 250, 250);
+    height: 100%;
+    right: 0;
+    overflow-y: hidden;
+    overflow-x: hidden;
+    visibility: var(--control-visibility);
+}
+.control-bar-inner {
+    width: 600px;
+    height: calc(100% / var(--s));
+    transform: scale(var(--s));
+    transform-origin: 0 0;
+    font-size: 18px;
+}
+canvas {
+    display: block;
+}
+.slider {
+    margin-top: 0;
+    margin-left: 35px;
+    width: 530px;
+}
+.selector {
+    margin-top: 20px;
+    margin-left: 25px;
+    width: 550px;
+}
+h1 {
+    margin: 20px auto 0 auto;
+    text-align: center;
+    font-size: 40px;
+    line-height: 40px;
+}
+h3 {
+    margin: 0;
+    font-size: 25px;
+    line-height: 25px;
+    font-weight: bold;
+}
+.flex-center-div {
+    width: 600px;
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    flex-direction: row;
+}
+.select-info-div {
+    width: 580px;
+    padding: 10px;
+    margin: 10px;
+}
+.edge-visualizer {
+    display: inline-block;
+    height: 40px;
+    background-color: black;
+    margin: 0 10px 0 10px;
+}
+.left-grown, .unexplored, .right-grown {
+    margin: 0;
+    padding: 0;
+    display: inline-block;
+    height: 100%;
+    text-align: center;
+    font-size: 18px;
+    line-height: 40px;
+    transition: width 0.5s;
+}
+.left-grown {
+    background-color: #E8630A;
+}
+.unexplored {
+    background-color: grey;
+}
+.right-grown {
+    background-color: #FCD900;
+}
+.primal-div {
+    background-color: white;
+    width: 580px;
+    height: 580px;
+    margin: 10px;
+}
+</style>
+</head>
+<body>
+<!-- <script src="https://unpkg.com/vue@3.2.33/dist/vue.global.js"></script> -->
+<!-- <script src="https://unpkg.com/vue@3.2.33/dist/vue.global.prod.js"></script> -->
+<script src="./node_modules/vue/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
+
+
+<div class="control-bar" id="app">
+    <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
+            :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
+        <div class="flex-center-div"><h1>Partition Profile</h1></div>
+        <q-banner inline-actions class="text-white bg-red" v-if="error_message != null" style="margin-top: 20px;">
+            {{ error_message }}
+        </q-banner>
+        <q-banner inline-actions class="text-black bg-yellow" v-if="warning_message != null" style="margin-top: 20px;">
+            {{ warning_message }}
+        </q-banner>
+        <div class="selector">
+            <q-select filled v-model="round_select_label" :options="round_labels" options-dense behavior="menu" rounded>
+                <template v-slot:before>
+                    <q-btn round flat icon="arrow_circle_left" :disabled="round_select == 0" @click="round_select -= 1" size="xl"/>
+                </template>
+                <template v-slot:after>
+                    <q-btn round flat icon="arrow_circle_right" :disabled="round_select == round_num-1" @click="round_select += 1" size="xl"/>
+                </template>
+            </q-select>
+        </div>
+        <div class="slider">
+            <q-slider v-model="round_select" :min="0" :max="round_num-1" :step="1" snap
+                thumb-size="25px" track-size="8px"></q-slider>
+        </div>
+        <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'vertex'">
+            <q-card-section class="bg-cyan text-white">
+                <div class="text-h6">Vertex {{ current_selected.vertex_index }} {{ selected_vertex_attributes }}</div>
+            </q-card-section>
+            <q-separator inset></q-separator>
+            <q-card-section>
+                <div v-for="edge of selected_vertex_neighbor_edges" style="margin-top: 15px;">
+                    <q-btn color="teal" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()"
+                            @click="jump_to('edge', edge.edge_index)">
+                        <div class="text-center">
+                            Edge</span><br>{{ edge.edge_index }}
+                        </div>
+                    </q-btn>
+                    <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()">
+                        <div class="left-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
+                            {{ edge.left_grown == 0 ? "|" : edge.left_grown }}
+                        </div>
+                        <div class="unexplored" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0 : 0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
+                            {{ edge.unexplored == 0 ? "|" : edge.unexplored }}
+                        </div>
+                        <div class="right-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
+                            {{ edge.right_grown == 0 ? "|" : edge.right_grown }}
+                        </div>
+                    </div>
+                    <q-btn color="cyan" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('vertex', edge.vertex_index)" @mouseleave="mouseleave()"
+                            @click="jump_to('vertex', edge.vertex_index)">
+                        <div class="text-center">
+                            Vertex</span><br>{{ edge.vertex_index }}
+                        </div>
+                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
+                            peer vertex
+                        </q-tooltip> -->
+                    </q-btn>
+                    <q-circular-progress show-value :value="(edge.translated_left_grown + edge.translated_right_grown) / edge.weight * 100" style="margin-left: 10px;"
+                            size="40px" font-size="18px" :thickness="0.15" color="red" track-color="grey-3">
+                        {{ edge.weight }}
+                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
+                            weight
+                        </q-tooltip> -->
+                    </q-circular-progress>
+                </div>
+            </q-card-section>
+        </q-card>
+    </q-scroll-area>
+</div>
+
+<script>
+
+// fetch partition profile runtime data
+const urlParams = new URLSearchParams(window.location.search)
+const filename = urlParams.get('filename')
+if (filename == null) {
+    alert("no filename found in url")
+}
+
+const { ref, reactive, watch, computed } = Vue
+
+const window_inner_width = ref(0)
+const window_inner_height = ref(0)
+function on_resize() {
+    window_inner_width.value = window.innerWidth
+    window_inner_height.value = window.innerHeight
+}
+on_resize()
+window.addEventListener('resize', on_resize)
+window.addEventListener('orientationchange', on_resize)
+
+const sizes = reactive({
+    control_bar_width: 0,
+    canvas_width: 0,
+    canvas_height: 0,
+    scale: 1,
+})
+
+watch([window_inner_width, window_inner_height], () => {
+    sizes.scale = window_inner_width.value / 1920
+    if (sizes.scale > window_inner_height.value / 1080) {  // ultra-wide
+        sizes.scale = window_inner_height.value / 1080
+    }
+    if (sizes.scale < 0.5) {
+        sizes.scale = 0.5
+    }
+    if (window_inner_width.value * 0.9 < 300) {
+        sizes.scale = window_inner_width.value / 600 * 0.9
+    }
+    document.documentElement.style.setProperty('--s', sizes.scale)
+    // sizes.scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s'))
+    sizes.control_bar_width = 600 * sizes.scale
+    sizes.canvas_width = window_inner_width.value - sizes.control_bar_width
+    sizes.canvas_height = window_inner_height.value
+}, { immediate: true })
+
+const partition_config = ref(null)
+const round_profiles = reactive([])
+
+// create vue3 app
+const App = {
+    setup() {
+        return {
+            error_message: ref(null),
+            warning_message: ref(null),
+            partition_config: partition_config,
+            round_profiles: round_profiles,
+            // round select
+            round_num: ref(1),
+            round_select: ref(1),
+            round_select_label: ref(1),
+            round_labels: reactive([]),
+            // job select
+            current_selected: ref(null),
+        }
+    },
+    async mounted() {
+        // after Vue is loaded, make the page visible
+        document.documentElement.style.setProperty('--control-visibility', 'visible')
+        // fetch profile
+        try {
+            let response = await fetch('./data/' + filename, { cache: 'no-cache', })
+            lines = (await response.text()).split("\n")
+            for (let i=0; i<lines.length && lines[i] != ""; ++i) {
+                if (i == 0) {
+                    this.partition_config = JSON.parse(lines[i])
+                } else {
+                    this.round_profiles.push(JSON.parse(lines[i]))
+                }
+            }
+            // console.log(partition_config)
+        } catch (e) {
+            this.error_message = "fetch file error"
+            throw e
+        }
+        // load profile data
+        this.round_num = this.round_profiles.length
+        for (let [idx, value] of this.round_profiles.entries()) {
+            this.round_labels.push(`[${idx}] decoding time: ${Number.parseFloat(value.decoding_time).toExponential(3)}`)
+        }
+        this.round_select_label = this.round_labels[0]
+
+    },
+    methods: {
+        show_round(round_idx) {
+            try {
+                console.log(`show_snapshot: ${round_idx}`)
+            } catch (e) {
+                this.error_message = "load data error"
+                throw e
+            }
+        },
+        update_selected_display() {
+            if (this.current_selected == null) return
+        },
+    },
+    watch: {
+        async round_select() {
+            // console.log(this.round_select)
+            this.show_round(this.round_select)  // load the round
+            this.round_select_label = this.round_labels[this.round_select]
+            for (const _ of Array(4).keys()) await Vue.nextTick()
+            this.update_selected_display()
+        },
+        round_select_label() {
+            this.round_select = parseInt(this.round_select_label.split(']')[0].split('[')[1])
+        },
+        current_selected() {
+            this.update_selected_display()
+        },
+        lock_view() {
+            gui3d.enable_control.value = !this.lock_view
+        },
+    },
+    computed: {
+        scale() {
+            return this.sizes.scale
+        },
+        vertical_thumb_style() {
+            return {
+                right: `4px`,
+                borderRadius: `5px`,
+                backgroundColor: '#027be3',
+                width: `5px`,
+                opacity: 0.75
+            }
+        },
+        horizontal_thumb_style() {
+            return {
+                bottom: `4px`,
+                borderRadius: `5px`,
+                backgroundColor: '#027be3',
+                height: `5px`,
+                opacity: 0.75
+            }
+        },
+        vertical_bar_style() {
+            return {
+                right: `2px`,
+                borderRadius: `9px`,
+                backgroundColor: '#027be3',
+                width: `9px`,
+                opacity: 0.2
+            }
+        },
+        horizontal_bar_style() {
+            return {
+                bottom: `2px`,
+                borderRadius: `9px`,
+                backgroundColor: '#027be3',
+                height: `9px`,
+                opacity: 0.2
+            }
+        },
+    },
+}
+
+const app = Vue.createApp(App)
+app.use(Quasar)
+window.app = app.mount("#app")
+
+</script>
+
+</body>
+</html>
