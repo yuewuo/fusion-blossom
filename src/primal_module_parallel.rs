@@ -150,6 +150,7 @@ impl PrimalModuleImpl for PrimalModuleParallel {
     }
 
     fn clear(&mut self) {
+        self.last_clear_time = Instant::now();
         self.thread_pool.scope(|_| {
             self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {
                 let mut unit = unit_ptr.write();
@@ -159,7 +160,6 @@ impl PrimalModuleImpl for PrimalModuleParallel {
                 unit.is_active = is_active;
             });
         });
-        self.last_clear_time = Instant::now();
     }
 
     fn load_syndrome_dual_node(&mut self, _dual_node_ptr: &DualNodePtr) {

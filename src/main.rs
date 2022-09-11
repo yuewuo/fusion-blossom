@@ -414,9 +414,11 @@ impl PartitionStrategy {
             Self::PhenomenologicalPlanarCodeTimePartition => {
                 let config = partition_config.as_object_mut().expect("config must be JSON object");
                 let mut partition_num = 10;
+                let mut enable_tree_fusion = false;
                 config.remove("partition_num").map(|value| partition_num = value.as_u64().expect("partition_num: usize") as usize);
+                config.remove("enable_tree_fusion").map(|value| enable_tree_fusion = value.as_bool().expect("enable_tree_fusion: bool"));
                 if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
-                PhenomenologicalPlanarCodeTimePartition::new(d, noisy_measurements, partition_num).build_apply(code)
+                PhenomenologicalPlanarCodeTimePartition::new_tree(d, noisy_measurements, partition_num, enable_tree_fusion).build_apply(code)
             },
         };
         (code.get_initializer(), partition_config)

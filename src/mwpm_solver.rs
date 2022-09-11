@@ -141,8 +141,8 @@ impl SolverSerial {
 
 impl PrimalDualSolver for SolverSerial {
     fn clear(&mut self) {
-        self.dual_module.clear();
         self.primal_module.clear();
+        self.dual_module.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
         self.interface = self.primal_module.solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);

@@ -5,6 +5,7 @@
 
 use super::util::*;
 use super::example::*;
+use std::collections::VecDeque;
 
 
 pub trait ExamplePartition {
@@ -211,11 +212,16 @@ pub struct PhenomenologicalPlanarCodeTimePartition {
     noisy_measurements: usize,
     /// the number of partition
     partition_num: usize,
+    /// enable tree fusion (to minimize latency but incur log(partition_num) more memory copy)
+    enable_tree_fusion: bool,
 }
 
 impl PhenomenologicalPlanarCodeTimePartition {
+    pub fn new_tree(d: usize, noisy_measurements: usize, partition_num: usize, enable_tree_fusion: bool) -> Self {
+        Self { d, noisy_measurements, partition_num, enable_tree_fusion: enable_tree_fusion }
+    }
     pub fn new(d: usize, noisy_measurements: usize, partition_num: usize) -> Self {
-        Self { d, noisy_measurements, partition_num }
+        Self::new_tree(d, noisy_measurements, partition_num, false)
     }
 }
 
@@ -239,11 +245,35 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
             }
         }
         config.fusions.clear();
-        for unit_index in partition_num..(2 * partition_num - 1) {
-            if unit_index == partition_num {
-                config.fusions.push((0, 1));
-            } else {
-                config.fusions.push((unit_index - 1, unit_index - partition_num + 1));
+        if self.enable_tree_fusion {
+            let mut whole_ranges = vec![];
+            for partition in config.partitions.iter() {
+                assert!(partition.end() <= vertex_num, "invalid vertex index {} in partitions", partition.end());
+                whole_ranges.push(partition.clone());
+            }
+            let mut pending_fusion = VecDeque::new();
+            for unit_index in 0..partition_num {
+                pending_fusion.push_back(unit_index);
+            }
+            for unit_index in partition_num..(2 * partition_num - 1) {
+                let mut unit_index_1 = pending_fusion.pop_front().unwrap();
+                let mut unit_index_2 = pending_fusion.pop_front().unwrap();
+                if whole_ranges[unit_index_1].start() > whole_ranges[unit_index_2].start() {
+                    (unit_index_1, unit_index_2) = (unit_index_2, unit_index_1);  // only lower range can fuse higher range
+                }
+                config.fusions.push((unit_index_1, unit_index_2));
+                pending_fusion.push_back(unit_index);
+                let (whole_range, _) = whole_ranges[unit_index_1].fuse(&whole_ranges[unit_index_2]);
+                whole_ranges.push(whole_range);
+            }
+            assert!(pending_fusion.len() == 1, "only the final unit is left");
+        } else {
+            for unit_index in partition_num..(2 * partition_num - 1) {
+                if unit_index == partition_num {
+                    config.fusions.push((0, 1));
+                } else {
+                    config.fusions.push((unit_index - 1, unit_index - partition_num + 1));
+                }
             }
         }
         config
@@ -346,7 +376,7 @@ pub mod tests {
         let half_weight = 500;
         let noisy_measurements = 10;
         example_partition_standard_syndrome(Box::new(PhenomenologicalPlanarCode::new(11, noisy_measurements, 0.1, half_weight)), visualize_filename
-            , syndrome_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition{ d: 11, noisy_measurements, partition_num: 2 });
+            , syndrome_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(11, noisy_measurements, 2));
     }
 
     /// a demo to show how partition works in phenomenological planar code
@@ -358,7 +388,7 @@ pub mod tests {
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(Box::new(PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight)), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition{ d: 7, noisy_measurements, partition_num: 3 });
+            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 3));
     }
 
     /// a demo to show how partition works in circuit-level planar code
@@ -370,7 +400,19 @@ pub mod tests {
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(Box::new(CircuitLevelPlanarCode::new(7, noisy_measurements, 0.005, half_weight)), visualize_filename
-            , syndrome_vertices, true, 28980 / 2, PhenomenologicalPlanarCodeTimePartition{ d: 7, noisy_measurements, partition_num: 3 });
+            , syndrome_vertices, true, 28980 / 2, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 3));
+    }
+
+    /// demo of tree partition
+    #[test]
+    fn example_partition_demo_3() {  // cargo test example_partition_demo_3 -- --nocapture
+        let visualize_filename = format!("example_partition_demo_3.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let half_weight = 500;
+        let noisy_measurements = 51;
+        example_partition_standard_syndrome(Box::new(PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight)), visualize_filename
+            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true));
     }
 
 }
