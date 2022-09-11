@@ -141,6 +141,14 @@ h3 {
             </defs>
             <rect :width="length_scale * selected_profile.decoding_time" :height="decoding_time_height"
                 :x="margin + left_panel" :y="margin" style="fill:red;" rx="10" ry="10"/>
+            <!-- time axis labels -->
+            <g v-if="axis_values.length > 1">
+                <line v-for="time in axis_values" stroke-linecap="round"
+                    :x1="left_panel + margin + length_scale * time" :y1="0"
+                    :x2="left_panel + margin + length_scale * time" :y2="svg_height"
+                    style="stroke-width:2;stroke:grey;"/>
+                <text :x="left_panel + margin + length_scale * axis_values[1] - 5" :y="margin + decoding_time_height / 2 + 5" text-anchor="end">{{ axis_label }}</text>
+            </g>
             <g v-for="([event_time, info], display_index) in display_info_vec">
                 <rect :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
                     :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + display_index * (job_height + margin)"
@@ -158,10 +166,10 @@ h3 {
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
             </g>
             <!-- left panel -->
-            <text :x="left_panel + margin - 10" :y="job_y_bias - 20" text-anchor="end">vertex range</text>
-            <text :x="left_panel + margin" :y="job_y_bias" text-anchor="end">{{ display_info_vec[0][1].owning_range[0] }}</text>
+            <text :x="left_panel + margin - 3" :y="job_y_bias - 20" text-anchor="end">vertex range</text>
+            <text :x="left_panel + margin - 3" :y="job_y_bias" text-anchor="end">{{ display_info_vec[0][1].owning_range[0] }}</text>
             <g v-for="([event_time, info], display_index) in display_info_vec">
-                <text :x="left_panel + margin" :y="job_y_bias + (display_index + 1) * (job_height + margin)"
+                <text :x="left_panel + margin - 3" :y="job_y_bias + (display_index + 1) * (job_height + margin)"
                     text-anchor="end">{{ info.owning_range[1] }}</text>
                 <text :x="margin" :y="job_y_bias + (display_index + 0.5) * (job_height + margin)"
                     text-anchor="start" style="fill:blue;">job {{ display_index_to_unit_index[display_index] }}</text>
@@ -171,7 +179,10 @@ h3 {
                 text-anchor="end">{{ Number.parseFloat(selected_profile.decoding_time).toExponential(3) }} (s)</text>
             <g v-for="([event_time, info], display_index) in display_info_vec">
                 <text :x="left_panel + length_scale * event_time.end" :y="job_y_bias + display_index * (job_height + margin) + job_height / 2 + 5"
-                    text-anchor="end">{{ Number.parseFloat(event_time.end).toExponential(3) }} (s)</text>
+                    text-anchor="end">
+                        finish at {{ Number.parseFloat(event_time.end).toExponential(3) }} (s)
+                        , duration: {{ Number.parseFloat(event_time.end - event_time.start).toExponential(3) }} (s)
+                        , computation: {{ Number.parseFloat(event_time.end - event_time.children_return).toExponential(3) }} (s)</text>
             </g>
         </svg>
     </q-scroll-area>
@@ -265,6 +276,7 @@ const filename = urlParams.get('filename')
 if (filename == null) {
     alert("no filename found in url")
 }
+const global_length_scale = urlParams.get('length_scale')
 
 const { ref, reactive, watch, computed } = Vue
 
@@ -339,10 +351,10 @@ const App = {
             length_scale: computed(() => app.base_length_scale.value * Math.pow(10, app.relative_scale_log.value)),
             adaptive_scale: ref(true),
             length_scale_selected: ref("adaptive"),
-            length_scale_options: [{label:"adaptive",value:"adaptive"}
+            length_scale_options: reactive([{label:"adaptive",value:"adaptive"}
                 , {label:"1us",value:1e-6}, {label:"10us",value:1e-5}, {label:"100us",value:1e-4}
                 , {label:"1ms",value:1e-3}, {label:"10ms",value:1e-2}, {label:"100ms",value:1e-1}
-                , {label:"1s",value:1}, {label:"10s",value:10}, {label:"100s",value:100}, {label:"1000s",value:1000}],
+                , {label:"1s",value:1}, {label:"10s",value:10}, {label:"100s",value:100}, {label:"1000s",value:1000}]),
         }
         return app
     },
@@ -422,6 +434,13 @@ const App = {
         for (let unit_index=0; unit_index<this.unit_index_to_display_index.length; ++unit_index) {
             this.display_index_to_unit_index[this.unit_index_to_display_index[unit_index]] = unit_index
         }
+        // user can set length scale in url
+        if (global_length_scale != null) {
+            this.adaptive_scale = false
+            this.base_length_scale = global_length_scale
+            this.length_scale_options.push({label:"custom",value:"custom"})
+            this.length_scale_selected = "custom"
+        }
     },
     methods: {
         show_round(round_idx) {
@@ -440,8 +459,13 @@ const App = {
                 this.adaptive_scale = true
                 return
             }
+            if (unit_time == "custom") {
+                this.adaptive_scale = false
+                this.base_length_scale = global_length_scale
+                return
+            }
             this.adaptive_scale = false
-            this.base_length_scale = (this.sizes.canvas_width / this.sizes.scale - 2 * this.margin - this.left_panel) / unit_time
+            this.base_length_scale = (this.sizes.canvas_width / this.sizes.scale - 2 * this.margin - this.left_panel) / unit_time / 5
         },
         update_selected_display() {
             if (this.current_selected == null) return
@@ -518,6 +542,31 @@ const App = {
                 ]
             }
             return display_info_vec
+        },
+        axis_interval() {
+            const min_interval_pixel = 50
+            for (let interval of [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 100, 1000]) {
+                if (interval * this.length_scale >= min_interval_pixel) {
+                    return interval
+                }
+            }
+            return 1000
+        },
+        axis_label() {
+            let axis_interval = this.axis_interval
+            if (axis_interval < 1e-3) return `${axis_interval * 1e6}us`
+            if (axis_interval < 1) return `${axis_interval * 1e3}ms`
+            return `${axis_interval}s`
+        },
+        axis_values() {
+            let axis_values = []
+            let axis_interval = this.axis_interval
+            let time = 0
+            for (let i=0; i<1000 && time < this.selected_profile.decoding_time; ++i) {
+                axis_values.push(time)
+                time += axis_interval
+            }
+            return axis_values
         },
         vertical_thumb_style() {
             return {
