@@ -46,7 +46,7 @@ Flags:                           fpu vme de pse tsc msr pae mce cx8 apic sep mtr
 
 ## Generating syndrome patterns
 
-I'm using an AWS c5.12xlarge instance, which has 48vCPUs and 94GB of memory.
+I'm using an AWS c5.12xlarge instance, which has 48vCPUs and 96GB of memory.
 The following command is designed for this machine, by adjusting `code_count` (parallelism) so that the random syndrome generation
 is accelerated while still fit into the memory.
 Peak memory usage is about 80GB.
