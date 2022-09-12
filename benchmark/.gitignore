@@ -1,3 +1,6 @@
 
 # syndrome pattern files, too large for the 
 *.syndromes
+
+# profile files are usually too large, consider pre-process those data
+*.profile

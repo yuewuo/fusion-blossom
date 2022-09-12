@@ -16,6 +16,17 @@ e.g. if all weights are equal, we can simply use a 2 bit integer.
 Note that other libraries of MWPM solver like [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) also default to integer weights.
 Although one can change the macro to use floating-point weights, it's not recommended because "the code may even get stuck due to rounding errors".
 
+## Installation
+
+Here is an example installation on Ubuntu20.04.
+
+```sh
+# install rust compiler and package manager
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# install build dependencies
+sudo apt install build-essential
+```
+
 ## Tests
 
 In order to test the correctness of our MWPM solver, we need a ground truth MWPM solver.
