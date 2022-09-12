@@ -23,3 +23,5 @@ Cargo.lock
 # nodejs packages
 node_modules/
 visualize/rendered.png
+
+__pycache__

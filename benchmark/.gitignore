@@ -4,3 +4,6 @@
 
 # profile files are usually too large, consider pre-process those data
 *.profile
+
+*.pdf
+*.eps
