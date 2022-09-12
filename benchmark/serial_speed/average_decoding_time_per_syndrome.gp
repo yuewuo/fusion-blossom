@@ -1,6 +1,6 @@
 set terminal postscript eps color "Arial, 24"
 set terminal postscript landscape
-set xlabel "Partition" font "Arial, 24"
+set xlabel "Code Distance" font "Arial, 24"
 set ylabel "Avergae Decoding time Per Syndrome (us)" font "Arial, 24"
 set grid ytics
 set size 1,1

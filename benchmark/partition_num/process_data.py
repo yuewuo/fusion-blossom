@@ -16,7 +16,7 @@ print("partition_num_vec:", partition_num_vec)
 def main():
 
     with open("data.txt", "w", encoding="utf8") as f:
-        f.write(f"<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>\n")
+        f.write(f"<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome> <average_computation_cpu_seconds>\n")
         noisy_measurements = 100000
         for partition_num in partition_num_vec:
             filename = f"15-100000-0.005-phenomenological-planar-tree-{partition_num}.profile"
@@ -27,9 +27,8 @@ def main():
             print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
             print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
             print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
-            f.write(f"{partition_num} {profile.average_decoding_time()} {profile.average_decoding_time() / (noisy_measurements + 1)} {profile.average_decoding_time_per_syndrome()}\n")
-
-            
+            print("    average_computation_cpu_seconds:", profile.average_computation_cpu_seconds())
+            f.write(f"{partition_num} {profile.average_decoding_time()} {profile.average_decoding_time() / (noisy_measurements + 1)} {profile.average_decoding_time_per_syndrome()} {profile.average_computation_cpu_seconds()}\n")
 
 if __name__ == "__main__":
     main()

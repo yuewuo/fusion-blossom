@@ -221,47 +221,23 @@ h3 {
                     thumb-size="25px" track-size="8px"></q-slider>
             </div>
         </div>
-        <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'vertex'">
+        <q-card bordered class="select-info-div" v-if="selected_profile != null">
             <q-card-section class="bg-cyan text-white">
-                <div class="text-h6">Vertex {{ current_selected.vertex_index }} {{ selected_vertex_attributes }}</div>
+                <div class="text-h6">Profile {{ round_select }}</div>
             </q-card-section>
             <q-separator inset></q-separator>
             <q-card-section>
-                <div v-for="edge of selected_vertex_neighbor_edges" style="margin-top: 15px;">
-                    <q-btn color="teal" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()"
-                            @click="jump_to('edge', edge.edge_index)">
-                        <div class="text-center">
-                            Edge</span><br>{{ edge.edge_index }}
-                        </div>
-                    </q-btn>
-                    <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
-                            {{ edge.left_grown == 0 ? "|" : edge.left_grown }}
-                        </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0 : 0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
-                            {{ edge.unexplored == 0 ? "|" : edge.unexplored }}
-                        </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
-                            {{ edge.right_grown == 0 ? "|" : edge.right_grown }}
-                        </div>
-                    </div>
-                    <q-btn color="cyan" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('vertex', edge.vertex_index)" @mouseleave="mouseleave()"
-                            @click="jump_to('vertex', edge.vertex_index)">
-                        <div class="text-center">
-                            Vertex</span><br>{{ edge.vertex_index }}
-                        </div>
-                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
-                            peer vertex
-                        </q-tooltip> -->
-                    </q-btn>
-                    <q-circular-progress show-value :value="(edge.translated_left_grown + edge.translated_right_grown) / edge.weight * 100" style="margin-left: 10px;"
-                            size="40px" font-size="18px" :thickness="0.15" color="red" track-color="grey-3">
-                        {{ edge.weight }}
-                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
-                            weight
-                        </q-tooltip> -->
-                    </q-circular-progress>
-                </div>
+                <div class="text-body1">Decoding Time: {{ Number.parseFloat(selected_profile.decoding_time).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Pure Computation 
+                        ({{ parseInt(100 * selected_profile_statistics.computation_time / selected_profile.decoding_time) }}%):
+                        {{ Number.parseFloat(selected_profile_statistics.computation_time).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Preparation
+                        ({{ parseInt(100 * selected_profile_statistics.preparation_time / selected_profile.decoding_time) }}%):
+                        {{ Number.parseFloat(selected_profile_statistics.preparation_time).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Garbage Collection
+                        ({{ parseInt(100 * selected_profile_statistics.garbage_collection_time / selected_profile.decoding_time) }}%):
+                        {{ Number.parseFloat(selected_profile_statistics.garbage_collection_time).toExponential(3) }} (s)</div>
+            <div class="text-body1">Computation CPU Seconds: {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds).toExponential(3) }} (s)</div>
             </q-card-section>
         </q-card>
     </q-scroll-area>
@@ -567,6 +543,30 @@ const App = {
                 time += axis_interval
             }
             return axis_values
+        },
+        selected_profile_statistics() {
+            const event_time_vec = this.selected_profile.solver_profile.primal.event_time_vec
+            let min_event_time = event_time_vec[0].start
+            let max_event_time = event_time_vec[0].end
+            for (let i=1; i<event_time_vec.length; ++i) {
+                min_event_time = Math.min(min_event_time, event_time_vec[i].start)
+                max_event_time = Math.max(max_event_time, event_time_vec[i].end)
+            }
+            let computation_time = max_event_time - min_event_time
+            let preparation_time = min_event_time
+            let garbage_collection_time = this.selected_profile.decoding_time - max_event_time
+            let computation_cpu_seconds = 0
+            for (let i=0; i<event_time_vec.length; ++i) {
+                computation_cpu_seconds += event_time_vec[i].end - event_time_vec[i].children_return
+            }
+            let profile_statistics = {
+                computation_time,
+                preparation_time,
+                garbage_collection_time,
+                computation_cpu_seconds,
+            }
+            console.log(profile_statistics)
+            return profile_statistics
         },
         vertical_thumb_style() {
             return {

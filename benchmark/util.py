@@ -33,6 +33,16 @@ class Profile:
         return syndrome_num
     def average_decoding_time_per_syndrome(self):
         return self.sum_decoding_time() / self.sum_syndrome_num()
+    def sum_computation_cpu_seconds(self):
+        total_computation_cpu_seconds = 0
+        for entry in self.entries:
+            computation_cpu_seconds = 0
+            for event_time in entry["solver_profile"]["primal"]["event_time_vec"]:
+                computation_cpu_seconds += event_time["end"] - event_time["children_return"]
+            total_computation_cpu_seconds += computation_cpu_seconds
+        return total_computation_cpu_seconds
+    def average_computation_cpu_seconds(self):
+        return self.sum_computation_cpu_seconds() / len(self.entries)
 
 class VertexRange:
     def __init__(self, start, end):
