@@ -1330,4 +1330,75 @@ pub mod tests {
         dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 5);
     }
 
+    /// test rayon global thread pool
+    #[test]
+    fn dual_module_parallel_rayon_test_1() {  // cargo test dual_module_parallel_rayon_test_1 -- --nocapture
+        rayon::scope(|_| {
+            println!("A");
+            rayon::scope(|s| {
+                s.spawn(|_| println!("B"));
+                s.spawn(|_| println!("C"));
+                s.spawn(|_| println!("D"));
+                s.spawn(|_| println!("E"));
+            });
+            println!("F");
+            rayon::scope(|s| {
+                s.spawn(|_| println!("G"));
+                s.spawn(|_| println!("H"));
+                s.spawn(|_| println!("J"));
+            });
+            println!("K");
+        });
+    }
+
+    #[test]
+    fn dual_module_parallel_rayon_test_2() {  // cargo test dual_module_parallel_rayon_test_2 -- --nocapture
+        let mut results = vec![];
+        rayon::scope(|_| {
+            results.push("A");
+            let (mut ret_b, mut ret_c, mut ret_d, mut ret_e) = (None, None, None, None);
+            rayon::scope(|s| {
+                s.spawn(|_| ret_b = Some("B"));
+                s.spawn(|_| ret_c = Some("C"));
+                s.spawn(|_| ret_d = Some("D"));
+                s.spawn(|_| ret_e = Some("E"));
+            });
+            results.push(ret_b.unwrap());
+            results.push(ret_c.unwrap());
+            results.push(ret_d.unwrap());
+            results.push(ret_e.unwrap());
+            results.push("F");
+            let (mut ret_g, mut ret_h, mut ret_j) = (None, None, None);
+            rayon::scope(|s| {
+                s.spawn(|_| ret_g = Some("G"));
+                s.spawn(|_| ret_h = Some("H"));
+                s.spawn(|_| ret_j = Some("J"));
+            });
+            results.push(ret_g.unwrap());
+            results.push(ret_h.unwrap());
+            results.push(ret_j.unwrap());
+            results.push("K");
+        });
+        println!("results: {results:?}");
+    }
+
+    #[test]
+    fn dual_module_parallel_rayon_test_3() {  // cargo test dual_module_parallel_rayon_test_3 -- --nocapture
+        let mut results = vec![];
+        rayon::scope(|_| {
+            results.push("A");
+            results.par_extend(["B", "C", "D", "E"].into_par_iter().map(|id| {
+                // some complex calculation
+                id
+            }));
+            results.push("F");
+            results.par_extend(["G", "H", "J"].into_par_iter().map(|id| {
+                // some complex calculation
+                id
+            }));
+            results.push("K");
+        });
+        println!("results: {results:?}");
+    }
+
 }
