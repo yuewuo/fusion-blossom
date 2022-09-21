@@ -245,8 +245,8 @@ impl Cli {
                     // println!("syndrome_vertices: {syndrome_vertices:?}");
                     // println!("erasures: {erasures:?}");
                     benchmark_profiler.begin(&syndrome_pattern);
-                    primal_dual_solver.clear();  // including the clear operation
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
+                    primal_dual_solver.clear();  // also count the clear operation
                     benchmark_profiler.end(Some(&primal_dual_solver));
                     if pb_message.is_empty() {
                         pb.message(format!("{} ", benchmark_profiler.brief()).as_str());

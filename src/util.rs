@@ -65,7 +65,28 @@ impl SyndromePattern {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+/// an efficient representation of partitioned vertices and erasures when they're ordered
+#[derive(Debug, Clone, Serialize)]
+pub struct PartitionedSyndromePattern<'a> {
+    /// the original syndrome pattern to be partitioned
+    pub syndrome_pattern: &'a SyndromePattern,
+    /// the syndrome range of this partition: it must be continuous if the syndrome vertices are ordered
+    pub whole_syndrome_range: SyndromeRange,
+}
+
+impl<'a> PartitionedSyndromePattern<'a> {
+    pub fn new(syndrome_pattern: &'a SyndromePattern) -> Self {
+        assert!(syndrome_pattern.erasures.is_empty(), "erasure partition not supported yet;
+        even if the edges in the erasure is well ordered, they may not be able to be represented as
+        a single range simply because the partition is vertex-based. need more consideration");
+        Self {
+            syndrome_pattern: syndrome_pattern,
+            whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.syndrome_vertices.len()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(transparent)]
 pub struct IndexRange<IndexType> {
     pub range: [IndexType; 2],
@@ -73,6 +94,7 @@ pub struct IndexRange<IndexType> {
 
 pub type VertexRange = IndexRange<VertexIndex>;
 pub type NodeRange = IndexRange<NodeIndex>;
+pub type SyndromeRange = IndexRange<SyndromeIndex>;
 
 impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output=IndexType> + std::convert::Into<usize> + Copy
         + std::ops::Add<Output=IndexType>> IndexRange<IndexType> {
@@ -257,8 +279,9 @@ pub struct PartitionInfo {
 
 impl PartitionInfo {
 
-    /// split a sequence of syndrome into multiple parts, each corresponds to a unit
-    pub fn partition_syndrome(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
+    /// split a sequence of syndrome into multiple parts, each corresponds to a unit;
+    /// this is a slow method and should only be used when the syndrome pattern is not well-ordered
+    pub fn partition_syndrome_unordered(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
         let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| SyndromePattern::new_empty()).collect();
         for syndrome_vertex in syndrome_pattern.syndrome_vertices.iter() {
             let unit_index = self.vertex_to_owning_unit[*syndrome_vertex];
@@ -266,6 +289,59 @@ impl PartitionInfo {
         }
         // TODO: partition edges
         partitioned_syndrome
+    }
+
+}
+
+impl<'a> PartitionedSyndromePattern<'a> {
+
+    /// partition the syndrome pattern into 2 partitioned syndrome pattern and my whole range
+    pub fn partition(&self, partition_unit_info: &PartitionUnitInfo) -> (SyndromeRange, (Self, Self)) {
+        // first binary search the start of owning syndrome vertices
+        let owning_start_index = {
+            let mut left_index = self.whole_syndrome_range.start();
+            let mut right_index = self.whole_syndrome_range.end();
+            while left_index != right_index {
+                let mid_index = (left_index + right_index) / 2;
+                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index];
+                if mid_syndrome_vertex < partition_unit_info.owning_range.start() {
+                    left_index = mid_index + 1;
+                } else {
+                    right_index = mid_index;
+                }
+            }
+            left_index
+        };
+        // second binary search the end of owning syndrome vertices
+        let owning_end_index = {
+            let mut left_index = self.whole_syndrome_range.start();
+            let mut right_index = self.whole_syndrome_range.end();
+            while left_index != right_index {
+                let mid_index = (left_index + right_index) / 2;
+                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index];
+                if mid_syndrome_vertex < partition_unit_info.owning_range.end() {
+                    left_index = mid_index + 1;
+                } else {
+                    right_index = mid_index;
+                }
+            }
+            left_index
+        };
+        (SyndromeRange::new(owning_start_index, owning_end_index), (Self {
+            syndrome_pattern: &self.syndrome_pattern,
+            whole_syndrome_range: SyndromeRange::new(self.whole_syndrome_range.start(), owning_start_index),
+        }, Self {
+            syndrome_pattern: &self.syndrome_pattern,
+            whole_syndrome_range: SyndromeRange::new(owning_end_index, self.whole_syndrome_range.end()),
+        }))
+    }
+
+    pub fn expand(&self) -> SyndromePattern {
+        let mut syndrome_vertices = Vec::with_capacity(self.whole_syndrome_range.len());
+        for syndrome_index in self.whole_syndrome_range.iter() {
+            syndrome_vertices.push(self.syndrome_pattern.syndrome_vertices[syndrome_index]);
+        }
+        SyndromePattern::new(syndrome_vertices, vec![])
     }
 
 }
@@ -718,4 +794,37 @@ impl BenchmarkProfilerEntry {
     pub fn is_complete(&self) -> bool {
         self.decoding_time.is_some()
     }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    /// test syndrome partition utilities
+    #[test]
+    fn util_partitioned_syndrome_pattern_1() {  // cargo test util_partitioned_syndrome_pattern_1 -- --nocapture
+        let mut partition_config = PartitionConfig::default(132);
+        partition_config.partitions = vec![
+            VertexRange::new(0, 72),    // unit 0
+            VertexRange::new(84, 132),  // unit 1
+        ];
+        partition_config.fusions = vec![
+            (0, 1),  // unit 2, by fusing 0 and 1
+        ];
+        let partition_info = partition_config.into_info();
+        let tests = vec![
+            (vec![10, 11, 12, 71, 72, 73, 84, 85, 111], SyndromeRange::new(4, 6)),
+            (vec![10, 11, 12, 13, 71, 72, 73, 84, 85, 111], SyndromeRange::new(5, 7)),
+            (vec![10, 11, 12, 71, 72, 73, 83, 84, 85, 111], SyndromeRange::new(4, 7)),
+            (vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111], SyndromeRange::new(4, 6)),
+        ];
+        for (syndrome_vertices, expected_syndrome_range) in tests.into_iter() {
+            let syndrome_pattern = SyndromePattern::new(syndrome_vertices, vec![]);
+            let partitioned_syndrome_pattern = PartitionedSyndromePattern::new(&syndrome_pattern);
+            let (syndrome_range, (_left_partitioned, _right_partitioned)) = partitioned_syndrome_pattern.partition(&partition_info.units[2]);
+            println!("syndrome_range: {syndrome_range:?}");
+            assert_eq!(syndrome_range, expected_syndrome_range);
+        }
+    }
+
 }
