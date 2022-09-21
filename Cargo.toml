@@ -17,6 +17,17 @@ path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# profiling: https://github.com/flamegraph-rs/flamegraph
+# enable the following debug configuration, and then run `cargo flamegraph -- ...` which is equivalent to `cargo run --release -- ...`
+# example:
+# cargo run --release -- benchmark 15 -r 20 -n 100000 0.005 --code-type phenomenological-planar-code --primal-dual-type error-pattern-logger --verifier none --primal-dual-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}'
+# cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 100000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
+# and then visit: http://localhost:8066/partition-profile.html?filename=tmp/flamegraph-test.profile
+
+# embed debug symbols
+[profile.release]
+debug = true
+
 [features]
 # to enable a feature, use `--features xxx`
 default = []
