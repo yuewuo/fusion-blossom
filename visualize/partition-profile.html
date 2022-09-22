@@ -229,21 +229,36 @@ h3 {
             <q-card-section>
                 <div class="text-body1">Decoding Time: {{ Number.parseFloat(selected_profile.decoding_time).toExponential(3) }} (s)</div>
                     <div class="text-body2" style="padding-left: 30px;">Pure Computation 
-                        ({{ parseInt(100 * selected_profile_statistics.computation_time / selected_profile.decoding_time) }}%):
+                        ({{ Math.round(100 * selected_profile_statistics.computation_time / selected_profile.decoding_time) }}%):
                         {{ Number.parseFloat(selected_profile_statistics.computation_time).toExponential(3) }} (s)</div>
                         <div class="text-body2" style="padding-left: 60px;">Max Base Partition 
-                            ({{ parseInt(100 * selected_profile_statistics.base_partition_computation_time / selected_profile.decoding_time) }}%):
+                            ({{ Math.round(100 * selected_profile_statistics.base_partition_computation_time / selected_profile.decoding_time) }}%):
                             {{ Number.parseFloat(selected_profile_statistics.base_partition_computation_time).toExponential(3) }} (s)</div>
                         <div class="text-body2" style="padding-left: 60px;">Min Base Partition 
-                            ({{ parseInt(100 * selected_profile_statistics.base_partition_computation_min / selected_profile.decoding_time) }}%):
+                            ({{ Math.round(100 * selected_profile_statistics.base_partition_computation_min / selected_profile.decoding_time) }}%):
                             {{ Number.parseFloat(selected_profile_statistics.base_partition_computation_min).toExponential(3) }} (s)</div>
                     <div class="text-body2" style="padding-left: 30px;">Preparation
-                        ({{ parseInt(100 * selected_profile_statistics.preparation_time / selected_profile.decoding_time) }}%):
+                        ({{ Math.round(100 * selected_profile_statistics.preparation_time / selected_profile.decoding_time) }}%):
                         {{ Number.parseFloat(selected_profile_statistics.preparation_time).toExponential(3) }} (s)</div>
                     <div class="text-body2" style="padding-left: 30px;">Garbage Collection
-                        ({{ parseInt(100 * selected_profile_statistics.garbage_collection_time / selected_profile.decoding_time) }}%):
+                        ({{ Math.round(100 * selected_profile_statistics.garbage_collection_time / selected_profile.decoding_time) }}%):
                         {{ Number.parseFloat(selected_profile_statistics.garbage_collection_time).toExponential(3) }} (s)</div>
-            <div class="text-body1">Computation CPU Seconds: {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Per Syndrome:
+                        {{ Number.parseFloat(selected_profile_statistics.decoding_time_per_syndrome).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Per Measurement Round:
+                        {{ Number.parseFloat(selected_profile_statistics.decoding_time_per_measurement_round).toExponential(3) }} (s)</div>
+                <div class="text-body1">Computation CPU Seconds: {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Base Partition
+                        ({{ Math.round(100 * selected_profile_statistics.computation_cpu_seconds_base_partition / selected_profile_statistics.computation_cpu_seconds) }}%):
+                        {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds_base_partition).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Fusion
+                        ({{ Math.round(100 * selected_profile_statistics.computation_cpu_seconds_fusion / selected_profile_statistics.computation_cpu_seconds) }}%):
+                        {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds_fusion).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Per Syndrome:
+                        {{ Number.parseFloat(selected_profile_statistics.cpu_time_per_syndrome).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Per Measurement Round:
+                        {{ Number.parseFloat(selected_profile_statistics.cpu_time_per_measurement_round).toExponential(3) }} (s)</div>
+                <div class="text-body1">Noisy Measurements: {{ benchmark_config.noisy_measurements }}</div>
             </q-card-section>
         </q-card>
     </q-scroll-area>
@@ -298,6 +313,7 @@ watch([window_inner_width, window_inner_height], () => {
 }, { immediate: true })
 
 const partition_config = ref(null)
+const benchmark_config = ref(null)
 const round_profiles = reactive([])
 
 // create vue3 app
@@ -307,6 +323,7 @@ const App = {
             error_message: ref(null),
             warning_message: ref(null),
             partition_config: partition_config,
+            benchmark_config: benchmark_config,
             round_profiles: round_profiles,
             unit_index_to_display_index: reactive({}),
             display_index_to_unit_index: reactive([]),
@@ -350,6 +367,8 @@ const App = {
             for (let i=0; i<lines.length && lines[i] != ""; ++i) {
                 if (i == 0) {
                     this.partition_config = JSON.parse(lines[i])
+                } else if (i == 1) {
+                    this.benchmark_config = JSON.parse(lines[i])
                 } else {
                     this.round_profiles.push(JSON.parse(lines[i]))
                 }
@@ -568,11 +587,20 @@ const App = {
             let preparation_time = min_event_time
             let garbage_collection_time = this.selected_profile.decoding_time - max_event_time
             let computation_cpu_seconds = 0
+            let computation_cpu_seconds_base_partition = 0
             for (let i=0; i<event_time_vec.length; ++i) {
                 computation_cpu_seconds += event_time_vec[i].end - event_time_vec[i].children_return
+                if (i < this.partition_config.partitions.length) {
+                    computation_cpu_seconds_base_partition += event_time_vec[i].end - event_time_vec[i].children_return
+                }
             }
+            let computation_cpu_seconds_fusion = computation_cpu_seconds - computation_cpu_seconds_base_partition
             let base_partition_computation_time = max_base_event_end - min_event_time
             let base_partition_computation_min = min_base_event_end - min_event_time
+            let decoding_time_per_syndrome = this.selected_profile.decoding_time / this.selected_profile.syndrome_num
+            let decoding_time_per_measurement_round = this.selected_profile.decoding_time / (this.benchmark_config.noisy_measurements + 1)
+            let cpu_time_per_syndrome = computation_cpu_seconds / this.selected_profile.syndrome_num
+            let cpu_time_per_measurement_round = computation_cpu_seconds / (this.benchmark_config.noisy_measurements + 1)
             let profile_statistics = {
                 computation_time,
                 preparation_time,
@@ -580,8 +608,14 @@ const App = {
                 computation_cpu_seconds,
                 base_partition_computation_time,
                 base_partition_computation_min,
+                decoding_time_per_syndrome,
+                decoding_time_per_measurement_round,
+                cpu_time_per_syndrome,
+                cpu_time_per_measurement_round,
+                computation_cpu_seconds_base_partition,
+                computation_cpu_seconds_fusion,
             }
-            console.log(profile_statistics)
+            // console.log(profile_statistics)
             return profile_statistics
         },
         vertical_thumb_style() {

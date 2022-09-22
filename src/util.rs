@@ -716,6 +716,10 @@ impl BenchmarkProfiler {
             let mut file = File::create(filename).unwrap();
             file.write_all(serde_json::to_string(&partition_info.config).unwrap().as_bytes()).unwrap();
             file.write_all(b"\n").unwrap();
+            file.write_all(serde_json::to_string(&json!({
+                "noisy_measurements": noisy_measurements,
+            })).unwrap().as_bytes()).unwrap();
+            file.write_all(b"\n").unwrap();
             file
         });
         Self {
