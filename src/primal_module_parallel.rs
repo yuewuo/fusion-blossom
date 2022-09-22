@@ -357,28 +357,43 @@ impl PrimalModuleParallelUnit {
     pub fn fuse<DualSerialModule: DualModuleImpl + Send + Sync>(&mut self, dual_unit: &mut DualModuleParallelUnit<DualSerialModule>) {
         let (left_child_ptr, right_child_ptr) = (self.children.as_ref().unwrap().0.upgrade_force(), self.children.as_ref().unwrap().1.upgrade_force());
         let mut left_child = left_child_ptr.write();
-        let mut right_child = right_child_ptr.write();
+        let right_child = right_child_ptr.write();
         dual_unit.fuse(&mut self.interface, (&left_child.interface, &right_child.interface));
-        let bias = left_child.serial_module.nodes.len();
+        let bias = left_child.serial_module.nodes_length;
         // copy `possible_break`
         self.serial_module.possible_break.append(&mut left_child.serial_module.possible_break);
         for node_index in right_child.serial_module.possible_break.iter() {
             self.serial_module.possible_break.insert(*node_index + bias);
         }
         // copy `nodes`
-        self.serial_module.nodes.append(&mut left_child.serial_module.nodes);
-        for primal_node_ptr in right_child.serial_module.nodes.iter() {
-            if let Some(primal_node_ptr) = primal_node_ptr {
+        for left_node_index in 0..left_child.serial_module.nodes_length {
+            let node_ptr = &left_child.serial_module.nodes[left_node_index];
+            let node_index = self.serial_module.nodes_length;
+            self.serial_module.nodes_length += 1;
+            if self.serial_module.nodes.len() < self.serial_module.nodes_length {
+                self.serial_module.nodes.push(None);
+            }
+            self.serial_module.nodes[node_index] = node_ptr.clone();
+        }
+        for right_node_index in 0..right_child.serial_module.nodes_length {
+            let node_ptr = &right_child.serial_module.nodes[right_node_index];
+            if let Some(primal_node_ptr) = node_ptr {
                 let mut primal_node = primal_node_ptr.write();
                 primal_node.index += bias;
             }
+            let node_index = self.serial_module.nodes_length;
+            self.serial_module.nodes_length += 1;
+            if self.serial_module.nodes.len() < self.serial_module.nodes_length {
+                self.serial_module.nodes.push(None);
+            }
+            self.serial_module.nodes[node_index] = node_ptr.clone();
         }
-        self.serial_module.nodes.append(&mut right_child.serial_module.nodes);
     }
 
     /// break the matched pairs of interface vertices
     pub fn break_matching_with_mirror(&mut self, dual_module: &mut impl DualModuleImpl) {
-        for primal_node_ptr in self.serial_module.nodes.iter() {
+        for node_index in 0..self.serial_module.nodes_length {
+            let primal_node_ptr = &self.serial_module.nodes[node_index];
             if let Some(primal_node_ptr) = primal_node_ptr {
                 let mut primal_node = primal_node_ptr.write();
                 if let Some((match_target, _)) = &primal_node.temporary_match {

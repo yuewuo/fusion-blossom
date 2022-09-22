@@ -15,6 +15,8 @@ use std::collections::BTreeSet;
 pub struct PrimalModuleSerial {
     /// nodes internal information
     pub nodes: Vec<Option<PrimalNodeInternalPtr>>,
+    /// current nodes length, to enable constant-time clear operation
+    pub nodes_length: usize,
     /// the indices of primal nodes that is possibly matched to the mirrored vertex, and need to break when mirrored vertices are no longer mirrored
     pub possible_break: BTreeSet<NodeIndex>,
     /// debug mode: only resolve one conflict each time
@@ -104,27 +106,32 @@ impl PrimalModuleImpl for PrimalModuleSerial {
     fn new(_initializer: &SolverInitializer) -> Self {
         Self {
             nodes: vec![],
+            nodes_length: 0,
             possible_break: BTreeSet::new(),
             debug_resolve_only_one: false,
         }
     }
 
     fn clear(&mut self) {
-        self.nodes.clear();
+        self.nodes_length = 0;  // without actually dropping all the nodes, to enable constant time clear
         self.possible_break.clear();
     }
 
     fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
         let node = dual_node_ptr.read_recursive();
         assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
-        assert_eq!(node.index, self.nodes.len(), "must load in order, found index {} out of order, len = {}", node.index, self.nodes.len());
+        assert_eq!(node.index, self.nodes_length, "must load in order");
         let primal_node_internal = PrimalNodeInternal {
             origin: dual_node_ptr.downgrade(),
             index: node.index,
             tree_node: None,
             temporary_match: None,
         };
-        self.nodes.push(Some(PrimalNodeInternalPtr::new(primal_node_internal)));
+        self.nodes_length += 1;
+        if self.nodes.len() < self.nodes_length {
+            self.nodes.push(None);
+        }
+        self.nodes[node.index] = Some(PrimalNodeInternalPtr::new(primal_node_internal));
     }
 
     fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
@@ -351,13 +358,18 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 touching_children
                             };
                             let blossom_node_ptr = interface.create_blossom(nodes_circle, touching_children, dual_module);
+                            let node_index = self.nodes_length;
                             let primal_node_internal_blossom_ptr = PrimalNodeInternalPtr::new(PrimalNodeInternal {
                                 origin: blossom_node_ptr.downgrade(),
-                                index: self.nodes.len(),
+                                index: node_index,
                                 tree_node: None,
                                 temporary_match: None,
                             });
-                            self.nodes.push(Some(primal_node_internal_blossom_ptr.clone()));
+                            self.nodes_length += 1;
+                            if self.nodes.len() < self.nodes_length {
+                                self.nodes.push(None);
+                            }
+                            self.nodes[node_index] = Some(primal_node_internal_blossom_ptr.clone());
                             // handle other part of the tree structure
                             let mut children = vec![];
                             for path in [&path_1, &path_2] {
@@ -630,7 +642,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
 
     fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &mut DualModuleInterface, _dual_module: &mut D) -> IntermediateMatching {
         let mut immediate_matching = IntermediateMatching::new();
-        for i in 0..self.nodes.len() {
+        for i in 0..self.nodes_length {
             let primal_node_internal_ptr = self.nodes[i].clone();
             match primal_node_internal_ptr {
                 Some(primal_node_internal_ptr) => {
@@ -678,7 +690,8 @@ impl FusionVisualizer for PrimalModuleSerial {
         // do the sanity check first before taking snapshot
         self.sanity_check().unwrap();
         let mut primal_nodes = Vec::<serde_json::Value>::new();
-        for primal_node_ptr in self.nodes.iter() {
+        for node_index in 0..self.nodes_length {
+            let primal_node_ptr = &self.nodes[node_index];
             if let Some(primal_node_ptr) = &primal_node_ptr {
                 let primal_node = primal_node_ptr.read_recursive();
                 primal_nodes.push(json!({
@@ -890,7 +903,8 @@ impl PrimalModuleSerial {
 
     /// do a sanity check of it's tree structure and internal state
     pub fn sanity_check(&self) -> Result<(), String> {
-        for (index, primal_module_internal_ptr) in self.nodes.iter().enumerate() {
+        for index in 0..self.nodes_length {
+            let primal_module_internal_ptr = &self.nodes[index];
             match primal_module_internal_ptr {
                 Some(primal_module_internal_ptr) => {
                     let primal_module_internal = primal_module_internal_ptr.read_recursive();
@@ -933,7 +947,7 @@ impl PrimalModuleSerial {
                                 }
                             } else { return Err(format!("{}'s child {} doesn't belong to any tree, link broken", index, child.index)) }
                             // check if child is still tracked, i.e. inside self.nodes
-                            if child.index >= self.nodes.len() || self.nodes[child.index].is_none() {
+                            if child.index >= self.nodes_length || self.nodes[child.index].is_none() {
                                 return Err(format!("child's index {} is not in the interface", child.index))
                             }
                             let tracked_child_ptr = self.nodes[child.index].as_ref().unwrap();
@@ -957,7 +971,7 @@ impl PrimalModuleSerial {
                                 }
                             } else { return Err(format!("{}'s parent {} doesn't belong to any tree, link broken", index, parent.index)) }
                             // check if parent is still tracked, i.e. inside self.nodes
-                            if parent.index >= self.nodes.len() || self.nodes[parent.index].is_none() {
+                            if parent.index >= self.nodes_length || self.nodes[parent.index].is_none() {
                                 return Err(format!("parent's index {} is not in the interface", parent.index))
                             }
                             let tracked_parent_ptr = self.nodes[parent.index].as_ref().unwrap();
@@ -975,7 +989,7 @@ impl PrimalModuleSerial {
                         loop {
                             let current = current_ptr.read_recursive();
                             // check if current is still tracked, i.e. inside self.nodes
-                            if current.index >= self.nodes.len() || self.nodes[current.index].is_none() {
+                            if current.index >= self.nodes_length || self.nodes[current.index].is_none() {
                                 return Err(format!("current's index {} is not in the interface", current.index))
                             }
                             let tracked_current_ptr = self.nodes[current.index].as_ref().unwrap();

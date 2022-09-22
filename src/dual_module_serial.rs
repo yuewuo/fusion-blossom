@@ -21,6 +21,8 @@ pub struct DualModuleSerial {
     pub vertices: Vec<VertexPtr>,
     /// nodes internal information
     pub nodes: Vec<Option<DualNodeInternalPtr>>,
+    /// current nodes length, to enable constant-time clear operation
+    pub nodes_length: usize,
     /// keep edges, which can also be accessed in [`Self::vertices`]
     pub edges: Vec<EdgePtr>,
     /// current timestamp
@@ -249,6 +251,7 @@ impl DualModuleImpl for DualModuleSerial {
         Self {
             vertices: vertices,
             nodes: vec![],
+            nodes_length: 0,
             edges: edges,
             active_timestamp: 0,
             vertex_num: initializer.vertex_num,
@@ -273,7 +276,7 @@ impl DualModuleImpl for DualModuleSerial {
             edge.weight = original_weight;
         }
         self.clear_graph();
-        self.nodes.clear();
+        self.nodes_length = 0;  // without actually dropping all the nodes, to enable constant time clear
         if let Some(unit_module_info) = self.unit_module_info.as_mut() {
             unit_module_info.owning_dual_range = VertexRange::new(0, 0);
             unit_module_info.dual_node_pointers = PtrWeakKeyHashMap::<DualNodeWeak, usize>::new();
@@ -286,9 +289,10 @@ impl DualModuleImpl for DualModuleSerial {
         self.register_dual_node_ptr(dual_node_ptr);
         let active_timestamp = self.active_timestamp;
         let node = dual_node_ptr.read_recursive();
+        let node_index = self.nodes_length;
         let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
             origin: dual_node_ptr.downgrade(),
-            index: self.nodes.len(),
+            index: node_index,
             dual_variable: 0,
             boundary: Vec::new(),
             overgrown_stack: Vec::new(),
@@ -351,7 +355,11 @@ impl DualModuleImpl for DualModuleSerial {
             }
         }
         self.active_list.push(node_internal_ptr.downgrade());
-        self.nodes.push(Some(node_internal_ptr));
+        self.nodes_length += 1;
+        if self.nodes.len() < self.nodes_length {
+            self.nodes.push(None);
+        }
+        self.nodes[node_index] = Some(node_internal_ptr);
     }
 
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
@@ -829,6 +837,7 @@ impl DualModuleImpl for DualModuleSerial {
         Self {
             vertices: vertices,
             nodes: vec![],
+            nodes_length: 0,
             edges: edges,
             active_timestamp: 0,
             vertex_num: partitioned_initializer.vertex_num,
@@ -1060,7 +1069,7 @@ impl DualModuleSerial {
     /// increment the global cycle so that each node in the active list can be accessed exactly once
     fn renew_active_list(&mut self) {
         if self.current_cycle == usize::MAX {
-            for i in 0..self.nodes.len() {
+            for i in 0..self.nodes_length {
                 let internal_dual_node_ptr = {
                     match self.nodes[i].as_ref() {
                         Some(internal_dual_node_ptr) => {
@@ -1160,7 +1169,8 @@ impl DualModuleSerial {
         }
         // sanity check that boundary doesn't include duplicate edges
         let mut duplicate_edges = HashMap::<(bool, EdgeIndex), NodeIndex>::new();
-        for (node_index, node_ptr) in self.nodes.iter().enumerate() {
+        for node_index in 0..self.nodes_length {
+            let node_ptr = &self.nodes[node_index];
             if let Some(node_ptr) = node_ptr {
                 let dual_node_internal = node_ptr.read_recursive();
                 if dual_node_internal.origin.upgrade_force().read_recursive().parent_blossom.is_some() {
@@ -1281,15 +1291,15 @@ impl DualModuleSerial {
             if unit_module_info.owning_dual_range.len() == 0 {  // set the range instead of inserting into the lookup table, to minimize table lookup
                 unit_module_info.owning_dual_range = VertexRange::new(node.index, node.index);
             }
-            if unit_module_info.owning_dual_range.end() == node.index && self.nodes.len() == unit_module_info.owning_dual_range.len() {
+            if unit_module_info.owning_dual_range.end() == node.index && self.nodes_length == unit_module_info.owning_dual_range.len() {
                 // it's able to append into the owning range, minimizing table lookup and thus better performance
                 unit_module_info.owning_dual_range.append_by(1);
             } else {
                 // will be inserted at this place
-                unit_module_info.dual_node_pointers.insert(dual_node_ptr.clone(), self.nodes.len());
+                unit_module_info.dual_node_pointers.insert(dual_node_ptr.clone(), self.nodes_length);
             }
         } else {
-            assert!(self.nodes.len() == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
+            assert!(self.nodes_length == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
         }
         // println!("unit {:?}, register_dual_node_ptr: {:?}", self.unit_module_info, dual_node_ptr);
     }
@@ -1338,7 +1348,7 @@ impl DualModuleSerial {
         let dual_node_index = self.get_dual_node_index(&dual_node_ptr).unwrap_or_else(|| {
             // add a new internal dual node corresponding to the dual_node_ptr
             self.register_dual_node_ptr(dual_node_ptr);
-            let dual_node_index = self.nodes.len();
+            let dual_node_index = self.nodes_length;
             let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
                 origin: dual_node_ptr.downgrade(),
                 index: dual_node_index,
@@ -1348,7 +1358,11 @@ impl DualModuleSerial {
                 last_visit_cycle: 0,
             });
             self.active_list.push(node_internal_ptr.downgrade());
-            self.nodes.push(Some(node_internal_ptr));
+            self.nodes_length += 1;
+            if self.nodes.len() < self.nodes_length {
+                self.nodes.push(None);
+            }
+            self.nodes[dual_node_index] = Some(node_internal_ptr);
             dual_node_index
         });
         let dual_node_internal_ptr = self.nodes[dual_node_index].as_ref().expect("internal dual node must exists");

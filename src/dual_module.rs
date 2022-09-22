@@ -517,7 +517,8 @@ impl FusionVisualizer for DualModuleInterface {
         // do the sanity check first before taking snapshot
         self.sanity_check().unwrap();
         let mut dual_nodes = Vec::<serde_json::Value>::new();
-        for dual_node_ptr in self.nodes.iter() {
+        for node_index in 0..self.nodes_length {
+            let dual_node_ptr = &self.nodes[node_index];
             if let Some(dual_node_ptr) = &dual_node_ptr {
                 let dual_node = dual_node_ptr.read_recursive();
                 dual_nodes.push(json!({
@@ -800,7 +801,8 @@ impl DualModuleInterface {
         }
         let mut visited_syndrome = HashSet::with_capacity(self.nodes_length * 2);
         let mut sum_individual_dual_variable = 0;
-        for (index, dual_node_ptr) in self.nodes.iter().enumerate() {
+        for index in 0..self.nodes_length {
+            let dual_node_ptr = &self.nodes[index];
             match dual_node_ptr {
                 Some(dual_node_ptr) => {
                     let dual_node = dual_node_ptr.read_recursive();
