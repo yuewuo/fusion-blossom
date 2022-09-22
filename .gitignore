@@ -20,6 +20,7 @@ Cargo.lock
 !/visualize/data/*.py
 !/visualize/data/*.md
 !/visualize/data/persist
+*.stacks
 
 # nodejs packages
 node_modules/

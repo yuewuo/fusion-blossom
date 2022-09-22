@@ -509,16 +509,15 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     /// fuse the children of this unit and also fuse the interfaces of them
-    pub fn fuse(&mut self, interfaces: (DualModuleInterface, DualModuleInterface)) -> DualModuleInterface {
+    pub fn fuse(&mut self, parent_interface: &mut DualModuleInterface, children_interfaces: (&DualModuleInterface, &DualModuleInterface)) {
         self.static_fuse();
-        let (left_interface, right_interface) = interfaces;
+        let (left_interface, right_interface) = children_interfaces;
         let right_child_ptr = self.children.as_ref().unwrap().1.upgrade_force();
         let mut right_child = right_child_ptr.write();
         // change the index of dual nodes in the right children
-        let bias = left_interface.nodes.len();
+        let bias = left_interface.nodes_length;
         right_child.iterative_bias_dual_node_index(bias);
-        let interface = left_interface.fuse(right_interface);
-        interface
+        parent_interface.fuse(left_interface, right_interface);
     }
 
     pub fn iterative_bias_dual_node_index(&mut self, bias: NodeIndex) {
@@ -999,7 +998,8 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let interface = primal_module.solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        let mut interface = DualModuleInterface::new_empty();
+        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (interface, primal_module, dual_module)
     }

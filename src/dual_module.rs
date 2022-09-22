@@ -281,7 +281,7 @@ impl PartialOrd for DualNodePtr {
 
 impl std::fmt::Debug for DualNodePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let dual_node = self.read_recursive();
+        let dual_node = self.read_recursive();  // reading index is consistent
         write!(f, "{}", dual_node.index)
     }
 }
@@ -365,6 +365,8 @@ impl DualNodePtr {
 pub struct DualModuleInterface {
     /// all the dual node that can be used to control a concrete dual module implementation
     pub nodes: Vec<Option<DualNodePtr>>,
+    /// current nodes length, to enable constant-time clear operation
+    pub nodes_length: usize,
     /// record the total growing nodes, should be non-negative in a normal running algorithm
     pub sum_grow_speed: Weight,
     /// record the total sum of dual variables
@@ -565,6 +567,7 @@ impl DualModuleInterface {
     pub fn new_empty() -> Self {
         Self {
             nodes: Vec::new(),
+            nodes_length: 0,
             sum_grow_speed: 0,
             sum_dual_variables: 0,
             debug_print_actions: false,
@@ -575,18 +578,30 @@ impl DualModuleInterface {
     /// a dual module interface MUST be created given a concrete implementation of the dual module
     pub fn new(syndrome_pattern: &SyndromePattern, dual_module_impl: &mut impl DualModuleImpl) -> Self {
         let mut array = Self::new_empty();
+        array.load(syndrome_pattern, dual_module_impl);
+        array
+    }
+
+    pub fn load(&mut self, syndrome_pattern: &SyndromePattern, dual_module_impl: &mut impl DualModuleImpl) {
         for vertex_idx in syndrome_pattern.syndrome_vertices.iter() {
-            array.create_syndrome_node(*vertex_idx, dual_module_impl);
+            self.create_syndrome_node(*vertex_idx, dual_module_impl);
         }
         if !syndrome_pattern.erasures.is_empty() {
             dual_module_impl.load_erasures(&syndrome_pattern.erasures);
         }
-        array
+    }
+
+    /// a constant clear function, without dropping anything;
+    /// this is for consideration of reducing the garbage collection time in the parallel solver,
+    /// by distributing the clear cost into each thread but not the single main thread.
+    pub fn clear(&mut self) {
+        self.nodes_length = 0;
     }
 
     pub fn create_syndrome_node(&mut self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         self.sum_grow_speed += 1;
-        let node_idx = self.nodes.len();
+        let node_idx = self.nodes_length;
+        self.nodes_length += 1;
         let node_ptr = DualNodePtr::new(DualNode {
             index: node_idx,
             class: DualNodeClass::SyndromeVertex {
@@ -596,7 +611,10 @@ impl DualModuleInterface {
             parent_blossom: None,
             dual_variable_cache: (0, self.dual_variable_global_progress),
         });
-        self.nodes.push(Some(node_ptr.clone()));
+        if self.nodes.len() < self.nodes_length {
+            self.nodes.push(None);
+        }
+        self.nodes[node_idx] = Some(node_ptr.clone());  // drop the previous
         dual_module_impl.add_syndrome_node(&node_ptr);
         node_ptr
     }
@@ -604,7 +622,7 @@ impl DualModuleInterface {
     /// check whether a pointer belongs to this node, it will acquire a reader lock on `dual_node_ptr`
     pub fn check_ptr_belonging(&self, dual_node_ptr: &DualNodePtr) -> bool {
         let dual_node = dual_node_ptr.read_recursive();
-        if dual_node.index >= self.nodes.len() { return false }
+        if dual_node.index >= self.nodes_length { return false }
         if let Some(ptr) = self.nodes[dual_node.index].as_ref() {
             return ptr == dual_node_ptr
         } else {
@@ -620,8 +638,9 @@ impl DualModuleInterface {
             touching_children = nodes_circle.iter().map(|ptr| (ptr.downgrade(), ptr.downgrade())).collect();
         }
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
+        let node_index = self.nodes_length;
         let blossom_node_ptr = DualNodePtr::new(DualNode {
-            index: self.nodes.len(),
+            index: node_index,
             class: DualNodeClass::Blossom {
                 nodes_circle: vec![],
                 touching_children: vec![],
@@ -644,16 +663,19 @@ impl DualModuleInterface {
             node.parent_blossom = Some(blossom_node_ptr.downgrade());
         }
         if self.debug_print_actions {
-            eprintln!("[create blossom] {:?} -> {}", nodes_circle, self.nodes.len());
+            eprintln!("[create blossom] {:?} -> {}", nodes_circle, node_index);
         }
         {  // fill in the nodes because they're in a valid state (all linked to this blossom)
             let mut node = blossom_node_ptr.write();
-            node.index = self.nodes.len();
             node.class = DualNodeClass::Blossom {
                 nodes_circle: nodes_circle.iter().map(|ptr| ptr.downgrade()).collect(),
                 touching_children: touching_children,
             };
-            self.nodes.push(Some(blossom_node_ptr.clone()));
+            self.nodes_length += 1;
+            if self.nodes.len() < self.nodes_length {
+                self.nodes.push(None);
+            }
+            self.nodes[node_index] = Some(blossom_node_ptr.clone());
         }
         self.sum_grow_speed += 1;
         dual_module_impl.prepare_nodes_shrink(&nodes_circle);
@@ -749,19 +771,25 @@ impl DualModuleInterface {
     }
 
     /// fuse two interfaces by copying the nodes in `other` into myself
-    pub fn fuse(mut self, mut other: Self) -> Self {
-        let bias = self.nodes.len();
-        for node_ptr in other.nodes.iter() {
-            if let Some(node_ptr) = node_ptr {
-                let mut node = node_ptr.write();
-                node.index += bias;
-                node.dual_variable_cache = (node.get_dual_variable(&other), self.dual_variable_global_progress)
+    pub fn fuse(&mut self, left: &Self, right: &Self) {
+        for other in [left, right] {
+            let bias = self.nodes_length;
+            for other_node_index in 0..other.nodes_length {
+                let node_ptr = &other.nodes[other_node_index];
+                if let Some(node_ptr) = node_ptr {
+                    let mut node = node_ptr.write();
+                    node.index += bias;
+                    node.dual_variable_cache = (node.get_dual_variable(&other), self.dual_variable_global_progress)
+                }
+                self.nodes_length += 1;
+                if self.nodes.len() <= self.nodes_length {
+                    self.nodes.push(None);
+                }
+                self.nodes[bias + other_node_index] = node_ptr.clone();
             }
+            self.sum_dual_variables += other.sum_dual_variables;
+            self.sum_grow_speed += other.sum_grow_speed;
         }
-        self.nodes.append(&mut other.nodes);
-        self.sum_dual_variables += other.sum_dual_variables;
-        self.sum_grow_speed += other.sum_grow_speed;
-        self
     }
 
     /// do a sanity check of if all the nodes are in consistent state
@@ -770,7 +798,7 @@ impl DualModuleInterface {
             eprintln!("[warning] sanity check disabled for dual_module.rs");
             return Ok(());
         }
-        let mut visited_syndrome = HashSet::with_capacity(self.nodes.len() * 2);
+        let mut visited_syndrome = HashSet::with_capacity(self.nodes_length * 2);
         let mut sum_individual_dual_variable = 0;
         for (index, dual_node_ptr) in self.nodes.iter().enumerate() {
             match dual_node_ptr {
@@ -790,7 +818,7 @@ impl DualModuleInterface {
                                 }
                                 if circle_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", circle_node.index)) }
                                 // check if circle node is still tracked, i.e. inside self.nodes
-                                if circle_node.index >= self.nodes.len() || self.nodes[circle_node.index].is_none() {
+                                if circle_node.index >= self.nodes_length || self.nodes[circle_node.index].is_none() {
                                     return Err(format!("child's index {} is not in the interface", circle_node.index))
                                 }
                                 let tracked_circle_node_ptr = self.nodes[circle_node.index].as_ref().unwrap();
@@ -839,7 +867,7 @@ impl DualModuleInterface {
                                 }, _ => { return Err(format!("{}, as the parent of {}, is not a blossom", parent_blossom.index, dual_node.index)) }
                             }
                             // check if blossom is still tracked, i.e. inside self.nodes
-                            if parent_blossom.index >= self.nodes.len() || self.nodes[parent_blossom.index].is_none() {
+                            if parent_blossom.index >= self.nodes_length || self.nodes[parent_blossom.index].is_none() {
                                 return Err(format!("parent blossom's index {} is not in the interface", parent_blossom.index))
                             }
                             let tracked_parent_blossom_ptr = self.nodes[parent_blossom.index].as_ref().unwrap();

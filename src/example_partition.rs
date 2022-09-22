@@ -286,13 +286,12 @@ pub mod tests {
     use super::super::visualize::*;
     use super::super::primal_module_parallel::*;
     use super::super::dual_module_parallel::*;
-    use super::super::dual_module::*;
     use super::super::dual_module_serial::*;
     use std::sync::Arc;
 
     pub fn example_partition_basic_standard_syndrome_optional_viz(mut code: Box<dyn ExampleCode>, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)
-            -> (DualModuleInterface, PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
+            -> (PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
         println!("{syndrome_vertices:?}");
         if re_index_syndrome {
             syndrome_vertices = partition.re_index_syndrome_vertices(&code, &syndrome_vertices);
@@ -313,14 +312,14 @@ pub mod tests {
         primal_config.debug_sequential = true;
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
         code.set_syndrome_vertices(&syndrome_vertices);
-        let interface = primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
-        assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
-        (interface, primal_module, dual_module)
+        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        assert_eq!(primal_module.units.last().unwrap().read_recursive().interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
+        (primal_module, dual_module)
     }
 
     pub fn example_partition_standard_syndrome(code: Box<dyn ExampleCode>, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
             , re_index_syndrome: bool, final_dual: Weight, partition: impl ExamplePartition)
-            -> (DualModuleInterface, PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
+            -> (PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
         example_partition_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), syndrome_vertices, re_index_syndrome
             , final_dual, partition)
     }

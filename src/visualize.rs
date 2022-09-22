@@ -359,7 +359,7 @@ mod tests {
         for _ in 0..3 { dual_module.grow_dual_node(interface.nodes[0].as_ref().unwrap(), -half_weight); }
         visualizer.snapshot_combined(format!("shrink 3 half weight"), vec![&interface, &dual_module]).unwrap();
         // test all
-        for i in 0..interface.nodes.len() {
+        for i in 0..interface.nodes_length {
             dual_module.grow_dual_node(interface.nodes[i].as_ref().unwrap(), half_weight);
             visualizer.snapshot_combined(format!("grow half weight"), vec![&interface, &dual_module]).unwrap();
         }
