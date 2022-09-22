@@ -46,6 +46,10 @@ pub struct DualModuleSerial {
     pub edge_dedup_timestamp: FastClearTimestamp,
     /// temporary list of synchronize requests, i.e. those propagating into the mirrored vertices; should always be empty when not partitioned, i.e. serial version
     pub sync_requests: Vec<SyncRequest>,
+    /// temporary variable to reduce reallocation
+    updated_boundary: Vec<(bool, EdgeWeak)>,
+    /// temporary variable to reduce reallocation
+    propagating_vertices: Vec<(VertexPtr, Option<DualNodeInternalWeak>)>,
 }
 
 /// records information only available when used as a unit in the partitioned dual module
@@ -263,6 +267,8 @@ impl DualModuleImpl for DualModuleSerial {
             edge_modifier: EdgeWeightModifier::new(),
             edge_dedup_timestamp: 0,
             sync_requests: vec![],
+            updated_boundary: vec![],
+            propagating_vertices: vec![],
         }
     }
 
@@ -867,6 +873,8 @@ impl DualModuleImpl for DualModuleSerial {
             edge_modifier: EdgeWeightModifier::new(),
             edge_dedup_timestamp: 0,
             sync_requests: vec![],
+            updated_boundary: vec![],
+            propagating_vertices: vec![],
         }
     }
 
@@ -1399,8 +1407,8 @@ impl DualModuleSerial {
     /// this is equivalent to [`DualModuleSerial::prepare_dual_node_growth`] when there are no 0 weight edges, but when it encounters zero-weight edges, it will report `true`
     pub fn prepare_dual_node_growth_single(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool) -> bool {
         let active_timestamp = self.active_timestamp;
-        let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
-        let mut propagating_vertices = Vec::<(VertexPtr, Option<DualNodeInternalWeak>)>::new();
+        self.updated_boundary.clear();
+        self.propagating_vertices.clear();
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
         let mut newly_propagated_edge_has_zero_weight = false;
         if is_grow {  // gracefully update the boundary to ease growing
@@ -1425,11 +1433,11 @@ impl DualModuleSerial {
                     peer_vertex_ptr.dynamic_clear(active_timestamp);
                     let peer_vertex = peer_vertex_ptr.read_recursive(active_timestamp);
                     if peer_vertex.is_virtual || peer_vertex.is_mirror_blocked() {  // virtual node is never propagated, so keep this edge in the boundary
-                        updated_boundary.push((is_left, edge_weak.clone()));
+                        self.updated_boundary.push((is_left, edge_weak.clone()));
                     } else {
                         assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
                         assert!(peer_vertex.propagated_grandson_dual_node.is_none(), "growing into another propagated vertex forbidden");
-                        propagating_vertices.push((peer_vertex_ptr.clone(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
+                        self.propagating_vertices.push((peer_vertex_ptr.clone(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
                         // this edge is dropped, so we need to set both end of this edge to this dual node
                         drop(edge);  // unlock read
                         let mut edge = edge_ptr.write(active_timestamp);
@@ -1444,12 +1452,12 @@ impl DualModuleSerial {
                         }
                     }
                 } else {  // keep other edges
-                    updated_boundary.push((is_left, edge_weak.clone()));
+                    self.updated_boundary.push((is_left, edge_weak.clone()));
                 }
             }
             drop(dual_node_internal);  // unlock
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for (vertex_ptr, grandson_dual_node) in propagating_vertices.into_iter() {
+            for (vertex_ptr, grandson_dual_node) in self.propagating_vertices.iter() {
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_none() {
                     vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
@@ -1487,7 +1495,7 @@ impl DualModuleSerial {
                         };
                         if newly_propagated_edge {
                             count_newly_propagated_edge += 1;
-                            updated_boundary.push((is_left, edge_weak.clone()));
+                            self.updated_boundary.push((is_left, edge_weak.clone()));
                             let mut edge = edge_ptr.write(active_timestamp);
                             if edge.weight == 0 {
                                 newly_propagated_edge_has_zero_weight = true;
@@ -1551,7 +1559,7 @@ impl DualModuleSerial {
                                 }
                                 if (if !is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
                                     if !is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
-                                    updated_boundary.push((!is_left, edge_weak.clone()));  // boundary has the opposite end
+                                    self.updated_boundary.push((!is_left, edge_weak.clone()));  // boundary has the opposite end
                                 }
                             }
                         } else {
@@ -1586,23 +1594,23 @@ impl DualModuleSerial {
                     if this_vertex.is_syndrome {  // never shrink from the syndrome itself
                         if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
                             if is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
-                            updated_boundary.push((is_left, edge_weak.clone()));
+                            self.updated_boundary.push((is_left, edge_weak.clone()));
                         }
                     } else {
                         if edge.weight > 0 && self.unit_module_info.is_none() {  // do not check for 0-weight edges
                             assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
                         }
-                        propagating_vertices.push((this_vertex_ptr.clone(), None));
+                        self.propagating_vertices.push((this_vertex_ptr.clone(), None));
                     }
                 } else {  // keep other edges
                     if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
                         if is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
-                        updated_boundary.push((is_left, edge_weak.clone()));
+                        self.updated_boundary.push((is_left, edge_weak.clone()));
                     }
                 }
             }
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for (vertex_ptr, _) in propagating_vertices.into_iter() {
+            for (vertex_ptr, _) in self.propagating_vertices.iter() {
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_some() {
                     vertex.propagated_dual_node = None;
@@ -1637,7 +1645,7 @@ impl DualModuleSerial {
                             let mut edge = edge_ptr.write(active_timestamp);
                             if (if !is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
                                 if !is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
-                                updated_boundary.push((!is_left, edge_weak.clone()));
+                                self.updated_boundary.push((!is_left, edge_weak.clone()));
                             }  // otherwise it's duplicate and should not be added to the boundary list
                             if edge.weight == 0 {
                                 newly_propagated_edge_has_zero_weight = true;
@@ -1669,7 +1677,7 @@ impl DualModuleSerial {
         }
         // update the boundary
         let mut dual_node_internal = dual_node_internal_ptr.write();
-        std::mem::swap(&mut updated_boundary, &mut dual_node_internal.boundary);
+        std::mem::swap(&mut self.updated_boundary, &mut dual_node_internal.boundary);
         // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
         if self.unit_module_info.is_none() {
             assert!(dual_node_internal.boundary.len() > 0, "the boundary of a dual cluster is never empty");
