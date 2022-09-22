@@ -613,6 +613,9 @@ impl DualModuleInterface {
     /// by distributing the clear cost into each thread but not the single main thread.
     pub fn clear(&mut self) {
         self.nodes_length = 0;
+        self.sum_grow_speed = 0;
+        self.sum_dual_variables = 0;
+        self.dual_variable_global_progress = 0;
     }
 
     pub fn create_syndrome_node(&mut self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {

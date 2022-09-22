@@ -1280,7 +1280,8 @@ impl FusionVisualizer for DualModuleSerial {
         // update the visualizer to be able to join multiple dual nodes
         if self.owning_range.start() == 0 && self.owning_range.end() == self.vertex_num {
             let mut dual_nodes = Vec::<serde_json::Value>::new();
-            for node_ptr in self.nodes.iter() {
+            for node_index in 0..self.nodes_length {
+                let node_ptr = &self.nodes[node_index];
                 if let Some(node_ptr) = node_ptr.as_ref() {
                     let node = node_ptr.read_recursive();
                     dual_nodes.push(json!({
