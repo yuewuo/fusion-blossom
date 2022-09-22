@@ -249,9 +249,9 @@ impl SolverErrorPatternLogger {
         if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
         let mut file = File::create(filename).unwrap();
         file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
-        file.write_all(serde_json::to_string(initializer).unwrap().as_bytes()).unwrap();
+        serde_json::to_writer(&file, &initializer).unwrap();  // large object write to file directly
         file.write_all(b"\n").unwrap();
-        file.write_all(serde_json::to_string(&code.get_positions()).unwrap().as_bytes()).unwrap();
+        serde_json::to_writer(&file, &code.get_positions()).unwrap();
         file.write_all(b"\n").unwrap();
         Self {
             file: file,
