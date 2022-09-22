@@ -114,6 +114,9 @@ enum TestCommands {
         /// enable the blossom verifier
         #[clap(short = 'd', long, action)]
         disable_blossom: bool,
+        /// enable print syndrome pattern
+        #[clap(short = 's', long, action)]
+        print_syndrome_pattern: bool,
     },
     /// test parallel dual module only, with serial primal module
     DualParallel {
@@ -126,6 +129,9 @@ enum TestCommands {
         /// enable the blossom verifier
         #[clap(short = 'd', long, action)]
         disable_blossom: bool,
+        /// enable print syndrome pattern
+        #[clap(short = 's', long, action)]
+        print_syndrome_pattern: bool,
     },
     /// test parallel primal and dual module
     Parallel {
@@ -138,6 +144,9 @@ enum TestCommands {
         /// enable the blossom verifier
         #[clap(short = 'd', long, action)]
         disable_blossom: bool,
+        /// enable print syndrome pattern
+        #[clap(short = 's', long, action)]
+        print_syndrome_pattern: bool,
     },
 }
 
@@ -246,19 +255,19 @@ impl Cli {
                     // println!("erasures: {erasures:?}");
                     benchmark_profiler.begin(&syndrome_pattern);
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
+                    result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                     primal_dual_solver.clear();  // also count the clear operation
                     benchmark_profiler.end(Some(&primal_dual_solver));
                     if pb_message.is_empty() {
                         pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
                     }
-                    result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                 }
                 pb.finish();
                 println!("");
             },
             Commands::Test { command } => {
                 match command {
-                    TestCommands::Serial { print_command, enable_visualizer, disable_blossom } => {
+                    TestCommands::Serial { print_command, enable_visualizer, disable_blossom, print_syndrome_pattern } => {
                         let mut parameters = vec![];
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                             for d in [3, 7, 11, 15, 19] {
@@ -295,11 +304,12 @@ impl Cli {
                         let mut command_tail = vec![];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
+                        if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
                             execute_in_cli(command_head.iter().chain(parameter.iter()).chain(command_tail.iter()), print_command);
                         }
                     },
-                    TestCommands::DualParallel { print_command, enable_visualizer, disable_blossom } => {
+                    TestCommands::DualParallel { print_command, enable_visualizer, disable_blossom, print_syndrome_pattern } => {
                         let mut parameters = vec![];
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                             for d in [7, 11, 15, 19] {
@@ -326,11 +336,12 @@ impl Cli {
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
+                        if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
                             execute_in_cli(command_head.iter().chain(parameter.iter()).chain(command_tail.iter()), print_command);
                         }
                     },
-                    TestCommands::Parallel { print_command, enable_visualizer, disable_blossom } => {
+                    TestCommands::Parallel { print_command, enable_visualizer, disable_blossom, print_syndrome_pattern } => {
                         let mut parameters = vec![];
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                             for d in [7, 11, 15, 19] {
@@ -343,6 +354,7 @@ impl Cli {
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("parallel")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
+                        if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
                             execute_in_cli(command_head.iter().chain(parameter.iter()).chain(command_tail.iter()), print_command);
                         }
