@@ -7,7 +7,7 @@ use super::util::*;
 use std::sync::Arc;
 use crate::derivative::Derivative;
 use core::cmp::Ordering;
-use std::collections::{BinaryHeap, BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use super::visualize::*;
 
 
@@ -84,13 +84,22 @@ pub enum MaxUpdateLength {
     VertexShrinkStop((DualNodePtr, Option<(DualNodePtr, DualNodePtr)>)),
 }
 
+cfg_if::cfg_if! {
+    if #[cfg(feature="ordered_conflicts")] {
+        use std::collections::BinaryHeap;
+        pub type ConflictList = BinaryHeap<MaxUpdateLength>;
+    } else {
+        pub type ConflictList = Vec<MaxUpdateLength>;
+    }
+}
+
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub enum GroupMaxUpdateLength {
     /// non-zero maximum update length
     NonZeroGrow(Weight),
     /// conflicting reasons and pending VertexShrinkStop events (empty in a single serial dual module)
-    Conflicts((BinaryHeap<MaxUpdateLength>, BTreeMap<VertexIndex, MaxUpdateLength>)),
+    Conflicts((ConflictList, BTreeMap<VertexIndex, MaxUpdateLength>)),
 }
 
 impl GroupMaxUpdateLength {
@@ -99,7 +108,7 @@ impl GroupMaxUpdateLength {
         Self::NonZeroGrow(Weight::MAX)
     }
 
-    pub fn add_pending_stop(heap: &mut BinaryHeap<MaxUpdateLength>, pending_stops: &mut BTreeMap<VertexIndex, MaxUpdateLength>, max_update_length: MaxUpdateLength) {
+    pub fn add_pending_stop(list: &mut ConflictList, pending_stops: &mut BTreeMap<VertexIndex, MaxUpdateLength>, max_update_length: MaxUpdateLength) {
         if let Some(dual_node_ptr) = max_update_length.get_vertex_shrink_stop() {
             let vertex_index = dual_node_ptr.get_representative_vertex();
             if let Some(existing_length) = pending_stops.get(&vertex_index) {
@@ -107,7 +116,7 @@ impl GroupMaxUpdateLength {
                     if let MaxUpdateLength::VertexShrinkStop((_, Some(existing_weak_pair))) = existing_length {
                         if weak_pair.0 != existing_weak_pair.0 {
                             // two such conflicts form a Conflicting event
-                            heap.push(MaxUpdateLength::Conflicting(weak_pair.clone(), existing_weak_pair.clone()));
+                            list.push(MaxUpdateLength::Conflicting(weak_pair.clone(), existing_weak_pair.clone()));
                             pending_stops.remove(&vertex_index);
                         }
                     } else {
@@ -118,7 +127,7 @@ impl GroupMaxUpdateLength {
                 pending_stops.insert(vertex_index, max_update_length.clone());
             }
         } else {
-            heap.push(max_update_length);
+            list.push(max_update_length);
         }
     }
 
@@ -128,21 +137,21 @@ impl GroupMaxUpdateLength {
                 if let MaxUpdateLength::NonZeroGrow(length) = max_update_length {
                     *current_length = std::cmp::min(*current_length, length);
                 } else {
-                    let mut heap = BinaryHeap::new();
+                    let mut list = ConflictList::new();
                     let mut pending_stops = BTreeMap::new();
                     if let Some(dual_node_ptr) = max_update_length.get_vertex_shrink_stop() {
                         let vertex_index = dual_node_ptr.get_representative_vertex();
                         pending_stops.insert(vertex_index, max_update_length);
                     } else {
-                        heap.push(max_update_length);
+                        list.push(max_update_length);
                     }
-                    *self = Self::Conflicts((heap, pending_stops));
+                    *self = Self::Conflicts((list, pending_stops));
                 }
             },
-            Self::Conflicts((heap, pending_stops)) => {
+            Self::Conflicts((list, pending_stops)) => {
                 // only add conflicts, not NonZeroGrow
                 if !matches!(max_update_length, MaxUpdateLength::NonZeroGrow(_)) {
-                    Self::add_pending_stop(heap, pending_stops, max_update_length);
+                    Self::add_pending_stop(list, pending_stops, max_update_length);
                 }
             },
         }
@@ -158,21 +167,21 @@ impl GroupMaxUpdateLength {
                     Self::NonZeroGrow(length) => {
                         *current_length = std::cmp::min(*current_length, length);
                     },
-                    Self::Conflicts((mut other_heap, mut other_pending_stops)) => {
-                        let mut heap = BinaryHeap::new();
+                    Self::Conflicts((mut other_list, mut other_pending_stops)) => {
+                        let mut list = ConflictList::new();
                         let mut pending_stops = BTreeMap::new();
-                        std::mem::swap(&mut heap, &mut other_heap);
+                        std::mem::swap(&mut list, &mut other_list);
                         std::mem::swap(&mut pending_stops, &mut other_pending_stops);
-                        *self = Self::Conflicts((heap, pending_stops));
+                        *self = Self::Conflicts((list, pending_stops));
                     },
                 }
             },
-            Self::Conflicts((heap, pending_stops)) => {
+            Self::Conflicts((list, pending_stops)) => {
                 match other {
-                    Self::Conflicts((other_heap, other_pending_stops)) => {
-                        heap.extend(other_heap.into_iter());
+                    Self::Conflicts((other_list, other_pending_stops)) => {
+                        list.extend(other_list.into_iter());
                         for (_, max_update_length) in other_pending_stops.into_iter() {
-                            Self::add_pending_stop(heap, pending_stops, max_update_length);
+                            Self::add_pending_stop(list, pending_stops, max_update_length);
                         }
                     },
                     _ => { },  // only add conflicts, not NonZeroGrow
@@ -200,8 +209,8 @@ impl GroupMaxUpdateLength {
             Self::NonZeroGrow(_) => {
                 panic!("please call GroupMaxUpdateLength::get_none_zero_growth to check if this group is none_zero_growth");
             },
-            Self::Conflicts((heap, pending_stops)) => {
-                heap.pop().or(if let Some(key) = pending_stops.keys().next().cloned() {
+            Self::Conflicts((list, pending_stops)) => {
+                list.pop().or(if let Some(key) = pending_stops.keys().next().cloned() {
                     pending_stops.remove(&key)
                 } else {
                     None
@@ -215,8 +224,15 @@ impl GroupMaxUpdateLength {
             Self::NonZeroGrow(_) => {
                 panic!("please call GroupMaxUpdateLength::get_none_zero_growth to check if this group is none_zero_growth");
             },
-            Self::Conflicts((heap, pending_stops)) => {
-                heap.peek().or(if pending_stops.is_empty() { None } else { pending_stops.values().next() })
+            Self::Conflicts((list, pending_stops)) => {
+                cfg_if::cfg_if! {
+                    if #[cfg(feature="ordered_conflicts")] {
+                        let peek_element = list.peek();
+                    } else {
+                        let peek_element = list.last();
+                    }
+                }
+                peek_element.or(if pending_stops.is_empty() { None } else { pending_stops.values().next() })
             }
         }
     }
@@ -602,7 +618,7 @@ impl DualModuleInterface {
     pub fn create_syndrome_node(&mut self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         self.sum_grow_speed += 1;
         let node_idx = self.nodes_length;
-        // try to reuse existing pointer to avoid heap allocation
+        // try to reuse existing pointer to avoid list allocation
         let node_ptr = if node_idx < self.nodes.len() && self.nodes[node_idx].is_some() {
             let node_ptr = self.nodes[node_idx].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
