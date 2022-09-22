@@ -17,6 +17,8 @@ pub struct PrimalModuleSerial {
     pub nodes: Vec<Option<PrimalNodeInternalPtr>>,
     /// current nodes length, to enable constant-time clear operation
     pub nodes_length: usize,
+    /// allow pointer reuse will reduce the time of reallocation, but it's unsafe if not owning it
+    pub disable_pointer_reuse: bool,
     /// the indices of primal nodes that is possibly matched to the mirrored vertex, and need to break when mirrored vertices are no longer mirrored
     pub possible_break: BTreeSet<NodeIndex>,
     /// debug mode: only resolve one conflict each time
@@ -107,6 +109,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         Self {
             nodes: vec![],
             nodes_length: 0,
+            disable_pointer_reuse: false,
             possible_break: BTreeSet::new(),
             debug_resolve_only_one: false,
         }
@@ -122,7 +125,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
         assert_eq!(node.index, self.nodes_length, "must load in order");
         let node_index = node.index;
-        let primal_node_internal_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+        let primal_node_internal_ptr = if !self.disable_pointer_reuse && node_index < self.nodes.len() && self.nodes[node_index].is_some() {
             let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.origin = dual_node_ptr.downgrade();
@@ -371,7 +374,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             };
                             let blossom_node_ptr = interface.create_blossom(nodes_circle, touching_children, dual_module);
                             let node_index = self.nodes_length;
-                            let primal_node_internal_blossom_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+                            let primal_node_internal_blossom_ptr = if !self.disable_pointer_reuse && node_index < self.nodes.len() && self.nodes[node_index].is_some() {
                                 let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
                                 let mut node = node_ptr.write();
                                 node.origin = blossom_node_ptr.downgrade();

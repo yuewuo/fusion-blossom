@@ -222,9 +222,8 @@ impl PrimalDualSolver for SolverParallel {
         self.primal_module.parallel_solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
     }
     fn perfect_matching(&mut self) -> PerfectMatching {
-        let last_unit_ptr = self.primal_module.units.last().unwrap().clone();// use the interface in the last unit
-        let mut last_unit = last_unit_ptr.write();
-        self.primal_module.perfect_matching(&mut last_unit.interface, &mut self.dual_module)
+        let mut useless_interface = DualModuleInterface::new_empty();  // don't actually use it
+        self.primal_module.perfect_matching(&mut useless_interface, &mut self.dual_module)
     }
     fn sum_dual_variables(&self) -> Weight {
         let last_unit = self.primal_module.units.last().unwrap().write();  // use the interface in the last unit

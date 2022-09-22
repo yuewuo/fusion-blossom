@@ -360,6 +360,7 @@ impl PrimalModuleParallelUnit {
         let right_child = right_child_ptr.write();
         dual_unit.fuse(&mut self.interface, (&left_child.interface, &right_child.interface));
         let bias = left_child.serial_module.nodes_length;
+        self.serial_module.disable_pointer_reuse = true;  // it's unsafe to reuse pointer in a fusion unit
         // copy `possible_break`
         self.serial_module.possible_break.append(&mut left_child.serial_module.possible_break);
         for node_index in right_child.serial_module.possible_break.iter() {

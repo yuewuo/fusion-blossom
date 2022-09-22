@@ -91,8 +91,12 @@ enum Commands {
         /// use deterministic seed for debugging purpose
         #[clap(long, action)]
         use_deterministic_seed: bool,
+        /// the benchmark profile output file path
         #[clap(long)]
         benchmark_profiler_output: Option<String>,
+        /// skip some iterations, useful when debugging
+        #[clap(long, default_value_t = 0)]
+        starting_iteration: usize,
     },
     /// built-in tests
     Test {
@@ -215,7 +219,7 @@ impl Cli {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
                     , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
-                    , benchmark_profiler_output, print_syndrome_pattern } => {
+                    , benchmark_profiler_output, print_syndrome_pattern, starting_iteration } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) {
                     if cfg!(not(feature = "blossom_v")) {
@@ -237,7 +241,7 @@ impl Cli {
                 let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
                 pb.message(format!("{pb_message} ").as_str());
                 let mut rng = thread_rng();
-                for round in 0..(total_rounds as u64) {
+                for round in (starting_iteration as u64)..(total_rounds as u64) {
                     pb.set(round);
                     let seed = if use_deterministic_seed { round } else { rng.gen() };
                     let syndrome_pattern = code.generate_random_errors(seed);

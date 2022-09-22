@@ -383,6 +383,9 @@ pub struct DualModuleInterface {
     pub nodes: Vec<Option<DualNodePtr>>,
     /// current nodes length, to enable constant-time clear operation
     pub nodes_length: usize,
+    /// allow pointer reuse will reduce the time of reallocation, but it's unsafe if not owning it;
+    /// this will be automatically disabled when [`DualModuleInterface::fuse`] is called
+    pub disable_pointer_reuse: bool,
     /// record the total growing nodes, should be non-negative in a normal running algorithm
     pub sum_grow_speed: Weight,
     /// record the total sum of dual variables
@@ -585,6 +588,7 @@ impl DualModuleInterface {
         Self {
             nodes: Vec::new(),
             nodes_length: 0,
+            disable_pointer_reuse: false,
             sum_grow_speed: 0,
             sum_dual_variables: 0,
             debug_print_actions: false,
@@ -622,7 +626,7 @@ impl DualModuleInterface {
         self.sum_grow_speed += 1;
         let node_idx = self.nodes_length;
         // try to reuse existing pointer to avoid list allocation
-        let node_ptr = if node_idx < self.nodes.len() && self.nodes[node_idx].is_some() {
+        let node_ptr = if !self.disable_pointer_reuse && node_idx < self.nodes.len() && self.nodes[node_idx].is_some() {
             let node_ptr = self.nodes[node_idx].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.index = node_idx;
@@ -674,7 +678,7 @@ impl DualModuleInterface {
         }
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let node_index = self.nodes_length;
-        let blossom_node_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+        let blossom_node_ptr = if !self.disable_pointer_reuse && node_index < self.nodes.len() && self.nodes[node_index].is_some() {
             let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.index = node_index;
@@ -822,17 +826,19 @@ impl DualModuleInterface {
 
     /// fuse two interfaces by copying the nodes in `other` into myself
     pub fn fuse(&mut self, left: &Self, right: &Self) {
+        self.disable_pointer_reuse = true;  // for safety
         for other in [left, right] {
             let bias = self.nodes_length;
             for other_node_index in 0..other.nodes_length {
                 let node_ptr = &other.nodes[other_node_index];
                 if let Some(node_ptr) = node_ptr {
                     let mut node = node_ptr.write();
+                    assert_eq!(node.index, other_node_index);
                     node.index += bias;
                     node.dual_variable_cache = (node.get_dual_variable(&other), self.dual_variable_global_progress)
                 }
                 self.nodes_length += 1;
-                if self.nodes.len() <= self.nodes_length {
+                if self.nodes.len() < self.nodes_length {
                     self.nodes.push(None);
                 }
                 self.nodes[bias + other_node_index] = node_ptr.clone();
@@ -843,6 +849,7 @@ impl DualModuleInterface {
     }
 
     /// do a sanity check of if all the nodes are in consistent state
+    #[inline(never)]
     pub fn sanity_check(&self) -> Result<(), String> {
         if false {
             eprintln!("[warning] sanity check disabled for dual_module.rs");
@@ -850,6 +857,7 @@ impl DualModuleInterface {
         }
         let mut visited_syndrome = HashSet::with_capacity(self.nodes_length * 2);
         let mut sum_individual_dual_variable = 0;
+        println!("self: {self:?}");
         for index in 0..self.nodes_length {
             let dual_node_ptr = &self.nodes[index];
             match dual_node_ptr {
