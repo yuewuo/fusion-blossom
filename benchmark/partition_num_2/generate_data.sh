@@ -1,0 +1,1 @@
+cargo run --release -- benchmark 15 -n 1000000 0.005 --code-type phenomenological-planar-code-parallel --code-config '{"code_count":5}' --primal-dual-type error-pattern-logger --verifier none --primal-dual-config '{"filename":"benchmark/partition_num_2/15-1000000-0.005-phenomenological-planar.syndromes"}'
