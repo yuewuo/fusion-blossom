@@ -121,17 +121,29 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         let node = dual_node_ptr.read_recursive();
         assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
         assert_eq!(node.index, self.nodes_length, "must load in order");
-        let primal_node_internal = PrimalNodeInternal {
-            origin: dual_node_ptr.downgrade(),
-            index: node.index,
-            tree_node: None,
-            temporary_match: None,
+        let node_index = node.index;
+        let primal_node_internal_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+            let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
+            let mut node = node_ptr.write();
+            node.origin = dual_node_ptr.downgrade();
+            node.index = node_index;
+            node.tree_node = None;
+            node.temporary_match = None;
+            drop(node);
+            node_ptr
+        } else {
+            PrimalNodeInternalPtr::new(PrimalNodeInternal {
+                origin: dual_node_ptr.downgrade(),
+                index: node_index,
+                tree_node: None,
+                temporary_match: None,
+            })
         };
         self.nodes_length += 1;
         if self.nodes.len() < self.nodes_length {
             self.nodes.push(None);
         }
-        self.nodes[node.index] = Some(PrimalNodeInternalPtr::new(primal_node_internal));
+        self.nodes[node.index] = Some(primal_node_internal_ptr);
     }
 
     fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
@@ -359,12 +371,23 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             };
                             let blossom_node_ptr = interface.create_blossom(nodes_circle, touching_children, dual_module);
                             let node_index = self.nodes_length;
-                            let primal_node_internal_blossom_ptr = PrimalNodeInternalPtr::new(PrimalNodeInternal {
-                                origin: blossom_node_ptr.downgrade(),
-                                index: node_index,
-                                tree_node: None,
-                                temporary_match: None,
-                            });
+                            let primal_node_internal_blossom_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+                                let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
+                                let mut node = node_ptr.write();
+                                node.origin = blossom_node_ptr.downgrade();
+                                node.index = node_index;
+                                node.tree_node = None;
+                                node.temporary_match = None;
+                                drop(node);
+                                node_ptr
+                            } else {
+                                PrimalNodeInternalPtr::new(PrimalNodeInternal {
+                                    origin: blossom_node_ptr.downgrade(),
+                                    index: node_index,
+                                    tree_node: None,
+                                    temporary_match: None,
+                                })
+                            };
                             self.nodes_length += 1;
                             if self.nodes.len() < self.nodes_length {
                                 self.nodes.push(None);

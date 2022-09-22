@@ -290,14 +290,27 @@ impl DualModuleImpl for DualModuleSerial {
         let active_timestamp = self.active_timestamp;
         let node = dual_node_ptr.read_recursive();
         let node_index = self.nodes_length;
-        let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
-            origin: dual_node_ptr.downgrade(),
-            index: node_index,
-            dual_variable: 0,
-            boundary: Vec::new(),
-            overgrown_stack: Vec::new(),
-            last_visit_cycle: 0,
-        });
+        let node_internal_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+            let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
+            let mut node = node_ptr.write();
+            node.origin = dual_node_ptr.downgrade();
+            node.index = node_index;
+            node.dual_variable = 0;
+            node.boundary.clear();
+            node.overgrown_stack.clear();
+            node.last_visit_cycle = 0;
+            drop(node);
+            node_ptr
+        } else {
+            DualNodeInternalPtr::new(DualNodeInternal {
+                origin: dual_node_ptr.downgrade(),
+                index: node_index,
+                dual_variable: 0,
+                boundary: Vec::new(),
+                overgrown_stack: Vec::new(),
+                last_visit_cycle: 0,
+            })
+        };
         {
             let boundary = &mut node_internal_ptr.write().boundary;
             match &node.class {
@@ -1348,22 +1361,35 @@ impl DualModuleSerial {
         let dual_node_index = self.get_dual_node_index(&dual_node_ptr).unwrap_or_else(|| {
             // add a new internal dual node corresponding to the dual_node_ptr
             self.register_dual_node_ptr(dual_node_ptr);
-            let dual_node_index = self.nodes_length;
-            let node_internal_ptr = DualNodeInternalPtr::new(DualNodeInternal {
-                origin: dual_node_ptr.downgrade(),
-                index: dual_node_index,
-                dual_variable: dual_variable,
-                boundary: Vec::new(),
-                overgrown_stack: Vec::new(),
-                last_visit_cycle: 0,
-            });
+            let node_index = self.nodes_length;
+            let node_internal_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+                let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
+                let mut node = node_ptr.write();
+                node.origin = dual_node_ptr.downgrade();
+                node.index = node_index;
+                node.dual_variable = dual_variable;
+                node.boundary.clear();
+                node.overgrown_stack.clear();
+                node.last_visit_cycle = 0;
+                drop(node);
+                node_ptr
+            } else {
+                DualNodeInternalPtr::new(DualNodeInternal {
+                    origin: dual_node_ptr.downgrade(),
+                    index: node_index,
+                    dual_variable: dual_variable,
+                    boundary: Vec::new(),
+                    overgrown_stack: Vec::new(),
+                    last_visit_cycle: 0,
+                })
+            };
             self.active_list.push(node_internal_ptr.downgrade());
             self.nodes_length += 1;
             if self.nodes.len() < self.nodes_length {
                 self.nodes.push(None);
             }
-            self.nodes[dual_node_index] = Some(node_internal_ptr);
-            dual_node_index
+            self.nodes[node_index] = Some(node_internal_ptr);
+            node_index
         });
         let dual_node_internal_ptr = self.nodes[dual_node_index].as_ref().expect("internal dual node must exists");
         debug_assert!(dual_node_ptr == &dual_node_internal_ptr.read_recursive().origin.upgrade_force(), "dual node and dual internal node must corresponds to each other");

@@ -602,16 +602,31 @@ impl DualModuleInterface {
     pub fn create_syndrome_node(&mut self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         self.sum_grow_speed += 1;
         let node_idx = self.nodes_length;
-        self.nodes_length += 1;
-        let node_ptr = DualNodePtr::new(DualNode {
-            index: node_idx,
-            class: DualNodeClass::SyndromeVertex {
+        // try to reuse existing pointer to avoid heap allocation
+        let node_ptr = if node_idx < self.nodes.len() && self.nodes[node_idx].is_some() {
+            let node_ptr = self.nodes[node_idx].as_ref().unwrap().clone();
+            let mut node = node_ptr.write();
+            node.index = node_idx;
+            node.class = DualNodeClass::SyndromeVertex {
                 syndrome_index: vertex_idx,
-            },
-            grow_state: DualNodeGrowState::Grow,
-            parent_blossom: None,
-            dual_variable_cache: (0, self.dual_variable_global_progress),
-        });
+            };
+            node.grow_state = DualNodeGrowState::Grow;
+            node.parent_blossom = None;
+            node.dual_variable_cache = (0, self.dual_variable_global_progress);
+            drop(node);
+            node_ptr
+        } else {
+            DualNodePtr::new(DualNode {
+                index: node_idx,
+                class: DualNodeClass::SyndromeVertex {
+                    syndrome_index: vertex_idx,
+                },
+                grow_state: DualNodeGrowState::Grow,
+                parent_blossom: None,
+                dual_variable_cache: (0, self.dual_variable_global_progress),
+            })
+        };
+        self.nodes_length += 1;
         if self.nodes.len() < self.nodes_length {
             self.nodes.push(None);
         }
@@ -640,16 +655,31 @@ impl DualModuleInterface {
         }
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let node_index = self.nodes_length;
-        let blossom_node_ptr = DualNodePtr::new(DualNode {
-            index: node_index,
-            class: DualNodeClass::Blossom {
+        let blossom_node_ptr = if node_index < self.nodes.len() && self.nodes[node_index].is_some() {
+            let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
+            let mut node = node_ptr.write();
+            node.index = node_index;
+            node.class = DualNodeClass::Blossom {
                 nodes_circle: vec![],
                 touching_children: vec![],
-            },
-            grow_state: DualNodeGrowState::Grow,
-            parent_blossom: None,
-            dual_variable_cache: (0, self.dual_variable_global_progress),
-        });
+            };
+            node.grow_state = DualNodeGrowState::Grow;
+            node.parent_blossom = None;
+            node.dual_variable_cache = (0, self.dual_variable_global_progress);
+            drop(node);
+            node_ptr
+        } else {
+            DualNodePtr::new(DualNode {
+                index: node_index,
+                class: DualNodeClass::Blossom {
+                    nodes_circle: vec![],
+                    touching_children: vec![],
+                },
+                grow_state: DualNodeGrowState::Grow,
+                parent_blossom: None,
+                dual_variable_cache: (0, self.dual_variable_global_progress),
+            })
+        };
         for (i, node_ptr) in nodes_circle.iter().enumerate() {
             debug_assert!(self.check_ptr_belonging(node_ptr), "this ptr doesn't belong to this interface");
             let node = node_ptr.read_recursive();
