@@ -5,7 +5,7 @@
 //! 
 
 use super::util::*;
-use super::dual_module::{DualModuleInterface, DualModuleImpl};
+use super::dual_module::{DualModuleInterfacePtr, DualModuleImpl};
 use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching};
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerial;
@@ -31,7 +31,7 @@ pub struct LegacySolverSerial {
     #[derivative(Debug="ignore")]
     dual_module: DualModuleSerial,
     /// the interface between the primal and dual module
-    interface: DualModuleInterface,
+    interface_ptr: DualModuleInterfacePtr,
     /// subgraph builder for easier integration with decoder
     subgraph_builder: SubGraphBuilder,
 }
@@ -48,13 +48,13 @@ impl LegacySolverSerial {
     pub fn new(initializer: &SolverInitializer) -> Self {
         let dual_module = DualModuleSerial::new(initializer);
         let primal_module = PrimalModuleSerial::new(initializer);
-        let interface = DualModuleInterface::new_empty();
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
         let subgraph_builder = SubGraphBuilder::new(initializer);
         Self {
             initializer: initializer.clone(),
             primal_module: primal_module,
             dual_module: dual_module,
-            interface: interface,
+            interface_ptr: interface_ptr,
             subgraph_builder: subgraph_builder,
         }
     }
@@ -62,9 +62,9 @@ impl LegacySolverSerial {
     pub fn solve_perfect_matching(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
         self.primal_module.clear();
         self.dual_module.clear();
-        self.interface.clear();
-        self.primal_module.solve_visualizer(&mut self.interface, syndrome_pattern, &mut self.dual_module, visualizer);
-        self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module)
+        self.interface_ptr.clear();
+        self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
+        self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module)
     }
 
     /// solve subgraph directly
@@ -87,9 +87,9 @@ impl LegacySolverSerial {
     pub fn solve_legacy_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
         self.primal_module.clear();
         self.dual_module.clear();
-        self.interface.clear();
-        self.primal_module.solve_visualizer(&mut self.interface, syndrome_pattern, &mut self.dual_module, visualizer);
-        let perfect_matching = self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module);
+        self.interface_ptr.clear();
+        self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
+        let perfect_matching = self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module);
         perfect_matching.legacy_get_mwpm_result(&syndrome_pattern.syndrome_vertices)
     }
 
@@ -128,7 +128,7 @@ pub trait PrimalDualSolver {
 pub struct SolverSerial {
     dual_module: DualModuleSerial,
     primal_module: PrimalModuleSerial,
-    interface: DualModuleInterface,
+    interface_ptr: DualModuleInterfacePtr,
 }
 
 impl SolverSerial {
@@ -136,7 +136,7 @@ impl SolverSerial {
         Self {
             dual_module: DualModuleSerial::new(&initializer),
             primal_module: PrimalModuleSerial::new(&initializer),
-            interface: DualModuleInterface::new_empty(),
+            interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
     }
 }
@@ -145,13 +145,13 @@ impl PrimalDualSolver for SolverSerial {
     fn clear(&mut self) {
         self.primal_module.clear();
         self.dual_module.clear();
-        self.interface.clear();
+        self.interface_ptr.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        self.primal_module.solve_visualizer(&mut self.interface, syndrome_pattern, &mut self.dual_module, visualizer);
+        self.primal_module.solve_visualizer(&mut self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
     }
-    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
-    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
+    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module) }
+    fn sum_dual_variables(&self) -> Weight { self.interface_ptr.read_recursive().sum_dual_variables }
     fn generate_profiler_report(&self) -> serde_json::Value {
         json!({
             "dual": self.dual_module.generate_profiler_report(),
@@ -163,7 +163,7 @@ impl PrimalDualSolver for SolverSerial {
 pub struct SolverDualParallel {
     dual_module: DualModuleParallel<DualModuleSerial>,
     primal_module: PrimalModuleSerial,
-    interface: DualModuleInterface,
+    interface_ptr: DualModuleInterfacePtr,
 }
 
 impl SolverDualParallel {
@@ -172,7 +172,7 @@ impl SolverDualParallel {
         Self {
             dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), config),
             primal_module: PrimalModuleSerial::new(&initializer),
-            interface: DualModuleInterface::new_empty(),
+            interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
     }
 }
@@ -181,14 +181,14 @@ impl PrimalDualSolver for SolverDualParallel {
     fn clear(&mut self) {
         self.dual_module.clear();
         self.primal_module.clear();
-        self.interface.clear();
+        self.interface_ptr.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
         self.dual_module.static_fuse_all();
-        self.primal_module.solve_visualizer(&mut self.interface, syndrome_pattern, &mut self.dual_module, visualizer);
+        self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
     }
-    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&mut self.interface, &mut self.dual_module) }
-    fn sum_dual_variables(&self) -> Weight { self.interface.sum_dual_variables }
+    fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module) }
+    fn sum_dual_variables(&self) -> Weight { self.interface_ptr.read_recursive().sum_dual_variables }
     fn generate_profiler_report(&self) -> serde_json::Value {
         json!({
             "dual": self.dual_module.generate_profiler_report(),
@@ -222,12 +222,13 @@ impl PrimalDualSolver for SolverParallel {
         self.primal_module.parallel_solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
     }
     fn perfect_matching(&mut self) -> PerfectMatching {
-        let mut useless_interface = DualModuleInterface::new_empty();  // don't actually use it
-        self.primal_module.perfect_matching(&mut useless_interface, &mut self.dual_module)
+        let useless_interface_ptr = DualModuleInterfacePtr::new_empty();  // don't actually use it
+        self.primal_module.perfect_matching(&useless_interface_ptr, &mut self.dual_module)
     }
     fn sum_dual_variables(&self) -> Weight {
         let last_unit = self.primal_module.units.last().unwrap().write();  // use the interface in the last unit
-        last_unit.interface.sum_dual_variables
+        let sum_dual_variables = last_unit.interface_ptr.read_recursive().sum_dual_variables;
+        sum_dual_variables
     }
     fn generate_profiler_report(&self) -> serde_json::Value {
         json!({

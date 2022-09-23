@@ -149,7 +149,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         self.nodes[node.index] = Some(primal_node_internal_ptr);
     }
 
-    fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D) {
+    fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         debug_assert!(!group_max_update_length.is_empty() && group_max_update_length.get_none_zero_growth().is_none());
         let mut current_conflict_index = 0;
         while let Some(conflict) = group_max_update_length.pop() {
@@ -185,8 +185,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         primal_node_internal_1.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()), touching_ptr_1.downgrade()));
                         primal_node_internal_2.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()), touching_ptr_2.downgrade()));
                         // update dual module interface
-                        interface.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
-                        interface.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                        interface_ptr.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                        interface_ptr.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
                     }
                     // second probable case: single node touches a temporary matched pair and become an alternating tree
@@ -223,9 +223,9 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 });
                                 leaf_node_internal.temporary_match = None;
                                 // update dual module interface
-                                interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
-                                interface.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Shrink, dual_module);
-                                interface.set_grow_state(&leaf_node_internal.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
+                                interface_ptr.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
+                                interface_ptr.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Shrink, dual_module);
+                                interface_ptr.set_grow_state(&leaf_node_internal.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
                                 continue
                             },
                             MatchTarget::VirtualVertex(_) => {
@@ -233,8 +233,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 free_node_internal.temporary_match = Some((MatchTarget::Peer(matched_node_internal_ptr.downgrade()), free_touching_ptr.downgrade()));
                                 matched_node_internal.temporary_match = Some((MatchTarget::Peer(free_node_internal_ptr.downgrade()), matched_touching_ptr.downgrade()));
                                 // update dual module interface
-                                interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
-                                interface.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                                interface_ptr.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                                interface_ptr.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                                 continue
                             }
                         }
@@ -248,9 +248,9 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 (primal_node_internal_ptr_2.clone(), touching_ptr_2.clone(), primal_node_internal_2, primal_node_internal_ptr_1.clone(), touching_ptr_1.clone(), primal_node_internal_1)
                             };
                         free_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), free_touching_ptr.downgrade()));
-                        interface.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                        interface_ptr.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         drop(tree_node_internal);  // unlock
-                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr.downgrade(), interface, dual_module);
+                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr.downgrade(), interface_ptr, dual_module);
                         continue
                     }
                     // fourth probable case: tree touches matched pair
@@ -287,8 +287,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 });
                                 leaf_node_internal.temporary_match = None;
                                 // update dual module interface
-                                interface.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Shrink, dual_module);
-                                interface.set_grow_state(&leaf_node_internal.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
+                                interface_ptr.set_grow_state(&matched_node_internal.origin.upgrade_force(), DualNodeGrowState::Shrink, dual_module);
+                                interface_ptr.set_grow_state(&leaf_node_internal.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
                                 continue
                             },
                             MatchTarget::VirtualVertex(_) => {
@@ -296,7 +296,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 matched_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), matched_touching_ptr.downgrade()));
                                 drop(matched_node_internal);  // unlock
                                 drop(tree_node_internal);  // unlock
-                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr.downgrade(), interface, dual_module);
+                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr.downgrade(), interface_ptr, dual_module);
                                 continue
                             }
                         }
@@ -372,7 +372,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 }
                                 touching_children
                             };
-                            let blossom_node_ptr = interface.create_blossom(nodes_circle, touching_children, dual_module);
+                            let blossom_node_ptr = interface_ptr.create_blossom(nodes_circle, touching_children, dual_module);
                             let node_index = self.nodes_length;
                             let primal_node_internal_blossom_ptr = if !self.disable_pointer_reuse && node_index < self.nodes.len() && self.nodes[node_index].is_some() {
                                 let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
@@ -472,8 +472,10 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         } else {
                             drop(primal_node_internal_1);  // unlock
                             drop(primal_node_internal_2);  // unlock
-                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1.downgrade(), interface, dual_module);
-                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2.downgrade(), interface, dual_module);
+                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1.downgrade()
+                                , interface_ptr, dual_module);
+                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2.downgrade()
+                                , interface_ptr, dual_module);
                             continue
                         }
                     }
@@ -494,13 +496,13 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         if is_mirror {
                             self.possible_break.insert(primal_node_internal.index);
                         }
-                        interface.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                        interface_ptr.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
                     }
                     // tree touching virtual boundary will just augment the whole tree
                     if primal_node_internal.tree_node.is_some() {
                         drop(primal_node_internal);
-                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr.downgrade(), interface, dual_module);
+                        self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr.downgrade(), interface_ptr, dual_module);
                         continue
                     }
                     unreachable!()
@@ -557,7 +559,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         // find which blossom-child is touching this child
                         (child_ptr.clone(), child_tree_node.parent.as_ref().unwrap().1.clone(), child_touching_child_ptr)
                     };
-                    interface.expand_blossom(node_ptr, dual_module);
+                    interface_ptr.expand_blossom(node_ptr, dual_module);
                     // now we need to re-connect all the expanded nodes, by analyzing the relationship of nodes_circle, parent_touching_ptr and child_touching_ptr
                     let parent_touching_index = nodes_circle.iter().position(|ptr| ptr == &parent_touching_child_ptr).expect("touching node should be in the blossom circle");
                     let child_touching_index = nodes_circle.iter().position(|ptr| ptr == &child_touching_child_ptr).expect("touching node should be in the blossom circle");
@@ -606,8 +608,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                         let mut primal_node_internal_2 = primal_node_internal_ptr_2.write();
                         primal_node_internal_1.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_2.downgrade()), touching_ptr_1));
                         primal_node_internal_2.temporary_match = Some((MatchTarget::Peer(primal_node_internal_ptr_1.downgrade()), touching_ptr_2));
-                        interface.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
-                        interface.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                        interface_ptr.set_grow_state(&primal_node_internal_1.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                        interface_ptr.set_grow_state(&primal_node_internal_2.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                     }
                     // connect the nodes in the tree sequence to the alternating tree, note that the tree sequence is from parent to child
                     for (idx, current_i) in tree_sequence.iter().enumerate() {
@@ -638,7 +640,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             children: vec![(current_child_ptr.downgrade(), current_child_touching_ptr)],
                             depth: tree_node.depth + idx,
                         });
-                        interface.set_grow_state(&current.origin.upgrade_force(), if idx % 2 == 0 { DualNodeGrowState::Shrink } else { DualNodeGrowState::Grow }, dual_module);
+                        interface_ptr.set_grow_state(&current.origin.upgrade_force(), if idx % 2 == 0 { DualNodeGrowState::Shrink } else { DualNodeGrowState::Grow }, dual_module);
                     }
                     {  // connect parent
                         let mut parent = parent_ptr.write();
@@ -666,7 +668,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         }
     }
 
-    fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &mut DualModuleInterface, _dual_module: &mut D) -> IntermediateMatching {
+    fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &DualModuleInterfacePtr, _dual_module: &mut D) -> IntermediateMatching {
         let mut immediate_matching = IntermediateMatching::new();
         for i in 0..self.nodes_length {
             let primal_node_internal_ptr = self.nodes[i].clone();
@@ -837,21 +839,21 @@ impl PrimalModuleSerial {
     }
 
     /// for any - node, match the children by matching them with + node
-    pub fn match_subtree<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, interface: &mut DualModuleInterface, dual_module: &mut D) {
+    pub fn match_subtree<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 1, "only match - node is possible");
         let child_node_internal_ptr = tree_node.children[0].0.upgrade_force();
         tree_node_internal.temporary_match = Some((MatchTarget::Peer(child_node_internal_ptr.downgrade()), tree_node.children[0].1.clone()));
-        interface.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+        interface_ptr.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         tree_node_internal.tree_node = None;
         let mut child_node_internal = child_node_internal_ptr.write();
         let child_touching_ptr = child_node_internal.tree_node.as_ref().unwrap().parent.as_ref().unwrap().1.clone();
         child_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), child_touching_ptr));
         let child_tree_node = child_node_internal.tree_node.as_ref().unwrap();
-        interface.set_grow_state(&child_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+        interface_ptr.set_grow_state(&child_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         for (grandson_ptr, _) in child_tree_node.children.iter() {
-            self.match_subtree(grandson_ptr.upgrade_force(), interface, dual_module);
+            self.match_subtree(grandson_ptr.upgrade_force(), interface_ptr, dual_module);
         }
         child_node_internal.tree_node = None;
     }
@@ -859,15 +861,15 @@ impl PrimalModuleSerial {
     /// for any + node, match it with another node will augment the whole tree, breaking out into several matched pairs;
     /// `tree_grandson_ptr` is the grandson of tree_node_internal_ptr that touches `match_node_internal_ptr`
     pub fn augment_tree_given_matched<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, match_node_internal_ptr: PrimalNodeInternalPtr
-            , tree_touching_ptr: DualNodeWeak, interface: &mut DualModuleInterface, dual_module: &mut D) {
+            , tree_touching_ptr: DualNodeWeak, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
         tree_node_internal.temporary_match = Some((MatchTarget::Peer(match_node_internal_ptr.downgrade()), tree_touching_ptr));
-        interface.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+        interface_ptr.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
         for (child_ptr, _) in tree_node.children.iter() {
             if child_ptr != &match_node_internal_ptr.downgrade() {
-                self.match_subtree(child_ptr.upgrade_force(), interface, dual_module);
+                self.match_subtree(child_ptr.upgrade_force(), interface_ptr, dual_module);
             }
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
@@ -879,7 +881,7 @@ impl PrimalModuleSerial {
                 let grandparent_node_internal_weak = parent_tree_node.parent.as_ref().unwrap().0.clone();
                 parent_node_internal.temporary_match = Some((MatchTarget::Peer(grandparent_node_internal_weak.clone()), parent_tree_node.parent.as_ref().unwrap().1.clone()));
                 parent_node_internal.tree_node = None;
-                interface.set_grow_state(&parent_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                interface_ptr.set_grow_state(&parent_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                 grandparent_node_internal_weak.upgrade_force()
             };
             let grandparent_touching_ptr = {
@@ -888,21 +890,21 @@ impl PrimalModuleSerial {
                 let idx = grandparent_tree_node.children.iter().position(|(ptr, _)| ptr == &parent_node_internal_weak).expect("should find child");
                 grandparent_tree_node.children[idx].1.clone()
             };
-            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface, dual_module);
+            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface_ptr, dual_module);
         }
         tree_node_internal.tree_node = None;
     }
 
     /// for any + node, match it with virtual boundary will augment the whole tree, breaking out into several matched pairs
     pub fn augment_tree_given_virtual_vertex<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, virtual_vertex_index: VertexIndex
-            , tree_touching_ptr: DualNodeWeak, interface: &mut DualModuleInterface, dual_module: &mut D) {
+            , tree_touching_ptr: DualNodeWeak, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
         tree_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), tree_touching_ptr));
-        interface.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+        interface_ptr.set_grow_state(&tree_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
         for (child_ptr, _) in tree_node.children.iter() {
-            self.match_subtree(child_ptr.upgrade_force(), interface, dual_module);
+            self.match_subtree(child_ptr.upgrade_force(), interface_ptr, dual_module);
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
             let parent_node_internal_weak = tree_node.parent.as_ref().unwrap().0.clone();
@@ -913,7 +915,7 @@ impl PrimalModuleSerial {
                 let grandparent_node_internal_weak = parent_tree_node.parent.as_ref().unwrap().0.clone();
                 parent_node_internal.temporary_match = Some((MatchTarget::Peer(grandparent_node_internal_weak.clone()), parent_tree_node.parent.as_ref().unwrap().1.clone()));
                 parent_node_internal.tree_node = None;
-                interface.set_grow_state(&parent_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
+                interface_ptr.set_grow_state(&parent_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                 grandparent_node_internal_weak.upgrade_force()
             };
             let grandparent_touching_ptr = {
@@ -922,7 +924,7 @@ impl PrimalModuleSerial {
                 let idx = grandparent_tree_node.children.iter().position(|(ptr, _)| ptr == &parent_node_internal_weak).expect("should find child");
                 grandparent_tree_node.children[idx].1.clone()
             };
-            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface, dual_module);
+            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr.clone(), grandparent_touching_ptr, interface_ptr, dual_module);
         }
         tree_node_internal.tree_node = None;
     }
@@ -1062,7 +1064,7 @@ pub mod tests {
     use super::super::*;
 
     pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
-            -> (DualModuleInterface, PrimalModuleSerial, DualModuleSerial) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleSerial) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
@@ -1082,14 +1084,14 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
-        assert_eq!(interface.sum_dual_variables, final_dual * 2 * half_weight, "unexpected final dual variable sum");
-        (interface, primal_module, dual_module)
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        assert_eq!(interface_ptr.sum_dual_variables(), final_dual * 2 * half_weight, "unexpected final dual variable sum");
+        (interface_ptr, primal_module, dual_module)
     }
 
     pub fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
-            -> (DualModuleInterface, PrimalModuleSerial, DualModuleSerial) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleSerial) {
         primal_module_serial_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
     }
 
@@ -1209,9 +1211,9 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
-        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+        let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
@@ -1225,7 +1227,7 @@ pub mod tests {
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
-        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface_ptr.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
     }
 
     /// debug a case where it disagree with blossom V library, mine reports 33000, blossom V reports 34000
@@ -1254,9 +1256,9 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
-        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+        let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
@@ -1270,7 +1272,7 @@ pub mod tests {
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
-        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface_ptr.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
     }
 
     /// debug a case where it disagree with blossom V library, mine reports 16000, blossom V reports 17000
@@ -1299,9 +1301,9 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
-        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+        let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
@@ -1315,7 +1317,7 @@ pub mod tests {
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
-        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface_ptr.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
     }
 
     /// debug a case where it disagree with blossom V library, mine reports 9000, blossom V reports 7000
@@ -1344,9 +1346,9 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
-        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+        let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
@@ -1360,7 +1362,7 @@ pub mod tests {
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
-        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface_ptr.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
     }
 
     /// debug a case of being stuck after disable the flag `debug_resolve_only_one` for faster speed
@@ -1388,9 +1390,9 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
-        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+        let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
@@ -1404,16 +1406,16 @@ pub mod tests {
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
-        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface_ptr.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
     }
 
     #[test]
     fn primal_module_serial_perfect_matching_1() {  // cargo test primal_module_serial_perfect_matching_1 -- --nocapture
         let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
-        let (mut interface, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, syndrome_vertices, 6);
-        let intermediate_matching = primal_module.intermediate_matching(&mut interface, &mut dual_module);
+        let (interface_ptr, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, syndrome_vertices, 6);
+        let intermediate_matching = primal_module.intermediate_matching(&interface_ptr, &mut dual_module);
         println!("intermediate_matching: {intermediate_matching:?}");
-        let perfect_matching = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let perfect_matching = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         println!("perfect_matching: {perfect_matching:?}");
     }
 
@@ -1448,9 +1450,9 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerial::new(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
-        let fusion_mwpm = primal_module.perfect_matching(&mut interface, &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+        let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
         let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
@@ -1464,7 +1466,7 @@ pub mod tests {
             subgraph_builder.load_perfect_matching(&fusion_mwpm);
             assert_eq!(subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
         }
-        assert_eq!(interface.sum_dual_variables, blossom_total_weight, "unexpected final dual variable sum");
+        assert_eq!(interface_ptr.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
     }
 
 }

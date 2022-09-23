@@ -509,13 +509,13 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     /// fuse the children of this unit and also fuse the interfaces of them
-    pub fn fuse(&mut self, parent_interface: &mut DualModuleInterface, children_interfaces: (&DualModuleInterface, &DualModuleInterface)) {
+    pub fn fuse(&mut self, parent_interface: &DualModuleInterfacePtr, children_interfaces: (&DualModuleInterfacePtr, &DualModuleInterfacePtr)) {
         self.static_fuse();
         let (left_interface, right_interface) = children_interfaces;
         let right_child_ptr = self.children.as_ref().unwrap().1.upgrade_force();
         let mut right_child = right_child_ptr.write();
         // change the index of dual nodes in the right children
-        let bias = left_interface.nodes_length;
+        let bias = left_interface.read_recursive().nodes_length;
         right_child.iterative_bias_dual_node_index(bias);
         parent_interface.fuse(left_interface, right_interface);
     }
@@ -971,7 +971,7 @@ pub mod tests {
 
     pub fn dual_module_parallel_basic_standard_syndrome_optional_viz<F>(mut code: impl ExampleCode, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
-            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
         println!("{syndrome_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
@@ -998,15 +998,15 @@ pub mod tests {
         primal_module.debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
-        let mut interface = DualModuleInterface::new_empty();
-        primal_module.solve_visualizer(&mut interface, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
-        assert_eq!(interface.sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
-        (interface, primal_module, dual_module)
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        assert_eq!(interface_ptr.sum_dual_variables(), final_dual * 2, "unexpected final dual variable sum");
+        (interface_ptr, primal_module, dual_module)
     }
 
     pub fn dual_module_parallel_standard_syndrome<F>(code: impl ExampleCode, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
             , final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
-            -> (DualModuleInterface, PrimalModuleSerial, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
         dual_module_parallel_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), syndrome_vertices, final_dual, partition_func, reordered_vertices)
     }
 

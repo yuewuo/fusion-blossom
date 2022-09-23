@@ -1728,29 +1728,29 @@ mod tests {
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
-        let interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
-        let dual_node_19_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_25_ptr = interface.nodes[1].as_ref().unwrap().clone();
+        let dual_node_19_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        let dual_node_25_ptr = interface_ptr.read_recursive().nodes[1].clone().unwrap();
         dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
-        visualizer.snapshot_combined(format!("grow to 0.5"), vec![&interface, &dual_module]).unwrap();
+        visualizer.snapshot_combined(format!("grow to 0.5"), vec![&interface_ptr, &dual_module]).unwrap();
         dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
-        visualizer.snapshot_combined(format!("grow to 1"), vec![&interface, &dual_module]).unwrap();
+        visualizer.snapshot_combined(format!("grow to 1"), vec![&interface_ptr, &dual_module]).unwrap();
         dual_module.grow_dual_node(&dual_node_19_ptr, half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, half_weight);
-        visualizer.snapshot_combined(format!("grow to 1.5"), vec![&interface, &dual_module]).unwrap();
+        visualizer.snapshot_combined(format!("grow to 1.5"), vec![&interface_ptr, &dual_module]).unwrap();
         dual_module.grow_dual_node(&dual_node_19_ptr, -half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, -half_weight);
-        visualizer.snapshot_combined(format!("shrink to 1"), vec![&interface, &dual_module]).unwrap();
+        visualizer.snapshot_combined(format!("shrink to 1"), vec![&interface_ptr, &dual_module]).unwrap();
         dual_module.grow_dual_node(&dual_node_19_ptr, -half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, -half_weight);
-        visualizer.snapshot_combined(format!("shrink to 0.5"), vec![&interface, &dual_module]).unwrap();
+        visualizer.snapshot_combined(format!("shrink to 0.5"), vec![&interface_ptr, &dual_module]).unwrap();
         dual_module.grow_dual_node(&dual_node_19_ptr, -half_weight);
         dual_module.grow_dual_node(&dual_node_25_ptr, -half_weight);
-        visualizer.snapshot_combined(format!("shrink to 0"), vec![&interface, &dual_module]).unwrap();
+        visualizer.snapshot_combined(format!("shrink to 0"), vec![&interface_ptr, &dual_module]).unwrap();
     }
 
     #[test]
@@ -1768,41 +1768,41 @@ mod tests {
         code.vertices[19].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
         code.vertices[35].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
-        let dual_node_19_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_26_ptr = interface.nodes[1].as_ref().unwrap().clone();
-        let dual_node_35_ptr = interface.nodes[2].as_ref().unwrap().clone();
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot_combined(format!("before create blossom"), vec![&interface, &dual_module]).unwrap();
+        let dual_node_19_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        let dual_node_26_ptr = interface_ptr.read_recursive().nodes[1].clone().unwrap();
+        let dual_node_35_ptr = interface_ptr.read_recursive().nodes[2].clone().unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 6 * half_weight);
+        visualizer.snapshot_combined(format!("before create blossom"), vec![&interface_ptr, &dual_module]).unwrap();
         let nodes_circle = vec![dual_node_19_ptr.clone(), dual_node_26_ptr.clone(), dual_node_35_ptr.clone()];
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        let dual_node_blossom = interface.create_blossom(nodes_circle, vec![], &mut dual_module);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 7 * half_weight);
-        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&interface, &dual_module]).unwrap();
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 8 * half_weight);
-        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&interface, &dual_module]).unwrap();
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 9 * half_weight);
-        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&interface, &dual_module]).unwrap();
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 8 * half_weight);
-        visualizer.snapshot_combined(format!("blossom shrink half weight"), vec![&interface, &dual_module]).unwrap();
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot_combined(format!("blossom shrink weight"), vec![&interface, &dual_module]).unwrap();
-        interface.expand_blossom(dual_node_blossom, &mut dual_module);
-        interface.set_grow_state(&dual_node_19_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.set_grow_state(&dual_node_35_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 3 * half_weight);
-        visualizer.snapshot_combined(format!("individual shrink half weight"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        let dual_node_blossom = interface_ptr.create_blossom(nodes_circle, vec![], &mut dual_module);
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 7 * half_weight);
+        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&interface_ptr, &dual_module]).unwrap();
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 8 * half_weight);
+        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&interface_ptr, &dual_module]).unwrap();
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 9 * half_weight);
+        visualizer.snapshot_combined(format!("blossom grow half weight"), vec![&interface_ptr, &dual_module]).unwrap();
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 8 * half_weight);
+        visualizer.snapshot_combined(format!("blossom shrink half weight"), vec![&interface_ptr, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 6 * half_weight);
+        visualizer.snapshot_combined(format!("blossom shrink weight"), vec![&interface_ptr, &dual_module]).unwrap();
+        interface_ptr.expand_blossom(dual_node_blossom, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_19_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_35_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 3 * half_weight);
+        visualizer.snapshot_combined(format!("individual shrink half weight"), vec![&interface_ptr, &dual_module]).unwrap();
     }
 
     #[test]
@@ -1819,23 +1819,23 @@ mod tests {
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
-        let dual_node_19_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_25_ptr = interface.nodes[1].as_ref().unwrap().clone();
+        let dual_node_19_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        let dual_node_25_ptr = interface_ptr.read_recursive().nodes[1].clone().unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 4 * half_weight);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 6 * half_weight);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_19_ptr, &dual_node_25_ptr), "unexpected: {:?}", group_max_update_length);
@@ -1856,93 +1856,93 @@ mod tests {
         code.vertices[18].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
         code.vertices[34].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
-        let dual_node_18_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_26_ptr = interface.nodes[1].as_ref().unwrap().clone();
-        let dual_node_34_ptr = interface.nodes[2].as_ref().unwrap().clone();
+        let dual_node_18_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        let dual_node_26_ptr = interface_ptr.read_recursive().nodes[1].clone().unwrap();
+        let dual_node_34_ptr = interface_ptr.read_recursive().nodes[2].clone().unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 3 * half_weight);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 3 * half_weight);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
             || group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
-        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
-        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 4 * half_weight);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
-        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], vec![], &mut dual_module);
+        let dual_node_blossom = interface_ptr.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], vec![], &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot_combined(format!("grow blossom"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 6 * half_weight);
+        visualizer.snapshot_combined(format!("grow blossom"), vec![&interface_ptr, &dual_module]).unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 8 * half_weight);
-        visualizer.snapshot_combined(format!("grow blossom"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 8 * half_weight);
+        visualizer.snapshot_combined(format!("grow blossom"), vec![&interface_ptr, &dual_module]).unwrap();
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
             || group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.is_empty(), "unexpected: {:?}", group_max_update_length);
         // also test the reverse procedure: shrinking and expanding blossom
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 6 * half_weight);
-        visualizer.snapshot_combined(format!("shrink blossom"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 6 * half_weight);
+        visualizer.snapshot_combined(format!("shrink blossom"), vec![&interface_ptr, &dual_module]).unwrap();
         // before expand
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
-        visualizer.snapshot_combined(format!("shrink blossom"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 4 * half_weight);
+        visualizer.snapshot_combined(format!("shrink blossom"), vec![&interface_ptr, &dual_module]).unwrap();
         // cannot shrink anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
             , "unexpected: {:?}", group_max_update_length);
         // expand blossom
-        interface.expand_blossom(dual_node_blossom, &mut dual_module);
+        interface_ptr.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
-        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Grow, &mut dual_module);
-        interface.set_grow_state(&dual_node_34_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_34_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 2 * half_weight);
-        visualizer.snapshot_combined(format!("shrink"), vec![&interface, &dual_module]).unwrap();
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 2 * half_weight);
+        visualizer.snapshot_combined(format!("shrink"), vec![&interface_ptr, &dual_module]).unwrap();
     }
 
     /// this test helps observe bugs of fast clear, by removing snapshot: snapshot will do the clear automatically
@@ -1957,81 +1957,81 @@ mod tests {
         code.vertices[18].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
         code.vertices[34].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         // create dual nodes and grow them by half length
-        let dual_node_18_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_26_ptr = interface.nodes[1].as_ref().unwrap().clone();
-        let dual_node_34_ptr = interface.nodes[2].as_ref().unwrap().clone();
+        let dual_node_18_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        let dual_node_26_ptr = interface_ptr.read_recursive().nodes[1].clone().unwrap();
+        let dual_node_34_ptr = interface_ptr.read_recursive().nodes[2].clone().unwrap();
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 3 * half_weight);
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 3 * half_weight);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_26_ptr)
             || group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // first match 18 and 26
-        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Stay, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Stay, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_26_ptr, &dual_node_34_ptr)
             , "unexpected: {:?}", group_max_update_length);
         // 34 touches 26, so it will grow the tree by absorbing 18 and 26
-        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 4 * half_weight);
+        interface_ptr.grow(half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 4 * half_weight);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().is_conflicting(&dual_node_18_ptr, &dual_node_34_ptr), "unexpected: {:?}", group_max_update_length);
         // for a blossom because 18 and 34 come from the same alternating tree
-        let dual_node_blossom = interface.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], vec![], &mut dual_module);
+        let dual_node_blossom = interface_ptr.create_blossom(vec![dual_node_18_ptr.clone(), dual_node_26_ptr.clone(), dual_node_34_ptr.clone()], vec![], &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
         // grow the maximum
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
         // cannot grow anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 23))
             || group_max_update_length.peek().unwrap().get_touching_virtual() == Some((dual_node_blossom.clone(), 39))
             , "unexpected: {:?}", group_max_update_length);
         // blossom touches virtual boundary, so it's matched
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Stay, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.is_empty(), "unexpected: {:?}", group_max_update_length);
         // also test the reverse procedure: shrinking and expanding blossom
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
         // before expand
-        interface.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_blossom, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
         // cannot shrink anymore, find out the reason
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert!(group_max_update_length.peek().unwrap() == &MaxUpdateLength::BlossomNeedExpand(dual_node_blossom.clone())
             , "unexpected: {:?}", group_max_update_length);
         // expand blossom
-        interface.expand_blossom(dual_node_blossom, &mut dual_module);
+        interface_ptr.expand_blossom(dual_node_blossom, &mut dual_module);
         // regain access to underlying nodes
-        interface.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Grow, &mut dual_module);
-        interface.set_grow_state(&dual_node_34_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_18_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_26_ptr, DualNodeGrowState::Grow, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_34_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         let group_max_update_length = dual_module.compute_maximum_update_length();
         assert_eq!(group_max_update_length.get_none_zero_growth(), Some(2 * half_weight), "unexpected: {:?}", group_max_update_length);
-        interface.grow(2 * half_weight, &mut dual_module);
-        assert_eq!(interface.sum_dual_variables, 2 * half_weight);
+        interface_ptr.grow(2 * half_weight, &mut dual_module);
+        assert_eq!(interface_ptr.sum_dual_variables(), 2 * half_weight);
     }
 
     #[test]
@@ -2049,21 +2049,21 @@ mod tests {
         code.vertices[39].is_syndrome = true;
         code.vertices[65].is_syndrome = true;
         code.vertices[87].is_syndrome = true;
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
-        interface.grow_iterative(4 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
-        assert_eq!(interface.sum_dual_variables, 3 * 4 * half_weight);
-        let dual_node_39_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        let dual_node_65_ptr = interface.nodes[1].as_ref().unwrap().clone();
-        let dual_node_87_ptr = interface.nodes[2].as_ref().unwrap().clone();
-        interface.set_grow_state(&dual_node_39_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.set_grow_state(&dual_node_65_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.set_grow_state(&dual_node_87_ptr, DualNodeGrowState::Shrink, &mut dual_module);
-        interface.grow_iterative(4 * half_weight, &mut dual_module);
-        visualizer.snapshot_combined(format!("shrink"), vec![&interface, &dual_module]).unwrap();
-        assert_eq!(interface.sum_dual_variables, 0);
+        interface_ptr.grow_iterative(4 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+        assert_eq!(interface_ptr.sum_dual_variables(), 3 * 4 * half_weight);
+        let dual_node_39_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        let dual_node_65_ptr = interface_ptr.read_recursive().nodes[1].clone().unwrap();
+        let dual_node_87_ptr = interface_ptr.read_recursive().nodes[2].clone().unwrap();
+        interface_ptr.set_grow_state(&dual_node_39_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_65_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.set_grow_state(&dual_node_87_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        interface_ptr.grow_iterative(4 * half_weight, &mut dual_module);
+        visualizer.snapshot_combined(format!("shrink"), vec![&interface_ptr, &dual_module]).unwrap();
+        assert_eq!(interface_ptr.sum_dual_variables(), 0);
     }
 
     #[test]
@@ -2094,29 +2094,29 @@ mod tests {
         // try to work on a simple syndrome
         code.vertices[64].is_syndrome = true;
         code.set_erasures(&vec![110, 78, 57, 142, 152, 163, 164]);
-        let mut interface = DualModuleInterface::new(&code.get_syndrome(), &mut dual_module);
-        visualizer.snapshot_combined(format!("syndrome"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
+        visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
         for _ in 0..3 {
-            interface.grow_iterative(2 * half_weight, &mut dual_module);
-            visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+            interface_ptr.grow_iterative(2 * half_weight, &mut dual_module);
+            visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
         }
         // set them to shrink
-        let dual_node_ptr = interface.nodes[0].as_ref().unwrap().clone();
-        interface.set_grow_state(&dual_node_ptr, DualNodeGrowState::Shrink, &mut dual_module);
+        let dual_node_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+        interface_ptr.set_grow_state(&dual_node_ptr, DualNodeGrowState::Shrink, &mut dual_module);
         // shrink them back, to make sure the operation is reversible
         for _ in 0..3 {
-            interface.grow_iterative(2 * half_weight, &mut dual_module);
-            visualizer.snapshot_combined(format!("shrink"), vec![&interface, &dual_module]).unwrap();
+            interface_ptr.grow_iterative(2 * half_weight, &mut dual_module);
+            visualizer.snapshot_combined(format!("shrink"), vec![&interface_ptr, &dual_module]).unwrap();
         }
         // cancel the erasures and grow the dual module in normal case, this should automatically clear the erasures
         dual_module.clear();
          // no erasures this time, to test if the module recovers correctly
-        let mut interface = DualModuleInterface::new(&SyndromePattern::new_vertices(code.get_syndrome().syndrome_vertices), &mut dual_module);
-        visualizer.snapshot_combined(format!("after clear"), vec![&interface, &dual_module]).unwrap();
+        let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(code.get_syndrome().syndrome_vertices), &mut dual_module);
+        visualizer.snapshot_combined(format!("after clear"), vec![&interface_ptr, &dual_module]).unwrap();
         for _ in 0..3 {
-            interface.grow_iterative(2 * half_weight, &mut dual_module);
-            visualizer.snapshot_combined(format!("grow"), vec![&interface, &dual_module]).unwrap();
+            interface_ptr.grow_iterative(2 * half_weight, &mut dual_module);
+            visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
         }
     }
 

@@ -41,14 +41,16 @@ pub trait PrimalModuleImpl {
     fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
 
     /// load a single syndrome and update the dual module and the interface
-    fn load_syndrome<D: DualModuleImpl>(&mut self, syndrome_vertex: VertexIndex, interface: &mut DualModuleInterface, dual_module: &mut D) {
-        interface.create_syndrome_node(syndrome_vertex, dual_module);
+    fn load_syndrome<D: DualModuleImpl>(&mut self, syndrome_vertex: VertexIndex, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
+        interface_ptr.create_syndrome_node(syndrome_vertex, dual_module);
+        let interface = interface_ptr.read_recursive();
         let index = interface.nodes_length - 1;
         self.load_syndrome_dual_node(interface.nodes[index].as_ref().expect("must load a fresh dual module interface, found empty node"))
     }
 
     /// load a new decoding problem given dual interface: note that all nodes MUST be syndrome node
-    fn load(&mut self, interface: &DualModuleInterface) {
+    fn load(&mut self, interface_ptr: &DualModuleInterfacePtr) {
+        let interface = interface_ptr.read_recursive();
         for index in 0..interface.nodes_length {
             let node = &interface.nodes[index];
             assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
@@ -64,22 +66,22 @@ pub trait PrimalModuleImpl {
     /// and then tell dual module what to do to resolve these conflicts;
     /// note that this function doesn't necessarily resolve all the conflicts, but can return early if some major change is made.
     /// when implementing this function, it's recommended that you resolve as many conflicts as possible.
-    fn resolve<D: DualModuleImpl>(&mut self, group_max_update_length: GroupMaxUpdateLength, interface: &mut DualModuleInterface, dual_module: &mut D);
+    fn resolve<D: DualModuleImpl>(&mut self, group_max_update_length: GroupMaxUpdateLength, interface: &DualModuleInterfacePtr, dual_module: &mut D);
 
     /// return a matching that can possibly include blossom nodes: this does not affect dual module
-    fn intermediate_matching<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D) -> IntermediateMatching;
+    fn intermediate_matching<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D) -> IntermediateMatching;
 
     /// break down the blossoms to find the final matching; this function will take more time on the dual module
-    fn perfect_matching<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D) -> PerfectMatching {
+    fn perfect_matching<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D) -> PerfectMatching {
         let intermediate_matching = self.intermediate_matching(interface, dual_module);
         intermediate_matching.get_perfect_matching()
     }
 
-    fn solve<D: DualModuleImpl>(&mut self, interface: &mut DualModuleInterface, syndrome_pattern: &SyndromePattern, dual_module: &mut D) {
+    fn solve<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D) {
         self.solve_step_callback(interface, syndrome_pattern, dual_module, |_, _, _, _| {})
     }
 
-    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(&mut self, interface: &mut DualModuleInterface, syndrome_pattern: &SyndromePattern, dual_module: &mut D
+    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D
             , visualizer: Option<&mut Visualizer>) where Self: FusionVisualizer + Sized {
         if let Some(visualizer) = visualizer {
             self.solve_step_callback(interface, syndrome_pattern, dual_module, |interface, dual_module, primal_module, group_max_update_length| {
@@ -97,15 +99,15 @@ pub trait PrimalModuleImpl {
         }
     }
 
-    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, interface: &mut DualModuleInterface, syndrome_pattern: &SyndromePattern, dual_module: &mut D, callback: F)
-            where F: FnMut(&mut DualModuleInterface, &mut D, &mut Self, &GroupMaxUpdateLength) {
+    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D, callback: F)
+            where F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength) {
         interface.load(syndrome_pattern, dual_module);
         self.load(&interface);
         self.solve_step_callback_interface_loaded(interface, dual_module, callback);
     }
 
-    fn solve_step_callback_interface_loaded<D: DualModuleImpl, F>(&mut self, interface: &mut DualModuleInterface, dual_module: &mut D, mut callback: F)
-            where F: FnMut(&mut DualModuleInterface, &mut D, &mut Self, &GroupMaxUpdateLength) {
+    fn solve_step_callback_interface_loaded<D: DualModuleImpl, F>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D, mut callback: F)
+            where F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength) {
         let mut group_max_update_length = dual_module.compute_maximum_update_length();
         while !group_max_update_length.is_empty() {
             callback(interface, dual_module, self, &group_max_update_length);
