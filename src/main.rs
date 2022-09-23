@@ -354,6 +354,20 @@ impl Cli {
                                     , format!("--pb-message"), format!("2-partition repetition {d} {p}")]);
                             }
                         }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
+                            for d in [7, 11, 15, 19] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
+                                    , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-half")
+                                    , format!("--pb-message"), format!("2-partition planar {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // complex partition into 4 blocks
+                            for d in [7, 11, 15, 19] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
+                                    , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-four")
+                                    , format!("--pb-message"), format!("4-partition planar {d} {p}")]);
+                            }
+                        }
                         let command_head = vec![format!(""), format!("benchmark")];
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("parallel")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }

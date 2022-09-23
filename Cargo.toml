@@ -36,6 +36,7 @@ blossom_v = []  # automatically enabled when file `blossomV/PerfectMatching.h` e
 i32_weight = []  # use i32 instead of i64 as weight type, to be the same as blossom V library
 u32_index = []  # use u32 instead of usize as index type, to save memory by at most half
 ordered_conflicts = []  # sort conflict events, by default do not sort for better performance
+disable_visualizer = []  # disable all visualizer behavior
 
 [dependencies]
 rand_xoshiro = "0.6.0"

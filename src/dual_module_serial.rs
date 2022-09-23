@@ -61,7 +61,7 @@ pub struct UnitModuleInfo {
     /// all mirrored vertices (excluding owned ones) to query if this module contains the vertex
     pub mirrored_vertices: HashMap<VertexIndex, usize>,
     /// owned dual nodes range
-    pub owning_dual_range: VertexRange,
+    pub owning_dual_range: NodeRange,
     /// hash table for mapping [`DualNodePtr`] to internal [`DualNodeInternalPtr`]
     pub dual_node_pointers: PtrWeakKeyHashMap<DualNodeWeak, usize>,
 }
@@ -608,6 +608,7 @@ impl DualModuleImpl for DualModuleSerial {
                 DualNodeGrowState::Shrink => false,
                 DualNodeGrowState::Stay => { continue }
             };
+            drop(dual_node);  // unlock, otherwise it causes deadlock when updating the dual node
             let max_update_length = self.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, true);
             group_max_update_length.add(max_update_length);
         }
@@ -1330,6 +1331,7 @@ impl DualModuleSerial {
         let dual_node = dual_node_ptr.read_recursive();
         if let Some(unit_module_info) = self.unit_module_info.as_ref() {
             if unit_module_info.owning_dual_range.contains(&dual_node.index) {
+                debug_assert!(dual_node.belonging.upgrade_force().read_recursive().parent.is_none(), "dual node is not updated");
                 Some(dual_node.index - unit_module_info.owning_dual_range.start())
             } else {
                 // println!("from unit {:?}, dual_node: {}", self.unit_module_info, dual_node.index);

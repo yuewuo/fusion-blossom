@@ -64,6 +64,20 @@ pub struct SyncRequest {
     pub propagated_grandson_dual_node: Option<(DualNodeWeak, Weight)>,
 }
 
+impl SyncRequest {
+
+    /// update all the interface nodes to be up-to-date, only necessary when there are fusion
+    pub fn update(&self) {
+        if let Some((weak, _)) = &self.propagated_dual_node {
+            weak.upgrade_force().update();
+        }
+        if let Some((weak, _)) = &self.propagated_grandson_dual_node {
+            weak.upgrade_force().update();
+        }
+    }
+
+}
+
 /// gives the maximum absolute length to grow, if not possible, give the reason;
 /// note that strong reference is stored in `MaxUpdateLength` so dropping these temporary messages are necessary to avoid memory leakage;
 /// the strong reference is required when multiple `BlossomNeedExpand` event is reported in different partitions and sorting them requires a reference
@@ -106,6 +120,19 @@ impl GroupMaxUpdateLength {
 
     pub fn new() -> Self {
         Self::NonZeroGrow(Weight::MAX)
+    }
+
+    /// update all the interface nodes to be up-to-date, only necessary in existence of fusion
+    #[inline(never)]
+    pub fn update(&self) {
+        if let Self::Conflicts((list, pending_stops)) = &self {
+            for max_update_length in list.iter() {
+                max_update_length.update();
+            }
+            for (_, max_update_length) in pending_stops.iter() {
+                max_update_length.update();
+            }
+        }
     }
 
     pub fn add_pending_stop(list: &mut ConflictList, pending_stops: &mut BTreeMap<VertexIndex, MaxUpdateLength>, max_update_length: MaxUpdateLength) {
@@ -312,6 +339,25 @@ impl std::fmt::Debug for DualNodeWeak {
 
 impl DualNodePtr {
 
+    /// when fused, dual node may be outdated; refresh here
+    pub fn update(&self) -> &Self {
+        let mut current_belonging = self.read_recursive().belonging.upgrade_force();
+        let mut bias = 0;
+        let mut node = self.write();
+        while current_belonging.read_recursive().parent.is_some() {
+            let belonging_interface = current_belonging.read_recursive();
+            bias += belonging_interface.index_bias;
+            let new_current_belonging = belonging_interface.parent.clone().unwrap().upgrade_force();
+            let dual_variable = node.get_dual_variable(&belonging_interface);  // aggregate the dual variable
+            node.dual_variable_cache = (dual_variable, 0);  // this will be the state when joining the new interface
+            drop(belonging_interface);
+            current_belonging = new_current_belonging;
+        }
+        node.belonging = current_belonging.downgrade();
+        node.index += bias;
+        self
+    }
+
     /// helper function to set grow state with sanity check
     fn set_grow_state(&self, grow_state: DualNodeGrowState) {
         let mut dual_node = self.write();
@@ -398,6 +444,13 @@ pub struct DualModuleInterface {
     pub debug_print_actions: bool,
     /// information used to compute dual variable of this node: (last dual variable, last global progress)
     dual_variable_global_progress: Weight,
+    /// the parent of this interface, when fused
+    pub parent: Option<DualModuleInterfaceWeak>,
+    /// when fused, this will indicate the relative bias given by the parent
+    pub index_bias: NodeIndex,
+    /// the two children of this interface, when fused; following the length of this child,
+    /// given that fused children interface will not have new nodes anymore
+    pub children: Option<((DualModuleInterfaceWeak, NodeIndex), (DualModuleInterfaceWeak, NodeIndex))>,
 }
 
 pub type DualModuleInterfacePtr = ArcRwLock<DualModuleInterface>;
@@ -554,11 +607,10 @@ pub trait DualModuleParallelImpl {
 impl FusionVisualizer for DualModuleInterfacePtr {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         // do the sanity check first before taking snapshot
-        self.sanity_check().unwrap();
+        let flattened_nodes = self.sanity_check().unwrap();
         let interface = self.read_recursive();
         let mut dual_nodes = Vec::<serde_json::Value>::new();
-        for node_index in 0..interface.nodes_length {
-            let dual_node_ptr = &interface.nodes[node_index];
+        for dual_node_ptr in flattened_nodes.iter() {
             if let Some(dual_node_ptr) = &dual_node_ptr {
                 let dual_node = dual_node_ptr.read_recursive();
                 dual_nodes.push(json!({
@@ -602,6 +654,55 @@ impl FusionVisualizer for DualModuleInterfacePtr {
     }
 }
 
+impl DualModuleInterface {
+
+    /// return the count of all nodes including those of the children interfaces
+    pub fn nodes_count(&self) -> NodeIndex {
+        let mut count = self.nodes_length;
+        if let Some(((_, left_count), (_, right_count))) = &self.children {
+            count += left_count + right_count;
+        }
+        count
+    }
+
+    /// get node ptr by index; if calling from the ancestor interface, node_index is absolute, otherwise it's relative
+    pub fn get_node(&self, relative_node_index: NodeIndex) -> Option<DualNodePtr> {
+        debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this interface");
+        let mut bias = 0;
+        if let Some(((left_weak, left_count), (right_weak, right_count))) = &self.children {
+            if relative_node_index < *left_count {
+                // this node belongs to the left
+                return left_weak.upgrade_force().read_recursive().get_node(relative_node_index);
+            } else if relative_node_index < *left_count + *right_count {
+                // this node belongs to the right
+                return right_weak.upgrade_force().read_recursive().get_node(relative_node_index - *left_count);
+            }
+            bias = left_count + right_count;
+        }
+        self.nodes[relative_node_index - bias].clone()
+    }
+
+    /// set the corresponding node index to None
+    pub fn remove_node(&mut self, relative_node_index: NodeIndex) {
+        debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this interface");
+        let mut bias = 0;
+        if let Some(((left_weak, left_count), (right_weak, right_count))) = &self.children {
+            if relative_node_index < *left_count {
+                // this node belongs to the left
+                left_weak.upgrade_force().write().remove_node(relative_node_index);
+                return
+            } else if relative_node_index < *left_count + *right_count {
+                // this node belongs to the right
+                right_weak.upgrade_force().write().remove_node(relative_node_index - *left_count);
+                return
+            }
+            bias = left_count + right_count;
+        }
+        self.nodes[relative_node_index - bias] = None;
+    }
+
+}
+
 impl DualModuleInterfacePtr {
 
     /// create an empty interface
@@ -615,6 +716,9 @@ impl DualModuleInterfacePtr {
             sum_dual_variables: 0,
             debug_print_actions: false,
             dual_variable_global_progress: 0,
+            parent: None,
+            index_bias: 0,
+            children: None,
         })
     }
 
@@ -643,18 +747,41 @@ impl DualModuleInterfacePtr {
         interface.sum_grow_speed = 0;
         interface.sum_dual_variables = 0;
         interface.dual_variable_global_progress = 0;
+        interface.parent = None;
+        interface.index_bias = 0;
+        interface.children = None;
+    }
+
+    /// DFS flatten the nodes
+    pub fn flatten_nodes(&self, flattened_nodes: &mut Vec<Option<DualNodePtr>>) {
+        let interface = self.read_recursive();
+        let flattened_nodes_length = flattened_nodes.len();
+        // the order matters: left -> right -> myself
+        if let Some(((left_child_weak, _), (right_child_weak, _))) = &interface.children {
+            left_child_weak.upgrade_force().flatten_nodes(flattened_nodes);
+            right_child_weak.upgrade_force().flatten_nodes(flattened_nodes);
+        }
+        for node_index in 0..interface.nodes_length {
+            let dual_node_ptr = &interface.nodes[node_index];
+            if let Some(dual_node_ptr) = dual_node_ptr {
+                dual_node_ptr.update();
+            }
+            flattened_nodes.push(dual_node_ptr.clone());
+        }
+        assert_eq!(flattened_nodes.len() - flattened_nodes_length, interface.nodes_count());
     }
 
     pub fn create_syndrome_node(&self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         let belonging = self.downgrade();
         let mut interface = self.write();
         interface.sum_grow_speed += 1;
-        let node_idx = interface.nodes_length;
+        let local_node_index = interface.nodes_length;
+        let node_index = interface.nodes_count();
         // try to reuse existing pointer to avoid list allocation
-        let node_ptr = if !interface.disable_pointer_reuse && node_idx < interface.nodes.len() && interface.nodes[node_idx].is_some() {
-            let node_ptr = interface.nodes[node_idx].as_ref().unwrap().clone();
+        let node_ptr = if !interface.disable_pointer_reuse && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
+            let node_ptr = interface.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
-            node.index = node_idx;
+            node.index = node_index;
             node.class = DualNodeClass::SyndromeVertex {
                 syndrome_index: vertex_idx,
             };
@@ -666,7 +793,7 @@ impl DualModuleInterfacePtr {
             node_ptr
         } else {
             DualNodePtr::new(DualNode {
-                index: node_idx,
+                index: node_index,
                 class: DualNodeClass::SyndromeVertex {
                     syndrome_index: vertex_idx,
                 },
@@ -680,7 +807,8 @@ impl DualModuleInterfacePtr {
         if interface.nodes.len() < interface.nodes_length {
             interface.nodes.push(None);
         }
-        interface.nodes[node_idx] = Some(node_ptr.clone());  // drop the previous
+        interface.nodes[local_node_index] = Some(node_ptr.clone());  // drop the previous
+        drop(interface);
         dual_module_impl.add_syndrome_node(&node_ptr);
         node_ptr
     }
@@ -689,8 +817,8 @@ impl DualModuleInterfacePtr {
     pub fn check_ptr_belonging(&self, dual_node_ptr: &DualNodePtr) -> bool {
         let interface = self.read_recursive();
         let dual_node = dual_node_ptr.read_recursive();
-        if dual_node.index >= interface.nodes_length { return false }
-        if let Some(ptr) = interface.nodes[dual_node.index].as_ref() {
+        if dual_node.index >= interface.nodes_count() { return false }
+        if let Some(ptr) = interface.get_node(dual_node.index).as_ref() {
             return ptr == dual_node_ptr
         } else {
             return false
@@ -707,9 +835,10 @@ impl DualModuleInterfacePtr {
             touching_children = nodes_circle.iter().map(|ptr| (ptr.downgrade(), ptr.downgrade())).collect();
         }
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
-        let node_index = interface.nodes_length;
-        let blossom_node_ptr = if !interface.disable_pointer_reuse && node_index < interface.nodes.len() && interface.nodes[node_index].is_some() {
-            let node_ptr = interface.nodes[node_index].as_ref().unwrap().clone();
+        let local_node_index = interface.nodes_length;
+        let node_index = interface.nodes_count();
+        let blossom_node_ptr = if !interface.disable_pointer_reuse && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
+            let node_ptr = interface.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.index = node_index;
             node.class = DualNodeClass::Blossom {
@@ -763,9 +892,10 @@ impl DualModuleInterfacePtr {
             if interface.nodes.len() < interface.nodes_length {
                 interface.nodes.push(None);
             }
-            interface.nodes[node_index] = Some(blossom_node_ptr.clone());
+            interface.nodes[local_node_index] = Some(blossom_node_ptr.clone());
         }
         interface.sum_grow_speed += 1;
+        drop(interface);
         dual_module_impl.prepare_nodes_shrink(&nodes_circle);
         dual_module_impl.add_blossom(&blossom_node_ptr);
         blossom_node_ptr
@@ -775,14 +905,24 @@ impl DualModuleInterfacePtr {
     /// this is because we're growing all trees together, and due to the natural of quantum codes, this operation is not likely to cause
     /// bottleneck as long as physical error rate is well below the threshold. All internal nodes will have a [`DualNodeGrowState::Grow`] state afterwards.
     pub fn expand_blossom(&self, blossom_node_ptr: DualNodePtr, dual_module_impl: &mut impl DualModuleImpl) {
-        let mut interface = self.write();
+        let interface = self.read_recursive();
         if interface.debug_print_actions {
             let node = blossom_node_ptr.read_recursive();
             if let DualNodeClass::Blossom { nodes_circle, .. } = &node.class {
                 eprintln!("[expand blossom] {:?} -> {:?}", blossom_node_ptr, nodes_circle);
             } else { unreachable!() }
         }
+        drop(interface);
+        {  // must update all the nodes before calling `remove_blossom` of the implementation
+            let node = blossom_node_ptr.read_recursive();
+            if let DualNodeClass::Blossom { nodes_circle, .. } = &node.class {
+                for node_weak in nodes_circle.iter() {
+                    node_weak.upgrade_force().update();
+                }
+            }
+        }
         dual_module_impl.remove_blossom(blossom_node_ptr.clone());
+        let mut interface = self.write();
         let node = blossom_node_ptr.read_recursive();
         match &node.grow_state {
             DualNodeGrowState::Grow => { interface.sum_grow_speed += -1; },
@@ -790,9 +930,9 @@ impl DualModuleInterfacePtr {
             DualNodeGrowState::Stay => { },
         }
         let node_idx = node.index;
-        assert!(interface.nodes[node_idx].is_some(), "the blossom should not be expanded before");
-        assert!(interface.nodes[node_idx].as_ref().unwrap() == &blossom_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
-        interface.nodes[node_idx] = None;  // remove this blossom from root
+        assert!(interface.get_node(node_idx).is_some(), "the blossom should not be expanded before");
+        assert!(interface.get_node(node_idx).as_ref().unwrap() == &blossom_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
+        interface.remove_node(node_idx);  // remove this blossom from root
         drop(interface);
         match &node.class {
             DualNodeClass::Blossom { nodes_circle, .. } => {
@@ -820,6 +960,7 @@ impl DualModuleInterfacePtr {
 
     /// a helper function to update grow state
     pub fn set_grow_state(&self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState, dual_module_impl: &mut impl DualModuleImpl) {
+        dual_node_ptr.update();  // these dual node may not be update-to-date in fusion
         let mut interface = self.write();
         if interface.debug_print_actions {
             eprintln!("[set grow state] {:?} {:?}", dual_node_ptr, grow_state);
@@ -839,14 +980,15 @@ impl DualModuleInterfacePtr {
             let current_dual_variable = node.get_dual_variable(&interface);
             node.dual_variable_cache = (current_dual_variable, interface.dual_variable_global_progress);  // update the cache
         }
+        drop(interface);
         dual_module_impl.set_grow_state(&dual_node_ptr, grow_state);  // call this before dual node actually sets; to give history information
         dual_node_ptr.set_grow_state(grow_state);
     }
 
     /// grow the dual module and update [`DualModuleInterface::sum_`]
     pub fn grow(&self, length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
-        let mut interface = self.write();
         dual_module_impl.grow(length);
+        let mut interface = self.write();
         interface.sum_dual_variables += length * interface.sum_grow_speed;
         interface.dual_variable_global_progress += length;
     }
@@ -863,7 +1005,7 @@ impl DualModuleInterfacePtr {
     }
 
     /// fuse two interfaces by copying the nodes in `other` into myself
-    pub fn fuse(&self, left: &Self, right: &Self) {
+    pub fn slow_fuse(&self, left: &Self, right: &Self) {
         let mut interface = self.write();
         interface.disable_pointer_reuse = true;  // for safety
         for other in [left, right] {
@@ -888,25 +1030,46 @@ impl DualModuleInterfacePtr {
         }
     }
 
-    // /// fuse two interfaces by copying the nodes in `other` into myself, but with O(1) time complexity
-    // pub fn fast_fuse(&mut self, left: &Self, right: &Self) {
-    //     self.disable_pointer_reuse = true;  // for safety
-    //     assert_eq!(self.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
-    // }
+    /// fuse two interfaces by copying the nodes in `other` into myself, but with O(1) time complexity
+    pub fn fuse(&self, left: &Self, right: &Self) {
+        let parent_weak = self.downgrade();
+        let left_weak = left.downgrade();
+        let right_weak = right.downgrade();
+        let mut interface = self.write();
+        interface.disable_pointer_reuse = true;  // for safety
+        assert_eq!(interface.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
+        assert!(interface.children.is_none(), "cannot fuse twice");
+        let mut left_interface = left.write();
+        let mut right_interface = right.write();
+        assert!(left_interface.parent.is_none(), "cannot fuse an interface twice");
+        assert!(right_interface.parent.is_none(), "cannot fuse an interface twice");
+        left_interface.parent = Some(parent_weak.clone());
+        right_interface.parent = Some(parent_weak.clone());
+        left_interface.index_bias = 0;
+        right_interface.index_bias = left_interface.nodes_count();
+        interface.children = Some((
+            (left_weak, left_interface.nodes_count()),
+            (right_weak, right_interface.nodes_count())
+        ));
+        for other_interface in [left_interface, right_interface] {
+            interface.sum_dual_variables += other_interface.sum_dual_variables;
+            interface.sum_grow_speed += other_interface.sum_grow_speed;
+        }
+    }
 
     /// do a sanity check of if all the nodes are in consistent state
     #[inline(never)]
-    pub fn sanity_check(&self) -> Result<(), String> {
+    pub fn sanity_check(&self) -> Result<Vec<Option<DualNodePtr>>, String> {
+        let mut flattened_nodes = vec![];
+        self.flatten_nodes(&mut flattened_nodes);
         let interface = self.read_recursive();
         if false {
             eprintln!("[warning] sanity check disabled for dual_module.rs");
-            return Ok(());
+            return Ok(flattened_nodes);
         }
-        let mut visited_syndrome = HashSet::with_capacity(interface.nodes_length * 2);
+        let mut visited_syndrome = HashSet::with_capacity(interface.nodes_count() * 2);
         let mut sum_individual_dual_variable = 0;
-        println!("self: {self:?}");
-        for index in 0..interface.nodes_length {
-            let dual_node_ptr = &interface.nodes[index];
+        for (index, dual_node_ptr) in flattened_nodes.iter().enumerate() {
             match dual_node_ptr {
                 Some(dual_node_ptr) => {
                     let dual_node = dual_node_ptr.read_recursive();
@@ -924,11 +1087,11 @@ impl DualModuleInterfacePtr {
                                 }
                                 if circle_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", circle_node.index)) }
                                 // check if circle node is still tracked, i.e. inside self.nodes
-                                if circle_node.index >= interface.nodes_length || interface.nodes[circle_node.index].is_none() {
+                                if circle_node.index >= interface.nodes_count() || interface.get_node(circle_node.index).is_none() {
                                     return Err(format!("child's index {} is not in the interface", circle_node.index))
                                 }
-                                let tracked_circle_node_ptr = interface.nodes[circle_node.index].as_ref().unwrap();
-                                if tracked_circle_node_ptr != &circle_node_ptr {
+                                let tracked_circle_node_ptr = interface.get_node(circle_node.index).unwrap();
+                                if tracked_circle_node_ptr != circle_node_ptr {
                                     return Err(format!("the tracked ptr of child {} is not what's being pointed", circle_node.index))
                                 }
                                 // check children belongings
@@ -973,11 +1136,11 @@ impl DualModuleInterfacePtr {
                                 }, _ => { return Err(format!("{}, as the parent of {}, is not a blossom", parent_blossom.index, dual_node.index)) }
                             }
                             // check if blossom is still tracked, i.e. inside interface.nodes
-                            if parent_blossom.index >= interface.nodes_length || interface.nodes[parent_blossom.index].is_none() {
+                            if parent_blossom.index >= interface.nodes_count() || interface.get_node(parent_blossom.index).is_none() {
                                 return Err(format!("parent blossom's index {} is not in the interface", parent_blossom.index))
                             }
-                            let tracked_parent_blossom_ptr = interface.nodes[parent_blossom.index].as_ref().unwrap();
-                            if tracked_parent_blossom_ptr != &parent_blossom_ptr {
+                            let tracked_parent_blossom_ptr = interface.get_node(parent_blossom.index).unwrap();
+                            if tracked_parent_blossom_ptr != parent_blossom_ptr {
                                 return Err(format!("the tracked ptr of parent blossom {} is not what's being pointed", parent_blossom.index))
                             }
                         }, _ => { }
@@ -988,7 +1151,7 @@ impl DualModuleInterfacePtr {
         if sum_individual_dual_variable != interface.sum_dual_variables {
             return Err(format!("internal error: the sum of dual variables is {} but individual sum is {}", interface.sum_dual_variables, sum_individual_dual_variable))
         }
-        Ok(())
+        Ok(flattened_nodes)
     }
 
     pub fn sum_dual_variables(&self) -> Weight {
@@ -1048,6 +1211,29 @@ impl PartialOrd for MaxUpdateLength {
 }
 
 impl MaxUpdateLength {
+
+    /// update all the interface nodes to be up-to-date
+    pub fn update(&self) {
+        match self {
+            Self::NonZeroGrow(_) => { },
+            Self::Conflicting((a, b), (c, d)) => {
+                for x in [a, b, c, d] { x.update(); }
+            },
+            Self::TouchingVirtual((a, b), _) => {
+                for x in [a, b] { x.update(); }
+            },
+            Self::BlossomNeedExpand(x) => {
+                x.update();
+            },
+            Self::VertexShrinkStop((a, option)) => {
+                a.update();
+                if let Some((b, c)) = option {
+                    b.update();
+                    c.update();
+                }
+            },
+        }
+    }
 
     /// useful function to assert expected case
     #[allow(dead_code)]

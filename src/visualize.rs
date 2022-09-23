@@ -213,7 +213,10 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
 
 impl Visualizer {
     /// create a new visualizer with target filename and node layout
-    pub fn new(filename: Option<String>) -> std::io::Result<Self> {
+    pub fn new(mut filename: Option<String>) -> std::io::Result<Self> {
+        if cfg!(feature = "disable_visualizer") {
+            filename = None;  // do not open file
+        }
         let file = match filename {
             Some(filename) => Some(File::create(filename)?),
             None => None,
@@ -228,6 +231,9 @@ impl Visualizer {
 
     /// append another snapshot of the fusion type, and also update the file in case 
     pub fn snapshot_combined(&mut self, name: String, fusion_algorithms: Vec<&dyn FusionVisualizer>) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
         let abbrev = true;
         let mut value = json!({});
         for fusion_algorithm in fusion_algorithms.iter() {
@@ -242,6 +248,9 @@ impl Visualizer {
 
     /// append another snapshot of the fusion type, and also update the file in case 
     pub fn snapshot(&mut self, name: String, fusion_algorithm: &impl FusionVisualizer) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
         let abbrev = true;
         let mut value = fusion_algorithm.snapshot(abbrev);
         snapshot_fix_missing_fields(&mut value, abbrev);

@@ -515,7 +515,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         let right_child_ptr = self.children.as_ref().unwrap().1.upgrade_force();
         let mut right_child = right_child_ptr.write();
         // change the index of dual nodes in the right children
-        let bias = left_interface.read_recursive().nodes_length;
+        let bias = left_interface.read_recursive().nodes_count();
         right_child.iterative_bias_dual_node_index(bias);
         parent_interface.fuse(left_interface, right_interface);
     }
@@ -547,6 +547,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     fn execute_sync_events(&mut self, sync_requests: &Vec<SyncRequest>) {
         // println!("sync_requests: {sync_requests:?}");
         for sync_request in sync_requests.iter() {
+            sync_request.update();
             self.execute_sync_event(sync_request);
         }
     }
@@ -856,7 +857,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         // TODO: execute on all nodes that handles this dual node
-        self.serial_module.compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update)
+        let max_update_length = self.serial_module.compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update);
+        max_update_length.update();  // because fusion may exist
+        max_update_length
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
@@ -865,6 +868,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         // them do the functions independently
         let mut group_max_update_length = GroupMaxUpdateLength::new();
         self.iterative_compute_maximum_update_length(&mut group_max_update_length);
+        group_max_update_length.update();  // because fusion may exist
         group_max_update_length
     }
 
