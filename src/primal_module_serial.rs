@@ -9,7 +9,6 @@ use crate::derivative::Derivative;
 use super::primal_module::*;
 use super::visualize::*;
 use super::dual_module::*;
-use std::collections::BTreeSet;
 
 
 pub struct PrimalModuleSerial {
@@ -20,7 +19,7 @@ pub struct PrimalModuleSerial {
     /// allow pointer reuse will reduce the time of reallocation, but it's unsafe if not owning it
     pub disable_pointer_reuse: bool,
     /// the indices of primal nodes that is possibly matched to the mirrored vertex, and need to break when mirrored vertices are no longer mirrored
-    pub possible_break: BTreeSet<NodeIndex>,
+    pub possible_break: Vec<NodeIndex>,
     /// debug mode: only resolve one conflict each time
     pub debug_resolve_only_one: bool,
 }
@@ -110,7 +109,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
             nodes: vec![],
             nodes_length: 0,
             disable_pointer_reuse: false,
-            possible_break: BTreeSet::new(),
+            possible_break: vec![],
             debug_resolve_only_one: false,
         }
     }
@@ -494,13 +493,16 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     if primal_node_internal.is_free() {
                         primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr.downgrade()));
                         if is_mirror {
-                            self.possible_break.insert(primal_node_internal.index);
+                            self.possible_break.push(primal_node_internal.index);
                         }
                         interface_ptr.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
                     }
                     // tree touching virtual boundary will just augment the whole tree
                     if primal_node_internal.tree_node.is_some() {
+                        if is_mirror {
+                            self.possible_break.push(primal_node_internal.index);
+                        }
                         drop(primal_node_internal);
                         self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr.downgrade(), interface_ptr, dual_module);
                         continue

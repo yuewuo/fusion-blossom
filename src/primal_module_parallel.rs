@@ -364,7 +364,7 @@ impl PrimalModuleParallelUnit {
         // copy `possible_break`
         self.serial_module.possible_break.append(&mut left_child.serial_module.possible_break);
         for node_index in right_child.serial_module.possible_break.iter() {
-            self.serial_module.possible_break.insert(*node_index + bias);
+            self.serial_module.possible_break.push(*node_index + bias);
         }
         // copy `nodes`
         for left_node_index in 0..left_child.serial_module.nodes_length {
@@ -393,8 +393,10 @@ impl PrimalModuleParallelUnit {
 
     /// break the matched pairs of interface vertices
     pub fn break_matching_with_mirror(&mut self, dual_module: &mut impl DualModuleImpl) {
-        for node_index in 0..self.serial_module.nodes_length {
-            let primal_node_ptr = &self.serial_module.nodes[node_index];
+        // use `possible_break` to efficiently break those
+        let mut possible_break = vec![];
+        for node_index in self.serial_module.possible_break.iter() {
+            let primal_node_ptr = &self.serial_module.nodes[*node_index];
             if let Some(primal_node_ptr) = primal_node_ptr {
                 let mut primal_node = primal_node_ptr.write();
                 if let Some((match_target, _)) = &primal_node.temporary_match {
@@ -402,11 +404,14 @@ impl PrimalModuleParallelUnit {
                         if self.partition_info.vertex_to_owning_unit[*vertex_index] == self.unit_index {
                             primal_node.temporary_match = None;
                             self.interface_ptr.set_grow_state(&primal_node.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
+                        } else {  // still possible break
+                            possible_break.push(*node_index);
                         }
                     }
                 }
             }
         }
+        self.serial_module.possible_break = possible_break;
     }
 
 }
