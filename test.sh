@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cargo clippy  # A collection of lints to catch common mistakes and improve your Rust code.
+
 cargo test || exit 1
 cargo test --features disable_visualizer || exit 1
 

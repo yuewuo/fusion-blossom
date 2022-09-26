@@ -295,12 +295,14 @@ impl Cli {
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                             for d in [3, 7, 11] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("phenomenological-planar-code")
+                                    , format!("--noisy-measurements"), format!("{d}")
                                     , format!("--pb-message"), format!("phenomenological {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
                             for d in [3, 7, 11] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("circuit-level-planar-code")
+                                    , format!("--noisy-measurements"), format!("{d}")
                                     , format!("--pb-message"), format!("circuit-level {d} {p}")]);
                             }
                         }
@@ -336,6 +338,24 @@ impl Cli {
                                     , format!("--pb-message"), format!("4-partition planar {d} {p}")]);
                             }
                         }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for d in [3, 7, 11] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("phenomenological-planar-code")
+                                    , format!("--noisy-measurements"), format!("{d}")
+                                    , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
+                                    , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
+                                    , format!("--pb-message"), format!("2-partition phenomenological {d} {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for d in [3, 7, 11] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("circuit-level-planar-code")
+                                    , format!("--noisy-measurements"), format!("{d}")
+                                    , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
+                                    , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
+                                    , format!("--pb-message"), format!("2-partition circuit-level {d} {d} {p}")]);
+                            }
+                        }
                         let command_head = vec![format!(""), format!("benchmark")];
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
@@ -366,6 +386,24 @@ impl Cli {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
                                     , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-four")
                                     , format!("--pb-message"), format!("4-partition planar {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for d in [3, 7, 11] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("phenomenological-planar-code")
+                                    , format!("--noisy-measurements"), format!("{d}")
+                                    , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
+                                    , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
+                                    , format!("--pb-message"), format!("2-partition phenomenological {d} {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for d in [3, 7, 11] {
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("circuit-level-planar-code")
+                                    , format!("--noisy-measurements"), format!("{d}")
+                                    , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
+                                    , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
+                                    , format!("--pb-message"), format!("2-partition circuit-level {d} {d} {p}")]);
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];
