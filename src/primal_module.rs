@@ -95,7 +95,7 @@ pub trait PrimalModuleImpl {
                     visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![interface, dual_module, primal_module]).unwrap();
                 };
             });
-            visualizer.snapshot_combined(format!("solved"), vec![interface, dual_module, self]).unwrap();
+            visualizer.snapshot_combined("solved".to_string(), vec![interface, dual_module, self]).unwrap();
         } else {
             self.solve(interface, syndrome_pattern, dual_module);
         }
@@ -104,7 +104,7 @@ pub trait PrimalModuleImpl {
     fn solve_step_callback<D: DualModuleImpl, F>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D, callback: F)
             where F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength) {
         interface.load(syndrome_pattern, dual_module);
-        self.load(&interface);
+        self.load(interface);
         self.solve_step_callback_interface_loaded(interface, dual_module, callback);
     }
 
@@ -125,6 +125,12 @@ pub trait PrimalModuleImpl {
     /// performance profiler report
     fn generate_profiler_report(&self) -> serde_json::Value { json!({}) }
 
+}
+
+impl Default for IntermediateMatching {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl IntermediateMatching {
@@ -275,7 +281,7 @@ impl SubGraphBuilder {
         }
         Self {
             vertex_num: initializer.vertex_num,
-            vertex_pair_edges: vertex_pair_edges,
+            vertex_pair_edges,
             complete_graph: CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges),
             subgraph: BTreeSet::new(),
         }

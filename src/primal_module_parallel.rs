@@ -135,9 +135,9 @@ impl PrimalModuleParallel {
             }
         }
         Self {
-            units: units,
-            config: config,
-            partition_info: partition_info,
+            units,
+            config,
+            partition_info,
             thread_pool: Arc::new(thread_pool),
             last_solve_start_time: Instant::now(),
         }
@@ -263,11 +263,11 @@ impl PrimalModuleParallelUnitPtr {
         let partition_unit_info = &partition_info.units[unit_index];
         let is_active = partition_unit_info.children.is_none();
         Self::new(PrimalModuleParallelUnit {
-            unit_index: unit_index,
+            unit_index,
             interface_ptr: DualModuleInterfacePtr::new_empty(),
-            partition_info: partition_info,
-            is_active: is_active,  // only activate the leaves in the dependency tree
-            serial_module: serial_module,
+            partition_info,
+            is_active,  // only activate the leaves in the dependency tree
+            serial_module,
             children: None,  // to be filled later
             parent: None,  // to be filled later
             event_time: None,

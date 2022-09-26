@@ -148,6 +148,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
         self.nodes[node.index] = Some(primal_node_internal_ptr);
     }
 
+    #[allow(clippy::collapsible_else_if)]
     fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         debug_assert!(!group_max_update_length.is_empty() && group_max_update_length.get_none_zero_growth().is_none());
         let mut current_conflict_index = 0;
@@ -437,7 +438,7 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 let tree_node = AlternatingTreeNode {
                                     root: new_tree_root.downgrade(),
                                     parent: lca_tree_node.parent.clone(),
-                                    children: children,
+                                    children,
                                     depth: lca_tree_node.depth,
                                 };
                                 if lca_tree_node.parent.is_some() {
@@ -932,6 +933,7 @@ impl PrimalModuleSerial {
     }
 
     /// do a sanity check of it's tree structure and internal state
+    #[allow(clippy::collapsible_else_if)]
     pub fn sanity_check(&self) -> Result<(), String> {
         for index in 0..self.nodes_length {
             let primal_module_internal_ptr = &self.nodes[index];

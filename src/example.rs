@@ -63,7 +63,7 @@ impl CodeEdge {
 
 /// default function for computing (pre-scaled) weight from probability
 pub fn weight_of_p(p: f64) -> f64 {
-    assert!(p >= 0. && p <= 0.5, "p must be a reasonable value between 0 and 50%");
+    assert!((0. ..=0.5).contains(&p), "p must be a reasonable value between 0 and 50%");
     ((1. - p) / p).ln()
 }
 
@@ -100,8 +100,8 @@ pub trait ExampleCode {
     fn sanity_check(&self) -> Result<(), String> {
         let (vertices, edges) = self.immutable_vertices_edges();
         // check the graph is reasonable
-        if vertices.len() == 0 || edges.len() == 0 {
-            return Err(format!("empty graph"));
+        if vertices.is_empty() || edges.is_empty() {
+            return Err("empty graph".to_string());
         }
         // check duplicated edges
         let mut existing_edges = HashMap::<(usize, usize), usize>::with_capacity(edges.len() * 2);
@@ -117,7 +117,7 @@ pub trait ExampleCode {
         // check duplicated referenced edge from each vertex
         for (vertex_idx, vertex) in vertices.iter().enumerate() {
             let mut existing_edges = HashMap::<usize, ()>::new();
-            if vertex.neighbor_edges.len() == 0 {
+            if vertex.neighbor_edges.is_empty() {
                 return Err(format!("vertex {} do not have any neighbor edges", vertex_idx));
             }
             for edge_idx in vertex.neighbor_edges.iter() {
@@ -192,14 +192,14 @@ pub trait ExampleCode {
             }
         }
         SolverInitializer {
-            vertex_num: vertex_num,
-            weighted_edges: weighted_edges,
-            virtual_vertices: virtual_vertices,
+            vertex_num,
+            weighted_edges,
+            virtual_vertices,
         }
     }
 
     /// set syndrome vertices
-    fn set_syndrome_vertices(&mut self, syndrome_vertices: &Vec<VertexIndex>) {
+    fn set_syndrome_vertices(&mut self, syndrome_vertices: &[VertexIndex]) {
         let (vertices, _edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
             vertex.is_syndrome = false;
@@ -211,7 +211,7 @@ pub trait ExampleCode {
     }
 
     /// set erasure edges
-    fn set_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+    fn set_erasures(&mut self, erasures: &[EdgeIndex]) {
         let (_vertices, edges) = self.vertices_edges();
         for edge in edges.iter_mut() {
             edge.is_erasure = false;
@@ -375,7 +375,7 @@ impl CodeCapacityRepetitionCode {
         edges.push(CodeEdge::new(0, d));  // tje left-most edge
         let mut code = Self {
             vertices: Vec::new(),
-            edges: edges,
+            edges,
         };
         // create vertices
         code.fill_vertices(vertex_num);
@@ -386,8 +386,8 @@ impl CodeCapacityRepetitionCode {
             positions.push(VisualizePosition::new(0., i as f64, 0.));
         }
         positions.push(VisualizePosition::new(0., -1., 0.));
-        for i in 0..vertex_num {
-            code.vertices[i].position = positions[i].clone();
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
         }
         code
     }
@@ -429,7 +429,7 @@ impl CodeCapacityPlanarCode {
             for i in 0..d-1 {
                 edges.push(CodeEdge::new(bias + i, bias + i+1));
             }
-            edges.push(CodeEdge::new(bias + 0, bias + d));  // left most edge
+            edges.push(CodeEdge::new(bias, bias + d));  // left most edge
             if row + 1 < d {
                 for i in 0..d-1 {
                     edges.push(CodeEdge::new(bias + i, bias + i + row_vertex_num));
@@ -438,7 +438,7 @@ impl CodeCapacityPlanarCode {
         }
         let mut code = Self {
             vertices: Vec::new(),
-            edges: edges,
+            edges,
         };
         // create vertices
         code.fill_vertices(vertex_num);
@@ -455,8 +455,8 @@ impl CodeCapacityPlanarCode {
             }
             positions.push(VisualizePosition::new(pos_i, -1., 0.));
         }
-        for i in 0..vertex_num {
-            code.vertices[i].position = positions[i].clone();
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
         }
         code
     }
@@ -502,7 +502,7 @@ impl PhenomenologicalPlanarCode {
                 for i in 0..d-1 {
                     edges.push(CodeEdge::new(bias + i, bias + i+1));
                 }
-                edges.push(CodeEdge::new(bias + 0, bias + d));  // left most edge
+                edges.push(CodeEdge::new(bias, bias + d));  // left most edge
                 if row + 1 < d {
                     for i in 0..d-1 {
                         edges.push(CodeEdge::new(bias + i, bias + i + row_vertex_num));
@@ -521,7 +521,7 @@ impl PhenomenologicalPlanarCode {
         }
         let mut code = Self {
             vertices: Vec::new(),
-            edges: edges,
+            edges,
         };
         // create vertices
         code.fill_vertices(vertex_num);
@@ -544,8 +544,8 @@ impl PhenomenologicalPlanarCode {
                 positions.push(VisualizePosition::new(pos_i, -1. + 0.5, pos_t));
             }
         }
-        for i in 0..vertex_num {
-            code.vertices[i].position = positions[i].clone();
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
         }
         code
     }
@@ -608,7 +608,7 @@ impl CircuitLevelPlanarCode {
                 for i in 0..d-1 {
                     edges.push(CodeEdge::new(bias + i, bias + i+1));
                 }
-                edges.push(CodeEdge::new(bias + 0, bias + d));  // left most edge
+                edges.push(CodeEdge::new(bias, bias + d));  // left most edge
                 if row + 1 < d {
                     for i in 0..d-1 {
                         edges.push(CodeEdge::new(bias + i, bias + i + row_vertex_num));
@@ -636,7 +636,7 @@ impl CircuitLevelPlanarCode {
         }
         let mut code = Self {
             vertices: Vec::new(),
-            edges: edges,
+            edges,
         };
         // create vertices
         code.fill_vertices(vertex_num);
@@ -659,8 +659,8 @@ impl CircuitLevelPlanarCode {
                 positions.push(VisualizePosition::new(pos_i, -1. + 0.5, pos_t));
             }
         }
-        for i in 0..vertex_num {
-            code.vertices[i].position = positions[i].clone();
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
         }
         code
     }
@@ -696,9 +696,11 @@ impl ExampleCode for ErrorPatternReader {
 impl ErrorPatternReader {
 
     pub fn new(mut config: serde_json::Value) -> Self {
-        let mut filename = format!("tmp/syndrome_patterns.txt");
+        let mut filename = "tmp/syndrome_patterns.txt".to_string();
         let config = config.as_object_mut().expect("config must be JSON object");
-        config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
+        if let Some(value) = config.remove("filename") {
+            filename = value.as_str().expect("filename string").to_string();
+        }
         if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
         let file = File::open(filename).unwrap();
         let mut syndrome_patterns = vec![];
@@ -725,10 +727,11 @@ impl ErrorPatternReader {
         }
         let initializer = initializer.expect("initializer not present in file");
         let positions = positions.expect("positions not present in file");
+        assert_eq!(positions.len(), initializer.vertex_num);
         let mut code = Self {
             vertices: Vec::with_capacity(initializer.vertex_num),
             edges: Vec::with_capacity(initializer.weighted_edges.len()),
-            syndrome_patterns: syndrome_patterns,
+            syndrome_patterns,
             syndrome_index: 0,
         };
         for (left_vertex, right_vertex, weight) in initializer.weighted_edges.iter() {
@@ -744,8 +747,8 @@ impl ErrorPatternReader {
         // automatically create the vertices and nearest-neighbor connection
         code.fill_vertices(initializer.vertex_num);
         // set virtual vertices and positions
-        for vertex_index in 0..initializer.vertex_num {
-            code.vertices[vertex_index].position = positions[vertex_index].clone();
+        for (vertex_index, position) in positions.into_iter().enumerate() {
+            code.vertices[vertex_index].position = position;
         }
         for vertex_index in initializer.virtual_vertices {
             code.vertices[vertex_index].is_virtual = true;
@@ -774,8 +777,8 @@ impl<CodeType: ExampleCode + Sync + Send + Clone> ExampleCodeParallel<CodeType> 
             codes.push(ArcRwLock::<CodeType>::new(example.clone()));
         }
         Self {
-            example: example,
-            codes: codes,
+            example,
+            codes,
             syndrome_patterns: vec![],
             code_index: 0,
         }

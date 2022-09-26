@@ -261,7 +261,7 @@ impl Cli {
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
                     result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                     primal_dual_solver.clear();  // also count the clear operation
-                    benchmark_profiler.end(Some(&primal_dual_solver));
+                    benchmark_profiler.end(Some(&*primal_dual_solver));
                     if pb_message.is_empty() {
                         pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
                     }
@@ -321,21 +321,21 @@ impl Cli {
                             for d in [7, 11, 15, 19] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-repetition-code")
                                     , format!("--partition-strategy"), format!("code-capacity-repetition-code-partition-half")
-                                    , format!("--pb-message"), format!("2-partition repetition {d} {p}")]);
+                                    , format!("--pb-message"), format!("dual-parallel 2-partition repetition {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
                             for d in [7, 11, 15, 19] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
                                     , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-half")
-                                    , format!("--pb-message"), format!("2-partition planar {d} {p}")]);
+                                    , format!("--pb-message"), format!("dual-parallel 2-partition planar {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // complex partition into 4 blocks
                             for d in [7, 11, 15, 19] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
                                     , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-four")
-                                    , format!("--pb-message"), format!("4-partition planar {d} {p}")]);
+                                    , format!("--pb-message"), format!("dual-parallel 4-partition planar {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
@@ -344,7 +344,7 @@ impl Cli {
                                     , format!("--noisy-measurements"), format!("{d}")
                                     , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
                                     , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
-                                    , format!("--pb-message"), format!("2-partition phenomenological {d} {d} {p}")]);
+                                    , format!("--pb-message"), format!("dual-parallel 2-partition phenomenological {d} {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
@@ -353,7 +353,7 @@ impl Cli {
                                     , format!("--noisy-measurements"), format!("{d}")
                                     , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
                                     , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
-                                    , format!("--pb-message"), format!("2-partition circuit-level {d} {d} {p}")]);
+                                    , format!("--pb-message"), format!("dual-parallel 2-partition circuit-level {d} {d} {p}")]);
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];
@@ -371,21 +371,21 @@ impl Cli {
                             for d in [7, 11, 15, 19] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-repetition-code")
                                     , format!("--partition-strategy"), format!("code-capacity-repetition-code-partition-half")
-                                    , format!("--pb-message"), format!("2-partition repetition {d} {p}")]);
+                                    , format!("--pb-message"), format!("parallel 2-partition repetition {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // simple partition into top and bottom
                             for d in [7, 11, 15, 19] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
                                     , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-half")
-                                    , format!("--pb-message"), format!("2-partition planar {d} {p}")]);
+                                    , format!("--pb-message"), format!("parallel 2-partition planar {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {  // complex partition into 4 blocks
                             for d in [7, 11, 15, 19] {
                                 parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("code-capacity-planar-code")
                                     , format!("--partition-strategy"), format!("code-capacity-planar-code-vertical-partition-four")
-                                    , format!("--pb-message"), format!("4-partition planar {d} {p}")]);
+                                    , format!("--pb-message"), format!("parallel 4-partition planar {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
@@ -394,7 +394,7 @@ impl Cli {
                                     , format!("--noisy-measurements"), format!("{d}")
                                     , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
                                     , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
-                                    , format!("--pb-message"), format!("2-partition phenomenological {d} {d} {p}")]);
+                                    , format!("--pb-message"), format!("parallel 2-partition phenomenological {d} {d} {p}")]);
                             }
                         }
                         for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
@@ -403,7 +403,7 @@ impl Cli {
                                     , format!("--noisy-measurements"), format!("{d}")
                                     , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
                                     , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
-                                    , format!("--pb-message"), format!("2-partition circuit-level {d} {d} {p}")]);
+                                    , format!("--pb-message"), format!("parallel 2-partition circuit-level {d} {d} {p}")]);
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];

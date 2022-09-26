@@ -131,7 +131,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             is_vertex_virtual[*virtual_vertex] = true;
         }
         let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new(PartitionUnit {
-            unit_index: unit_index,
+            unit_index,
             enabled: unit_index < partition_info.config.partitions.len(),
         })).collect();
         let mut partitioned_initializers: Vec<PartitionedSolverInitializer> = (0..unit_count).map(|unit_index| {
@@ -187,13 +187,13 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             }
             contained_vertices_vec.push(contained_vertices);
             PartitionedSolverInitializer {
-                unit_index: unit_index,
+                unit_index,
                 vertex_num: initializer.vertex_num,
                 edge_num: initializer.weighted_edges.len(),
                 owning_range: owning_range.clone(),
                 owning_interface: if unit_index < partition_info.config.partitions.len() { None } else { Some(partition_units[unit_index].downgrade()) },
                 weighted_edges: vec![],  // to be filled later
-                interfaces: interfaces,
+                interfaces,
                 virtual_vertices: owning_range.iter().filter(|vertex_index| is_vertex_virtual[*vertex_index]).collect(),
             }  // note that all fields can be modified later
         }).collect();
@@ -285,9 +285,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             // println!("{} extra_descendant_mirrored_vertices: {:?}", unit.unit_index, unit.extra_descendant_mirrored_vertices);
         }
         Self {
-            units: units,
-            config: config,
-            partition_info: partition_info,
+            units,
+            config,
+            partition_info,
             thread_pool: Arc::new(thread_pool),
             empty_sync_request: vec![],
         }
@@ -428,7 +428,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         })
     }
 
-    fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+    fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         self.thread_pool.scope(|_| {
             self.units.par_iter().for_each(|unit_ptr| {
                 let mut unit = unit_ptr.write();
@@ -438,7 +438,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         })
     }
 
-    fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+    fn prepare_nodes_shrink(&mut self, nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
         let unit_ptr = self.find_active_ancestor(&nodes_circle[0]);
         self.thread_pool.scope(|_| {
             let mut unit = unit_ptr.write();
@@ -590,7 +590,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     /// check if elevated_dual_nodes contains any dual node in the list
-    pub fn elevated_dual_nodes_contains_any(&self, nodes: &Vec<DualNodePtr>) -> bool {
+    pub fn elevated_dual_nodes_contains_any(&self, nodes: &[DualNodePtr]) -> bool {
         for node_ptr in nodes.iter() {
             if self.elevated_dual_nodes.contains(node_ptr) {
                 return true
@@ -600,7 +600,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     /// prepare the initial shrink of a blossom
-    fn iterative_prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>, nodes_circle_vertices: &Vec<VertexIndex>
+    fn iterative_prepare_nodes_shrink(&mut self, nodes_circle: &[DualNodePtr], nodes_circle_vertices: &[VertexIndex]
             , sync_requests: &mut Vec<SyncRequest>) {
         if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
@@ -624,8 +624,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         sync_requests.append(local_sync_requests);
     }
 
-    fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &Vec<DualNodePtr>, representative_vertex: VertexIndex
-            , nodes_circle_vertices: &Vec<VertexIndex>) {
+    fn iterative_add_blossom(&mut self, blossom_ptr: &DualNodePtr, nodes_circle: &[DualNodePtr], representative_vertex: VertexIndex
+            , nodes_circle_vertices: &[VertexIndex]) {
         if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
         }
@@ -769,19 +769,19 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<Seria
             , enable_parallel_execution: bool) -> Self {
         let partition_unit_info = &partition_info.units[unit_index];
         Self::new(DualModuleParallelUnit {
-            unit_index: unit_index,
+            unit_index,
             partition_info: partition_info.clone(),
-            partition_unit: partition_unit,
+            partition_unit,
             is_active: partition_unit_info.children.is_none(),  // only activate the leaves in the dependency tree
             whole_range: partition_unit_info.whole_range,
             owning_range: partition_unit_info.owning_range,
             extra_descendant_mirrored_vertices: HashSet::new(),  // to be filled later
-            serial_module: serial_module,
+            serial_module,
             children: None,  // to be filled later
             parent: None,  // to be filled later
             elevated_dual_nodes: PtrWeakHashSet::new(),
             empty_sync_request: vec![],
-            enable_parallel_execution: enable_parallel_execution,
+            enable_parallel_execution,
         })
     }
 
@@ -882,13 +882,13 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         self.iterative_grow(length);
     }
 
-    fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+    fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         // TODO: split the edge modifier and then load them to individual descendant units
         // hint: each edge could appear in any unit that mirrors the two vertices
         self.serial_module.load_edge_modifier(edge_modifier)
     }
 
-    fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+    fn prepare_nodes_shrink(&mut self, nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
         let nodes_circle_vertices: Vec<_> = nodes_circle.iter().map(|ptr| ptr.get_representative_vertex()).collect();
         let mut sync_requests = vec![];
         loop {

@@ -29,7 +29,7 @@ impl VisualizePosition {
     /// create a visualization position
     pub fn new(i: f64, j: f64, t: f64) -> Self {
         Self {
-            i: i, j: j, t: t
+            i, j, t
         }
     }
 }
@@ -222,7 +222,7 @@ impl Visualizer {
             None => None,
         };
         Ok(Self {
-            file: file,
+            file,
             base: json!({}),
             positions: Vec::new(),
             snapshots: Vec::new(),
@@ -297,14 +297,14 @@ impl Visualizer {
 
 }
 
-const DEFAULT_VISUALIZE_DATA_FOLDER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/data/");
+const DEFAULT_VISUALIZE_DATA_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/data/");
 
 pub fn visualize_data_folder() -> String {
     DEFAULT_VISUALIZE_DATA_FOLDER.to_string()
 }
 
 pub fn static_visualize_data_filename() -> String {
-    format!("static.json")
+    "static.json".to_string()
 }
 
 pub fn auto_visualize_data_filename() -> String {
@@ -314,9 +314,9 @@ pub fn auto_visualize_data_filename() -> String {
 pub fn print_visualize_link_with_parameters(filename: &String, parameters: Vec<(String, String)>) {
     let mut link = format!("http://localhost:8066?filename={}", filename);
     for (key, value) in parameters.iter() {
-        link.push_str("&");
+        link.push('&');
         link.push_str(&urlencoding::encode(key));
-        link.push_str("=");
+        link.push('=');
         link.push_str(&urlencoding::encode(value));
     }
     println!("opening link {} (start local server by running ./visualize/server.sh) or call `node index.js <link>` to render locally", link)

@@ -30,18 +30,18 @@ pub struct CompleteGraphVertex {
 impl CompleteGraph {
 
     /// create complete graph given skeleton graph
-    pub fn new(vertex_num: usize, weighted_edges: &Vec<(usize, usize, Weight)>) -> Self {
+    pub fn new(vertex_num: usize, weighted_edges: &[(usize, usize, Weight)]) -> Self {
         let mut vertices: Vec<CompleteGraphVertex> = (0..vertex_num).map(|_| CompleteGraphVertex { edges: BTreeMap::new(), timestamp: 0, }).collect();
         for &(i, j, weight) in weighted_edges.iter() {
             vertices[i].edges.insert(j, weight);
             vertices[j].edges.insert(i, weight);
         }
         Self {
-            vertex_num: vertex_num,
-            vertices: vertices,
+            vertex_num,
+            vertices,
             active_timestamp: 0,
             edge_modifier: EdgeWeightModifier::new(),
-            weighted_edges: weighted_edges.clone(),
+            weighted_edges: weighted_edges.to_owned(),
         }
     }
 
@@ -59,7 +59,7 @@ impl CompleteGraph {
         }
     }
 
-    fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+    fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         for (edge_index, target_weight) in edge_modifier.iter() {
             let (vertex_idx_1, vertex_idx_2, original_weight) = &self.weighted_edges[*edge_index];
@@ -73,8 +73,8 @@ impl CompleteGraph {
     }
 
     /// temporarily set some edges to 0 weight, and when it resets, those edges will be reverted back to the original weight
-    pub fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
-        let edge_modifier = erasures.iter().map(|edge_index| (*edge_index, 0)).collect();
+    pub fn load_erasures(&mut self, erasures: &[EdgeIndex]) {
+        let edge_modifier: Vec<_> = erasures.iter().map(|edge_index| (*edge_index, 0)).collect();
         self.load_edge_modifier(&edge_modifier);
     }
 
@@ -97,7 +97,7 @@ impl CompleteGraph {
         pq.push(vertex, PriorityElement::new(0, vertex));
         let mut computed_edges = BTreeMap::<usize, (usize, Weight)>::new();  // { peer: (previous, weight) }
         loop {  // until no more elements
-            if pq.len() == 0 {
+            if pq.is_empty() {
                 break
             }
             let (target, PriorityElement { weight, previous }) = pq.pop().unwrap();
@@ -201,8 +201,8 @@ impl std::cmp::Ord for PriorityElement {
 impl PriorityElement {
     pub fn new(weight: Weight, previous: usize) -> Self {
         Self {
-            weight: weight,
-            previous: previous,
+            weight,
+            previous,
         }
     }
 }

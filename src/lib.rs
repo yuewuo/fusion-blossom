@@ -89,10 +89,8 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
         let complete_graph_edges = complete_graph.all_edges(syndrome_vertices[i]);
         let mut boundary: Option<(usize, Weight)> = None;
         for (&peer, &(_, weight)) in complete_graph_edges.iter() {
-            if is_virtual[peer] {
-                if boundary.is_none() || weight < boundary.as_ref().unwrap().1 {
-                    boundary = Some((peer, weight));
-                }
+            if is_virtual[peer] && (boundary.is_none() || weight < boundary.as_ref().unwrap().1) {
+                boundary = Some((peer, weight));
             }
         }
         match boundary {
@@ -164,10 +162,10 @@ pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Ve
         if !is_syndrome[b] || a < b {
             let (path, weight) = complete_graph.get_path(a, b);
             let detail = DetailedMatching {
-                a: a,
-                b: b,
-                path: path,
-                weight: weight,
+                a,
+                b,
+                path,
+                weight,
             };
             details.push(detail);
         }

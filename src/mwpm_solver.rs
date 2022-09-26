@@ -52,10 +52,10 @@ impl LegacySolverSerial {
         let subgraph_builder = SubGraphBuilder::new(initializer);
         Self {
             initializer: initializer.clone(),
-            primal_module: primal_module,
-            dual_module: dual_module,
-            interface_ptr: interface_ptr,
-            subgraph_builder: subgraph_builder,
+            primal_module,
+            dual_module,
+            interface_ptr,
+            subgraph_builder,
         }
     }
 
@@ -255,7 +255,7 @@ impl SolverErrorPatternLogger {
         serde_json::to_writer(&file, &code.get_positions()).unwrap();
         file.write_all(b"\n").unwrap();
         Self {
-            file: file,
+            file,
         }
     }
 }

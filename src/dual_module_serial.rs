@@ -197,7 +197,7 @@ impl DualModuleImpl for DualModuleSerial {
         let active_timestamp = 0;
         // create vertices
         let vertices: Vec<VertexPtr> = (0..initializer.vertex_num).map(|vertex_index| VertexPtr::new(Vertex {
-            vertex_index: vertex_index,
+            vertex_index,
             is_virtual: false,
             is_syndrome: false,
             mirror_unit: None,
@@ -221,7 +221,7 @@ impl DualModuleImpl for DualModuleSerial {
             let right = usize::max(i, j);
             let edge_ptr = EdgePtr::new(Edge {
                 edge_index: edges.len(),
-                weight: weight,
+                weight,
                 left: vertices[left].downgrade(),
                 right: vertices[right].downgrade(),
                 left_growth: 0,
@@ -253,10 +253,10 @@ impl DualModuleImpl for DualModuleSerial {
             edges.push(edge_ptr);
         }
         Self {
-            vertices: vertices,
+            vertices,
             nodes: vec![],
             nodes_length: 0,
-            edges: edges,
+            edges,
             active_timestamp: 0,
             vertex_num: initializer.vertex_num,
             edge_num: initializer.weighted_edges.len(),
@@ -388,7 +388,7 @@ impl DualModuleImpl for DualModuleSerial {
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
         let dual_node_internal = dual_node_internal_ptr.read_recursive();
         assert_eq!(dual_node_internal.dual_variable, 0, "only blossom with dual variable = 0 can be safely removed");
-        assert!(dual_node_internal.overgrown_stack.len() == 0, "removing a blossom with non-empty overgrown stack forbidden");
+        assert!(dual_node_internal.overgrown_stack.is_empty(), "removing a blossom with non-empty overgrown stack forbidden");
         let node_idx = dual_node_internal.index;
         assert!(self.nodes[node_idx].is_some(), "blossom may have already been removed, do not call twice");
         assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_internal_ptr, "the blossom doesn't belong to this DualModuleInterface");
@@ -431,11 +431,12 @@ impl DualModuleImpl for DualModuleSerial {
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
         let dual_node = dual_node_ptr.read_recursive();
         if dual_node.grow_state == DualNodeGrowState::Stay && grow_state != DualNodeGrowState::Stay {
-            let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+            let dual_node_internal_ptr = self.get_dual_node_internal_ptr(dual_node_ptr);
             self.active_list.push(dual_node_internal_ptr.downgrade())
         }
     }
 
+    #[allow(clippy::collapsible_else_if)]
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         let active_timestamp = self.active_timestamp;
         if !simultaneous_update {
@@ -444,7 +445,7 @@ impl DualModuleImpl for DualModuleSerial {
             self.prepare_dual_node_growth(dual_node_ptr, is_grow);
         }
         let mut max_length_abs = Weight::MAX;
-        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(dual_node_ptr);
         let dual_node_internal = dual_node_internal_ptr.read_recursive();
         if !is_grow {
             if dual_node_internal.dual_variable == 0 {
@@ -490,7 +491,7 @@ impl DualModuleImpl for DualModuleSerial {
                     }
                 }
             }
-            if dual_node_internal.overgrown_stack.len() > 0 {
+            if !dual_node_internal.overgrown_stack.is_empty() {
                 let last_index = dual_node_internal.overgrown_stack.len() - 1;
                 let (_, overgrown) = &dual_node_internal.overgrown_stack[last_index];
                 max_length_abs = std::cmp::min(max_length_abs, *overgrown);
@@ -622,14 +623,14 @@ impl DualModuleImpl for DualModuleSerial {
             return
         }
         self.prepare_dual_node_growth(dual_node_ptr, length > 0);
-        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(dual_node_ptr);
         {
             // update node dual variable and do sanity check
             let mut dual_node_internal = dual_node_internal_ptr.write();
             dual_node_internal.dual_variable += length;
             assert!(dual_node_internal.dual_variable >= 0, "shrinking to negative dual variable is forbidden");
             // update over-grown vertices
-            if dual_node_internal.overgrown_stack.len() > 0 {
+            if !dual_node_internal.overgrown_stack.is_empty() {
                 let last_index = dual_node_internal.overgrown_stack.len() - 1;
                 let (_, overgrown) = &mut dual_node_internal.overgrown_stack[last_index];
                 if length < 0 { assert!( *overgrown >= -length, "overgrown vertex cannot shrink so much"); }
@@ -703,7 +704,7 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
-    fn load_edge_modifier(&mut self, edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+    fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         let active_timestamp = self.active_timestamp;
         for (edge_index, target_weight) in edge_modifier.iter() {
@@ -754,11 +755,11 @@ impl DualModuleImpl for DualModuleSerial {
         &mut self.sync_requests
     }
 
-    fn prepare_nodes_shrink(&mut self, nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+    fn prepare_nodes_shrink(&mut self, nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
         assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
         for dual_node_ptr in nodes_circle.iter() {
             if self.contains_dual_node(dual_node_ptr) {
-                self.prepare_dual_node_growth(&dual_node_ptr, false);  // prepare to shrink
+                self.prepare_dual_node_growth(dual_node_ptr, false);  // prepare to shrink
             }
         }
         &mut self.sync_requests
@@ -772,7 +773,7 @@ impl DualModuleImpl for DualModuleSerial {
         let active_timestamp = 0;
         // create vertices
         let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new(Vertex {
-            vertex_index: vertex_index,
+            vertex_index,
             is_virtual: false,
             is_syndrome: false,
             mirror_unit: partitioned_initializer.owning_interface.clone(),
@@ -822,8 +823,8 @@ impl DualModuleImpl for DualModuleSerial {
                 mirrored_vertices[&right]
             };
             let edge_ptr = EdgePtr::new(Edge {
-                edge_index: edge_index,
-                weight: weight,
+                edge_index,
+                weight,
                 left: vertices[left_index].downgrade(),
                 right: vertices[right_index].downgrade(),
                 left_growth: 0,
@@ -855,17 +856,17 @@ impl DualModuleImpl for DualModuleSerial {
             edges.push(edge_ptr);
         }
         Self {
-            vertices: vertices,
+            vertices,
             nodes: vec![],
             nodes_length: 0,
-            edges: edges,
+            edges,
             active_timestamp: 0,
             vertex_num: partitioned_initializer.vertex_num,
             edge_num: partitioned_initializer.edge_num,
             owning_range: partitioned_initializer.owning_range,
             unit_module_info: Some(UnitModuleInfo {
                 unit_index: partitioned_initializer.unit_index,
-                mirrored_vertices: mirrored_vertices,
+                mirrored_vertices,
                 owning_dual_range: VertexRange::new(0, 0),
                 dual_node_pointers: PtrWeakKeyHashMap::<DualNodeWeak, usize>::new(),
             }),
@@ -1161,12 +1162,12 @@ impl DualModuleSerial {
                         drop(descendant);
                         descendant_ptr = descendant_parent_ptr;
                     } else {
-                        return Err(format!("grandson check failed"));
+                        return Err("grandson check failed".to_string());
                     }
                 }
             }
         } else {
-            return Err(format!("grandson must be a vertex"))
+            return Err("grandson must be a vertex".to_string())
         }
         Ok(())
     }
@@ -1294,7 +1295,7 @@ impl FusionVisualizer for DualModuleSerial {
                     dual_nodes.push(json!(null));
                 }
             }
-            value.as_object_mut().unwrap().insert(format!("dual_nodes"), json!(dual_nodes));
+            value.as_object_mut().unwrap().insert("dual_nodes".to_string(), json!(dual_nodes));
         }
         value
     }
@@ -1311,7 +1312,7 @@ impl DualModuleSerial {
         // println!("unit {:?}, register_dual_node_ptr: {:?}", self.unit_module_info, dual_node_ptr);
         let node = dual_node_ptr.read_recursive();
         if let Some(unit_module_info) = self.unit_module_info.as_mut() {
-            if unit_module_info.owning_dual_range.len() == 0 {  // set the range instead of inserting into the lookup table, to minimize table lookup
+            if unit_module_info.owning_dual_range.is_empty() {  // set the range instead of inserting into the lookup table, to minimize table lookup
                 unit_module_info.owning_dual_range = VertexRange::new(node.index, node.index);
             }
             if unit_module_info.owning_dual_range.end() == node.index && self.nodes_length == unit_module_info.owning_dual_range.len() {
@@ -1335,7 +1336,7 @@ impl DualModuleSerial {
                 Some(dual_node.index - unit_module_info.owning_dual_range.start())
             } else {
                 // println!("from unit {:?}, dual_node: {}", self.unit_module_info, dual_node.index);
-                unit_module_info.dual_node_pointers.get(dual_node_ptr).map(|x| *x)
+                unit_module_info.dual_node_pointers.get(dual_node_ptr).copied()
             }
         } else {
             Some(dual_node.index)
@@ -1369,7 +1370,7 @@ impl DualModuleSerial {
 
     /// possibly add dual node only when sync_event is provided
     pub fn get_otherwise_add_dual_node(&mut self, dual_node_ptr: &DualNodePtr, dual_variable: Weight) -> DualNodeInternalPtr {
-        let dual_node_index = self.get_dual_node_index(&dual_node_ptr).unwrap_or_else(|| {
+        let dual_node_index = self.get_dual_node_index(dual_node_ptr).unwrap_or_else(|| {
             // add a new internal dual node corresponding to the dual_node_ptr
             self.register_dual_node_ptr(dual_node_ptr);
             let node_index = self.nodes_length;
@@ -1388,7 +1389,7 @@ impl DualModuleSerial {
                 DualNodeInternalPtr::new(DualNodeInternal {
                     origin: dual_node_ptr.downgrade(),
                     index: node_index,
-                    dual_variable: dual_variable,
+                    dual_variable,
                     boundary: Vec::new(),
                     overgrown_stack: Vec::new(),
                     last_visit_cycle: 0,
@@ -1412,7 +1413,7 @@ impl DualModuleSerial {
         let active_timestamp = self.active_timestamp;
         self.updated_boundary.clear();
         self.propagating_vertices.clear();
-        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
+        let dual_node_internal_ptr = self.get_dual_node_internal_ptr(dual_node_ptr);
         let mut newly_propagated_edge_has_zero_weight = false;
         if is_grow {  // gracefully update the boundary to ease growing
             let dual_node_internal = dual_node_internal_ptr.read_recursive();
@@ -1522,7 +1523,7 @@ impl DualModuleSerial {
             self.clear_edge_dedup();
             {
                 let mut dual_node_internal = dual_node_internal_ptr.write();
-                while dual_node_internal.overgrown_stack.len() > 0 {
+                while !dual_node_internal.overgrown_stack.is_empty() {
                     let last_index = dual_node_internal.overgrown_stack.len() - 1;
                     let (_, overgrown) = &dual_node_internal.overgrown_stack[last_index];
                     if *overgrown == 0 {
@@ -1683,7 +1684,7 @@ impl DualModuleSerial {
         std::mem::swap(&mut self.updated_boundary, &mut dual_node_internal.boundary);
         // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
         if self.unit_module_info.is_none() {
-            assert!(dual_node_internal.boundary.len() > 0, "the boundary of a dual cluster is never empty");
+            assert!(!dual_node_internal.boundary.is_empty(), "the boundary of a dual cluster is never empty");
         }
         newly_propagated_edge_has_zero_weight
     }

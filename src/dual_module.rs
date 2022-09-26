@@ -29,7 +29,7 @@ impl DualNodeClass {
 }
 
 /// Three possible states: Grow (+1), Stay (+0), Shrink (-1)
-#[derive(Derivative, PartialEq, Clone, Copy)]
+#[derive(Derivative, PartialEq, Eq, Clone, Copy)]
 #[derivative(Debug)]
 pub enum DualNodeGrowState {
     Grow,
@@ -40,11 +40,7 @@ pub enum DualNodeGrowState {
 impl DualNodeGrowState {
 
     pub fn is_against(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Grow, Self::Grow | Self::Stay) => true,
-            (Self::Stay, Self::Grow) => true,
-            _ => false,
-        }
+        matches!((self, other), (Self::Grow, Self::Grow | Self::Stay) | (Self::Stay, Self::Grow))
     }
 
 }
@@ -116,6 +112,12 @@ pub enum GroupMaxUpdateLength {
     Conflicts((ConflictList, BTreeMap<VertexIndex, MaxUpdateLength>)),
 }
 
+impl Default for GroupMaxUpdateLength {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GroupMaxUpdateLength {
 
     pub fn new() -> Self {
@@ -151,7 +153,7 @@ impl GroupMaxUpdateLength {
                     }
                 }
             } else {
-                pending_stops.insert(vertex_index, max_update_length.clone());
+                pending_stops.insert(vertex_index, max_update_length);
             }
         } else {
             list.push(max_update_length);
@@ -204,15 +206,12 @@ impl GroupMaxUpdateLength {
                 }
             },
             Self::Conflicts((list, pending_stops)) => {
-                match other {
-                    Self::Conflicts((other_list, other_pending_stops)) => {
-                        list.extend(other_list.into_iter());
-                        for (_, max_update_length) in other_pending_stops.into_iter() {
-                            Self::add_pending_stop(list, pending_stops, max_update_length);
-                        }
-                    },
-                    _ => { },  // only add conflicts, not NonZeroGrow
-                }
+                if let Self::Conflicts((other_list, other_pending_stops)) = other {
+                    list.extend(other_list.into_iter());
+                    for (_, max_update_length) in other_pending_stops.into_iter() {
+                        Self::add_pending_stop(list, pending_stops, max_update_length);
+                    }
+                }  // only add conflicts, not NonZeroGrow
             },
         }
     }
@@ -531,18 +530,18 @@ pub trait DualModuleImpl {
 
     /// optional support for edge modifier. for example, erasure errors temporarily set some edges to 0 weight.
     /// When it clears, those edges must be reverted back to the original weight
-    fn load_edge_modifier(&mut self, _edge_modifier: &Vec<(EdgeIndex, Weight)>) {
+    fn load_edge_modifier(&mut self, _edge_modifier: &[(EdgeIndex, Weight)]) {
         unimplemented!("load_edge_modifier is an optional interface, and the current dual module implementation doesn't support it");
     }
 
     /// an erasure error means this edge is totally uncertain: p=0.5, so new weight = ln((1-p)/p) = 0
-    fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
-        let edge_modifier = erasures.iter().map(|edge_index| (*edge_index, 0)).collect();
+    fn load_erasures(&mut self, erasures: &[EdgeIndex]) {
+        let edge_modifier: Vec<_> = erasures.iter().map(|edge_index| (*edge_index, 0)).collect();
         self.load_edge_modifier(&edge_modifier);
     }
 
     /// prepare a list of nodes as shrinking state; useful in creating a blossom
-    fn prepare_nodes_shrink(&mut self, _nodes_circle: &Vec<DualNodePtr>) -> &mut Vec<SyncRequest> {
+    fn prepare_nodes_shrink(&mut self, _nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
         panic!("the dual module implementation doesn't support this function, please use another dual module")
     }
 
@@ -574,7 +573,7 @@ pub trait DualModuleImpl {
     }
 
     /// judge whether the current module hosts any of these dual node
-    fn contains_dual_nodes_any(&self, dual_node_ptrs: &Vec<DualNodePtr>) -> bool {
+    fn contains_dual_nodes_any(&self, dual_node_ptrs: &[DualNodePtr]) -> bool {
         for dual_node_ptr in dual_node_ptrs.iter() {
             if self.contains_dual_node(dual_node_ptr) {
                 return true
@@ -800,7 +799,7 @@ impl DualModuleInterfacePtr {
                 grow_state: DualNodeGrowState::Grow,
                 parent_blossom: None,
                 dual_variable_cache: (0, interface.dual_variable_global_progress),
-                belonging: belonging,
+                belonging,
             })
         };
         interface.nodes_length += 1;
@@ -819,9 +818,9 @@ impl DualModuleInterfacePtr {
         let dual_node = dual_node_ptr.read_recursive();
         if dual_node.index >= interface.nodes_count() { return false }
         if let Some(ptr) = interface.get_node(dual_node.index).as_ref() {
-            return ptr == dual_node_ptr
+            ptr == dual_node_ptr
         } else {
-            return false
+            false
         }
     }
 
@@ -831,7 +830,7 @@ impl DualModuleInterfacePtr {
             , dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         let belonging = self.downgrade();
         let interface = self.read_recursive();
-        if touching_children.len() == 0 {  // automatically fill the children, only works when nodes_circle consists of all syndrome nodes
+        if touching_children.is_empty() {  // automatically fill the children, only works when nodes_circle consists of all syndrome nodes
             touching_children = nodes_circle.iter().map(|ptr| (ptr.downgrade(), ptr.downgrade())).collect();
         }
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
@@ -861,7 +860,7 @@ impl DualModuleInterfacePtr {
                 grow_state: DualNodeGrowState::Grow,
                 parent_blossom: None,
                 dual_variable_cache: (0, interface.dual_variable_global_progress),
-                belonging: belonging,
+                belonging,
             })
         };
         drop(interface);
@@ -886,7 +885,7 @@ impl DualModuleInterfacePtr {
             let mut node = blossom_node_ptr.write();
             node.class = DualNodeClass::Blossom {
                 nodes_circle: nodes_circle.iter().map(|ptr| ptr.downgrade()).collect(),
-                touching_children: touching_children,
+                touching_children,
             };
             interface.nodes_length += 1;
             if interface.nodes.len() < interface.nodes_length {
@@ -941,7 +940,7 @@ impl DualModuleInterfacePtr {
                     let mut node = node_ptr.write();
                     assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &blossom_node_ptr.downgrade()
                         , "internal error: parent blossom must be this blossom");
-                    assert!(&node.grow_state == &DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
+                    assert!(node.grow_state == DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
                     node.parent_blossom = None;
                     drop(node);
                     {  // safest way: to avoid sub-optimal result being found, set all nodes to growing state
@@ -981,7 +980,7 @@ impl DualModuleInterfacePtr {
             node.dual_variable_cache = (current_dual_variable, interface.dual_variable_global_progress);  // update the cache
         }
         drop(interface);
-        dual_module_impl.set_grow_state(&dual_node_ptr, grow_state);  // call this before dual node actually sets; to give history information
+        dual_module_impl.set_grow_state(dual_node_ptr, grow_state);  // call this before dual node actually sets; to give history information
         dual_node_ptr.set_grow_state(grow_state);
     }
 
@@ -993,11 +992,11 @@ impl DualModuleInterfacePtr {
         interface.dual_variable_global_progress += length;
     }
 
-    /// grow  a specific length globally but iteratively: will try to keep growing that much
+    /// grow a specific length globally but iteratively: will try to keep growing that much
     pub fn grow_iterative(&self, mut length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
         while length > 0 {
             let max_update_length = dual_module_impl.compute_maximum_update_length();
-            let safe_growth = max_update_length.get_none_zero_growth().expect(format!("iterative grow failed because of conflicts {max_update_length:?}").as_str());
+            let safe_growth = max_update_length.get_none_zero_growth().unwrap_or_else(|| panic!("iterative grow failed because of conflicts {max_update_length:?}"));
             let growth = std::cmp::min(length, safe_growth);
             self.grow(growth, dual_module_impl);
             length -= growth;
@@ -1044,7 +1043,7 @@ impl DualModuleInterfacePtr {
         assert!(left_interface.parent.is_none(), "cannot fuse an interface twice");
         assert!(right_interface.parent.is_none(), "cannot fuse an interface twice");
         left_interface.parent = Some(parent_weak.clone());
-        right_interface.parent = Some(parent_weak.clone());
+        right_interface.parent = Some(parent_weak);
         left_interface.index_bias = 0;
         right_interface.index_bias = left_interface.nodes_count();
         interface.children = Some((
@@ -1070,82 +1069,80 @@ impl DualModuleInterfacePtr {
         let mut visited_syndrome = HashSet::with_capacity(interface.nodes_count() * 2);
         let mut sum_individual_dual_variable = 0;
         for (index, dual_node_ptr) in flattened_nodes.iter().enumerate() {
-            match dual_node_ptr {
-                Some(dual_node_ptr) => {
-                    let dual_node = dual_node_ptr.read_recursive();
-                    sum_individual_dual_variable += dual_node.get_dual_variable(&interface);
-                    if dual_node.index != index { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
-                    match &dual_node.class {
-                        DualNodeClass::Blossom { nodes_circle, touching_children } => {
-                            for (idx, circle_node_weak) in nodes_circle.iter().enumerate() {
-                                let circle_node_ptr = circle_node_weak.upgrade_force();
-                                if &circle_node_ptr == dual_node_ptr { return Err(format!("a blossom should not contain itself")) }
-                                let circle_node = circle_node_ptr.read_recursive();
-                                if circle_node.parent_blossom.as_ref() != Some(&dual_node_ptr.downgrade()) {
-                                    return Err(format!("blossom {} contains {} but child's parent pointer = {:?} is not pointing back"
-                                        , dual_node.index, circle_node.index, circle_node.parent_blossom))
-                                }
-                                if circle_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", circle_node.index)) }
-                                // check if circle node is still tracked, i.e. inside self.nodes
-                                if circle_node.index >= interface.nodes_count() || interface.get_node(circle_node.index).is_none() {
-                                    return Err(format!("child's index {} is not in the interface", circle_node.index))
-                                }
-                                let tracked_circle_node_ptr = interface.get_node(circle_node.index).unwrap();
-                                if tracked_circle_node_ptr != circle_node_ptr {
-                                    return Err(format!("the tracked ptr of child {} is not what's being pointed", circle_node.index))
-                                }
-                                // check children belongings
-                                let (child_weak_1, child_weak_2) = &touching_children[idx];
-                                if matches!(circle_node.class, DualNodeClass::SyndromeVertex{..}) {
-                                    if child_weak_1 != circle_node_weak { return Err(format!("touching child can only be syndrome node {}", circle_node.index)) }
-                                    if child_weak_2 != circle_node_weak { return Err(format!("touching child can only be syndrome node {}", circle_node.index)) }
-                                } else {
-                                    let child_ptr_1 = child_weak_1.upgrade_force();
-                                    let child_ptr_2 = child_weak_2.upgrade_force();
-                                    let child_1_ancestor = child_ptr_1.get_ancestor_blossom();
-                                    let child_2_ancestor = child_ptr_2.get_ancestor_blossom();
-                                    let circle_ancestor = circle_node_ptr.get_ancestor_blossom();
-                                    if child_1_ancestor != circle_ancestor { return Err(format!("{:?} is not descendent of {}", child_ptr_1, circle_node.index)) }
-                                    if child_2_ancestor != circle_ancestor { return Err(format!("{:?} is not descendent of {}", child_ptr_2, circle_node.index)) }
+            if let Some(dual_node_ptr) = dual_node_ptr {
+                let dual_node = dual_node_ptr.read_recursive();
+                sum_individual_dual_variable += dual_node.get_dual_variable(&interface);
+                if dual_node.index != index { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
+                match &dual_node.class {
+                    DualNodeClass::Blossom { nodes_circle, touching_children } => {
+                        for (idx, circle_node_weak) in nodes_circle.iter().enumerate() {
+                            let circle_node_ptr = circle_node_weak.upgrade_force();
+                            if &circle_node_ptr == dual_node_ptr {
+                                return Err("a blossom should not contain itself".to_string())
+                            }
+                            let circle_node = circle_node_ptr.read_recursive();
+                            if circle_node.parent_blossom.as_ref() != Some(&dual_node_ptr.downgrade()) {
+                                return Err(format!("blossom {} contains {} but child's parent pointer = {:?} is not pointing back"
+                                    , dual_node.index, circle_node.index, circle_node.parent_blossom))
+                            }
+                            if circle_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", circle_node.index)) }
+                            // check if circle node is still tracked, i.e. inside self.nodes
+                            if circle_node.index >= interface.nodes_count() || interface.get_node(circle_node.index).is_none() {
+                                return Err(format!("child's index {} is not in the interface", circle_node.index))
+                            }
+                            let tracked_circle_node_ptr = interface.get_node(circle_node.index).unwrap();
+                            if tracked_circle_node_ptr != circle_node_ptr {
+                                return Err(format!("the tracked ptr of child {} is not what's being pointed", circle_node.index))
+                            }
+                            // check children belongings
+                            let (child_weak_1, child_weak_2) = &touching_children[idx];
+                            if matches!(circle_node.class, DualNodeClass::SyndromeVertex{..}) {
+                                if child_weak_1 != circle_node_weak { return Err(format!("touching child can only be syndrome node {}", circle_node.index)) }
+                                if child_weak_2 != circle_node_weak { return Err(format!("touching child can only be syndrome node {}", circle_node.index)) }
+                            } else {
+                                let child_ptr_1 = child_weak_1.upgrade_force();
+                                let child_ptr_2 = child_weak_2.upgrade_force();
+                                let child_1_ancestor = child_ptr_1.get_ancestor_blossom();
+                                let child_2_ancestor = child_ptr_2.get_ancestor_blossom();
+                                let circle_ancestor = circle_node_ptr.get_ancestor_blossom();
+                                if child_1_ancestor != circle_ancestor { return Err(format!("{:?} is not descendent of {}", child_ptr_1, circle_node.index)) }
+                                if child_2_ancestor != circle_ancestor { return Err(format!("{:?} is not descendent of {}", child_ptr_2, circle_node.index)) }
+                            }
+                        }
+                    },
+                    DualNodeClass::SyndromeVertex { syndrome_index } => {
+                        if visited_syndrome.contains(syndrome_index) { return Err(format!("duplicate syndrome index: {}", syndrome_index)) }
+                        visited_syndrome.insert(*syndrome_index);
+                    },
+                }
+                if let Some(parent_blossom_weak) = &dual_node.parent_blossom {
+                    if dual_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", dual_node.index)) }
+                    let parent_blossom_ptr = parent_blossom_weak.upgrade_force();
+                    let parent_blossom = parent_blossom_ptr.read_recursive();
+                    // check if child is actually inside this blossom
+                    match &parent_blossom.class {
+                        DualNodeClass::Blossom { nodes_circle, .. } => {
+                            let mut found_match_count = 0;
+                            for node_weak in nodes_circle.iter() {
+                                let node_ptr = node_weak.upgrade_force();
+                                if &node_ptr == dual_node_ptr {
+                                    found_match_count += 1;
                                 }
                             }
-                        },
-                        DualNodeClass::SyndromeVertex { syndrome_index } => {
-                            if visited_syndrome.contains(syndrome_index) { return Err(format!("duplicate syndrome index: {}", syndrome_index)) }
-                            visited_syndrome.insert(*syndrome_index);
-                        },
+                            if found_match_count != 1 {
+                                return Err(format!("{} is the parent of {} but the child only presents {} times", parent_blossom.index, dual_node.index, found_match_count))
+                            }
+                        }, _ => { return Err(format!("{}, as the parent of {}, is not a blossom", parent_blossom.index, dual_node.index)) }
                     }
-                    match &dual_node.parent_blossom {
-                        Some(parent_blossom_weak) => {
-                            if dual_node.grow_state != DualNodeGrowState::Stay { return Err(format!("child node {} is not at Stay state", dual_node.index)) }
-                            let parent_blossom_ptr = parent_blossom_weak.upgrade_force();
-                            let parent_blossom = parent_blossom_ptr.read_recursive();
-                            // check if child is actually inside this blossom
-                            match &parent_blossom.class {
-                                DualNodeClass::Blossom { nodes_circle, .. } => {
-                                    let mut found_match_count = 0;
-                                    for node_weak in nodes_circle.iter() {
-                                        let node_ptr = node_weak.upgrade_force();
-                                        if &node_ptr == dual_node_ptr {
-                                            found_match_count += 1;
-                                        }
-                                    }
-                                    if found_match_count != 1 {
-                                        return Err(format!("{} is the parent of {} but the child only presents {} times", parent_blossom.index, dual_node.index, found_match_count))
-                                    }
-                                }, _ => { return Err(format!("{}, as the parent of {}, is not a blossom", parent_blossom.index, dual_node.index)) }
-                            }
-                            // check if blossom is still tracked, i.e. inside interface.nodes
-                            if parent_blossom.index >= interface.nodes_count() || interface.get_node(parent_blossom.index).is_none() {
-                                return Err(format!("parent blossom's index {} is not in the interface", parent_blossom.index))
-                            }
-                            let tracked_parent_blossom_ptr = interface.get_node(parent_blossom.index).unwrap();
-                            if tracked_parent_blossom_ptr != parent_blossom_ptr {
-                                return Err(format!("the tracked ptr of parent blossom {} is not what's being pointed", parent_blossom.index))
-                            }
-                        }, _ => { }
+                    // check if blossom is still tracked, i.e. inside interface.nodes
+                    if parent_blossom.index >= interface.nodes_count() || interface.get_node(parent_blossom.index).is_none() {
+                        return Err(format!("parent blossom's index {} is not in the interface", parent_blossom.index))
                     }
-                }, _ => { }
+                    let tracked_parent_blossom_ptr = interface.get_node(parent_blossom.index).unwrap();
+                    if tracked_parent_blossom_ptr != parent_blossom_ptr {
+                        return Err(format!("the tracked ptr of parent blossom {} is not what's being pointed", parent_blossom.index))
+                    }
+                }
             }
         }
         if sum_individual_dual_variable != interface.sum_dual_variables {
@@ -1155,7 +1152,7 @@ impl DualModuleInterfacePtr {
     }
 
     pub fn sum_dual_variables(&self) -> Weight {
-        self.read_recursive().sum_dual_variables.clone()
+        self.read_recursive().sum_dual_variables
     }
 
 }
@@ -1308,11 +1305,17 @@ pub struct EdgeWeightModifier {
     pub modified: Vec<(EdgeIndex, Weight)>,
 }
 
+impl Default for EdgeWeightModifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EdgeWeightModifier {
 
     pub fn new() -> Self {
         Self {
-            modified: Vec::new(),
+            modified: vec![],
         }
     }
 

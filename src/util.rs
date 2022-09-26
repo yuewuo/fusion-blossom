@@ -80,7 +80,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
         even if the edges in the erasure is well ordered, they may not be able to be represented as
         a single range simply because the partition is vertex-based. need more consideration");
         Self {
-            syndrome_pattern: syndrome_pattern,
+            syndrome_pattern,
             whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.syndrome_vertices.len()),
         }
     }
@@ -108,6 +108,9 @@ impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output
     pub fn iter(&self) -> std::ops::Range<IndexType> {
         self.range[0].. self.range[1]
     }
+    pub fn is_empty(&self) -> bool {
+        self.range[1] == self.range[0]
+    }
     pub fn len(&self) -> usize {
         (self.range[1] - self.range[0]).into()
     }
@@ -130,7 +133,7 @@ impl<IndexType: std::fmt::Display + std::fmt::Debug + Ord + std::ops::Sub<Output
     pub fn contains(&self, vertex_index: &IndexType) -> bool {
         *vertex_index >= self.start() && *vertex_index < self.end()
     }
-    pub fn contains_any(&self, vertex_indices: &Vec<IndexType>) -> bool {
+    pub fn contains_any(&self, vertex_indices: &[IndexType]) -> bool {
         for vertex_index in vertex_indices.iter() {
             if self.contains(vertex_index) {
                 return true
@@ -188,23 +191,24 @@ impl PartitionConfig {
 
     pub fn default(vertex_num: usize) -> Self {
         Self {
-            vertex_num: vertex_num,
+            vertex_num,
             partitions: vec![VertexRange::new(0, vertex_num)],
             fusions: vec![],
         }
     }
 
     pub fn into_info(self) -> Arc<PartitionInfo> {
-        assert!(self.partitions.len() > 0, "at least one partition must exist");
+        assert!(!self.partitions.is_empty(), "at least one partition must exist");
         let mut whole_ranges = vec![];
         let mut owning_ranges = vec![];
-        for partition in self.partitions.iter() {
+        for &partition in self.partitions.iter() {
             partition.sanity_check();
             assert!(partition.end() <= self.vertex_num, "invalid vertex index {} in partitions", partition.end());
-            whole_ranges.push(partition.clone());
-            owning_ranges.push(partition.clone());
+            whole_ranges.push(partition);
+            owning_ranges.push(partition);
         }
-        let mut parents: Vec<Option<usize>> = (0..self.partitions.len() + self.fusions.len()).map(|_| None).collect();
+        let unit_count = self.partitions.len() + self.fusions.len();
+        let mut parents: Vec<Option<usize>> = (0..unit_count).map(|_| None).collect();
         for (fusion_index, (left_index, right_index)) in self.fusions.iter().enumerate() {
             let unit_index = fusion_index + self.partitions.len();
             assert!(*left_index < unit_index, "dependency wrong, {} depending on {}", unit_index, left_index);
@@ -219,8 +223,8 @@ impl PartitionConfig {
             owning_ranges.push(interface_range);
         }
         // check that all nodes except for the last one has been merged
-        for unit_index in 0..self.partitions.len() + self.fusions.len() - 1 {
-            assert!(parents[unit_index].is_some(), "found unit {} without being fused", unit_index);
+        for (unit_index, parent) in parents.iter().enumerate().take(unit_count - 1) {
+            assert!(parent.is_some(), "found unit {} without being fused", unit_index);
         }
         // check that the final node has the full range
         let last_unit_index = self.partitions.len() + self.fusions.len() - 1;
@@ -232,7 +236,7 @@ impl PartitionConfig {
                 whole_range: whole_ranges[i],
                 owning_range: owning_ranges[i],
                 children: if i >= self.partitions.len() { Some(self.fusions[i - self.partitions.len()]) } else { None },
-                parent: parents[i].clone(),
+                parent: parents[i],
                 leaves: if i < self.partitions.len() { vec![i] } else { vec![] },
                 descendants: BTreeSet::new(),
             }
@@ -260,7 +264,7 @@ impl PartitionConfig {
         Arc::new(PartitionInfo {
             config: self,
             units: partition_unit_info,
-            vertex_to_owning_unit: vertex_to_owning_unit,
+            vertex_to_owning_unit,
         })
     }
 
@@ -328,10 +332,10 @@ impl<'a> PartitionedSyndromePattern<'a> {
             left_index
         };
         (SyndromeRange::new(owning_start_index, owning_end_index), (Self {
-            syndrome_pattern: &self.syndrome_pattern,
+            syndrome_pattern: self.syndrome_pattern,
             whole_syndrome_range: SyndromeRange::new(self.whole_syndrome_range.start(), owning_start_index),
         }, Self {
-            syndrome_pattern: &self.syndrome_pattern,
+            syndrome_pattern: self.syndrome_pattern,
             whole_syndrome_range: SyndromeRange::new(owning_end_index, self.whole_syndrome_range.end()),
         }))
     }
@@ -396,7 +400,7 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<usi
 }
 
 /// translate syndrome vertices into the current new index given reordered_vertices
-pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_syndrome_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
+pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_syndrome_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
     old_syndrome_vertices.iter().map(|old_index| {
         old_to_new[*old_index].unwrap()
@@ -406,9 +410,9 @@ pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, o
 impl SolverInitializer {
     pub fn new(vertex_num: VertexIndex, weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: Vec<VertexIndex>) -> SolverInitializer {
         SolverInitializer {
-            vertex_num: vertex_num,
-            weighted_edges: weighted_edges,
-            virtual_vertices: virtual_vertices,
+            vertex_num,
+            weighted_edges,
+            virtual_vertices,
         }
     }
 }
@@ -574,7 +578,7 @@ impl<T> Clone for ArcRwLock<T> {
 }
 
 impl<T> RwLockPtr<T> for ArcRwLock<T> {
-    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr: ptr }  }
+    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr }  }
     fn new(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
     #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
     #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
@@ -652,7 +656,7 @@ impl<T: FastClear> Clone for FastClearArcRwLock<T> {
 }
 
 impl<T: FastClear> FastClearRwLockPtr<T> for FastClearArcRwLock<T> {
-    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr: ptr }  }
+    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr }  }
     fn new(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
     #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
     #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
@@ -726,8 +730,8 @@ impl BenchmarkProfiler {
             records: vec![],
             sum_decoding_time: 0.,
             sum_syndrome: 0,
-            noisy_measurements: noisy_measurements,
-            benchmark_profiler_output: benchmark_profiler_output,
+            noisy_measurements,
+            benchmark_profiler_output,
         }
     }
     /// record the beginning of a decoding procedure
@@ -741,7 +745,7 @@ impl BenchmarkProfiler {
         self.records.last_mut().unwrap().record_begin();
     }
     /// record the ending of a decoding procedure
-    pub fn end(&mut self, solver: Option<&Box<dyn PrimalDualSolver>>) {
+    pub fn end(&mut self, solver: Option<&dyn PrimalDualSolver>) {
         let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
         last_entry.record_end();
         self.sum_decoding_time += last_entry.decoding_time.unwrap();
@@ -753,7 +757,7 @@ impl BenchmarkProfiler {
             });
             if let Some(solver) = solver {
                 let solver_profile = solver.generate_profiler_report();
-                value.as_object_mut().unwrap().insert(format!("solver_profile"), solver_profile);
+                value.as_object_mut().unwrap().insert("solver_profile".to_string(), solver_profile);
             }
             file.write_all(serde_json::to_string(&value).unwrap().as_bytes()).unwrap();
             file.write_all(b"\n").unwrap();

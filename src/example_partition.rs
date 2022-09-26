@@ -218,7 +218,7 @@ pub struct PhenomenologicalPlanarCodeTimePartition {
 
 impl PhenomenologicalPlanarCodeTimePartition {
     pub fn new_tree(d: usize, noisy_measurements: usize, partition_num: usize, enable_tree_fusion: bool) -> Self {
-        Self { d, noisy_measurements, partition_num, enable_tree_fusion: enable_tree_fusion }
+        Self { d, noisy_measurements, partition_num, enable_tree_fusion }
     }
     pub fn new(d: usize, noisy_measurements: usize, partition_num: usize) -> Self {
         Self::new_tree(d, noisy_measurements, partition_num, false)
