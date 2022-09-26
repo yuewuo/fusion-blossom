@@ -37,6 +37,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Clone)]
+#[allow(clippy::large_enum_variant)]
 enum Commands {
     /// benchmark the speed (and also correctness if enabled)
     Benchmark {
@@ -221,10 +222,8 @@ impl Cli {
                     , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
                     , benchmark_profiler_output, print_syndrome_pattern, starting_iteration } => {
                 // check for dependency early
-                if matches!(verifier, Verifier::BlossomV) {
-                    if cfg!(not(feature = "blossom_v")) {
-                        panic!("need blossom V library, see README.md")
-                    }
+                if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
+                    panic!("need blossom V library, see README.md")
                 }
                 let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight, code_config);
                 if pe != 0. { code.set_erasure_probability(pe); }
@@ -232,9 +231,9 @@ impl Cli {
                     print_visualize_link(&static_visualize_data_filename());
                 }
                 // create initializer and solver
-                let (initializer, partition_config) = partition_strategy.build(&mut code, d, noisy_measurements, partition_config);
+                let (initializer, partition_config) = partition_strategy.build(&mut *code, d, noisy_measurements, partition_config);
                 let partition_info = partition_config.into_info();
-                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &code, primal_dual_config);
+                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &*code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
                 let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, partition_info.as_ref())));
                 // prepare progress bar display
@@ -267,7 +266,7 @@ impl Cli {
                     }
                 }
                 pb.finish();
-                println!("");
+                println!();
             },
             Commands::Test { command } => {
                 match command {
@@ -454,7 +453,9 @@ impl ExampleCodeType {
             Self::PhenomenologicalPlanarCodeParallel => {
                 let mut code_count = 1;
                 let config = code_config.as_object_mut().expect("config must be JSON object");
-                config.remove("code_count").map(|value| code_count = value.as_u64().expect("code_count number") as usize);
+                if let Some(value) = config.remove("code_count") {
+                    code_count = value.as_u64().expect("code_count number") as usize;
+                }
                 Box::new(ExampleCodeParallel::new(PhenomenologicalPlanarCode::new(d, noisy_measurements, p, max_half_weight), code_count))
             },
             Self::CircuitLevelPlanarCode => {
@@ -464,7 +465,9 @@ impl ExampleCodeType {
             Self::CircuitLevelPlanarCodeParallel => {
                 let mut code_count = 1;
                 let config = code_config.as_object_mut().expect("config must be JSON object");
-                config.remove("code_count").map(|value| code_count = value.as_u64().expect("code_count number") as usize);
+                if let Some(value) = config.remove("code_count") {
+                    code_count = value.as_u64().expect("code_count number") as usize;
+                }
                 Box::new(ExampleCodeParallel::new(CircuitLevelPlanarCode::new(d, noisy_measurements, p, max_half_weight), code_count))
             },
             Self::ErrorPatternReader => {
@@ -476,7 +479,7 @@ impl ExampleCodeType {
 }
 
 impl PartitionStrategy {
-    fn build(&self, code: &mut Box<dyn ExampleCode>, d: usize, noisy_measurements: usize, mut partition_config: serde_json::Value) -> (SolverInitializer, PartitionConfig) {
+    fn build(&self, code: &mut dyn ExampleCode, d: usize, noisy_measurements: usize, mut partition_config: serde_json::Value) -> (SolverInitializer, PartitionConfig) {
         use example_partition::*;
         let partition_config = match self {
             Self::None => {
@@ -499,8 +502,12 @@ impl PartitionStrategy {
                 let config = partition_config.as_object_mut().expect("config must be JSON object");
                 let mut partition_num = 10;
                 let mut enable_tree_fusion = false;
-                config.remove("partition_num").map(|value| partition_num = value.as_u64().expect("partition_num: usize") as usize);
-                config.remove("enable_tree_fusion").map(|value| enable_tree_fusion = value.as_bool().expect("enable_tree_fusion: bool"));
+                if let Some(value) = config.remove("partition_num") {
+                    partition_num = value.as_u64().expect("partition_num: usize") as usize;
+                }
+                if let Some(value) = config.remove("enable_tree_fusion") {
+                    enable_tree_fusion = value.as_bool().expect("enable_tree_fusion: bool");
+                }
                 if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
                 PhenomenologicalPlanarCodeTimePartition::new_tree(d, noisy_measurements, partition_num, enable_tree_fusion).build_apply(code)
             },
@@ -510,7 +517,7 @@ impl PartitionStrategy {
 }
 
 impl PrimalDualType {
-    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, code: &Box<dyn ExampleCode>
+    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, code: &dyn ExampleCode
             , primal_dual_config: serde_json::Value) -> Box<dyn PrimalDualSolver> {
         match self {
             Self::Serial => {
@@ -539,7 +546,7 @@ impl Verifier {
             Self::None => Box::new(VerifierNone { }),
             Self::BlossomV => Box::new(VerifierBlossomV { 
                 initializer: initializer.clone(),
-                subgraph_builder: SubGraphBuilder::new(&initializer),
+                subgraph_builder: SubGraphBuilder::new(initializer),
             }),
             _ => unimplemented!()
         }

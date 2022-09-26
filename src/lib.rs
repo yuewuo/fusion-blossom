@@ -69,14 +69,14 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
     let mut is_syndrome: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &virtual_vertex in initializer.virtual_vertices.iter() {
         assert!(virtual_vertex < initializer.vertex_num, "invalid input");
-        assert_eq!(is_virtual[virtual_vertex], false, "same virtual vertex appears twice");
+        assert!(!is_virtual[virtual_vertex], "same virtual vertex appears twice");
         is_virtual[virtual_vertex] = true;
     }
     let mut mapping_to_syndrome_vertices: Vec<usize> = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
     for (i, &syndrome_vertex) in syndrome_vertices.iter().enumerate() {
         assert!(syndrome_vertex < initializer.vertex_num, "invalid input");
-        assert_eq!(is_virtual[syndrome_vertex], false, "syndrome vertex cannot be virtual");
-        assert_eq!(is_syndrome[syndrome_vertex], false, "same syndrome vertex appears twice");
+        assert!(!is_virtual[syndrome_vertex], "syndrome vertex cannot be virtual");
+        assert!(!is_syndrome[syndrome_vertex], "same syndrome vertex appears twice");
         is_syndrome[syndrome_vertex] = true;
         mapping_to_syndrome_vertices[syndrome_vertex] = i;
     }
@@ -85,19 +85,17 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
     let legacy_vertex_num = syndrome_num * 2;
     let mut legacy_weighted_edges = Vec::<(usize, usize, u32)>::new();
     let mut boundaries = Vec::<Option<(usize, Weight)>>::new();
-    for i in 0..syndrome_num {
-        let complete_graph_edges = complete_graph.all_edges(syndrome_vertices[i]);
+    for (i, &syndrome_vertex) in syndrome_vertices.iter().enumerate() {
+        let complete_graph_edges = complete_graph.all_edges(syndrome_vertex);
         let mut boundary: Option<(usize, Weight)> = None;
         for (&peer, &(_, weight)) in complete_graph_edges.iter() {
             if is_virtual[peer] && (boundary.is_none() || weight < boundary.as_ref().unwrap().1) {
                 boundary = Some((peer, weight));
             }
         }
-        match boundary {
-            Some((_, weight)) => {
-                // connect this real vertex to it's corresponding virtual vertex
-                legacy_weighted_edges.push((i, i + syndrome_num, weight as u32));
-            }, None => { }
+        if let Some((_, weight)) = boundary {
+            // connect this real vertex to it's corresponding virtual vertex
+            legacy_weighted_edges.push((i, i + syndrome_num, weight as u32));
         }
         boundaries.push(boundary);  // save for later resolve legacy matchings
         for (&peer, &(_, weight)) in complete_graph_edges.iter() {
@@ -150,7 +148,7 @@ pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Ve
     let mut is_syndrome: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &syndrome_vertex in syndrome_vertices.iter() {
         assert!(syndrome_vertex < initializer.vertex_num, "invalid input");
-        assert_eq!(is_syndrome[syndrome_vertex], false, "same syndrome vertex appears twice");
+        assert!(!is_syndrome[syndrome_vertex], "same syndrome vertex appears twice");
         is_syndrome[syndrome_vertex] = true;
     }
     assert_eq!(syndrome_num, mwpm_result.len(), "invalid mwpm result");

@@ -134,8 +134,8 @@ pub struct SolverSerial {
 impl SolverSerial {
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
-            dual_module: DualModuleSerial::new(&initializer),
-            primal_module: PrimalModuleSerial::new(&initializer),
+            dual_module: DualModuleSerial::new(initializer),
+            primal_module: PrimalModuleSerial::new(initializer),
             interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
     }
@@ -148,7 +148,7 @@ impl PrimalDualSolver for SolverSerial {
         self.interface_ptr.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        self.primal_module.solve_visualizer(&mut self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
+        self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
     }
     fn perfect_matching(&mut self) -> PerfectMatching { self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module) }
     fn sum_dual_variables(&self) -> Weight { self.interface_ptr.read_recursive().sum_dual_variables }
@@ -170,8 +170,8 @@ impl SolverDualParallel {
     pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>) -> Self {
         let config = DualModuleParallelConfig::default();
         Self {
-            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), config),
-            primal_module: PrimalModuleSerial::new(&initializer),
+            dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), config),
+            primal_module: PrimalModuleSerial::new(initializer),
             interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
     }
@@ -207,8 +207,8 @@ impl SolverParallel {
         let dual_config = DualModuleParallelConfig::default();
         let primal_config = PrimalModuleParallelConfig::default();
         Self {
-            dual_module: DualModuleParallel::new_config(&initializer, Arc::clone(partition_info), dual_config),
-            primal_module: PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config),
+            dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), dual_config),
+            primal_module: PrimalModuleParallel::new_config(initializer, Arc::clone(partition_info), primal_config),
         }
     }
 }
@@ -243,10 +243,12 @@ pub struct SolverErrorPatternLogger {
 }
 
 impl SolverErrorPatternLogger {
-    pub fn new(initializer: &SolverInitializer, code: &Box<dyn ExampleCode>, mut config: serde_json::Value) -> Self {
-        let mut filename = format!("tmp/syndrome_patterns.txt");
+    pub fn new(initializer: &SolverInitializer, code: &dyn ExampleCode, mut config: serde_json::Value) -> Self {
+        let mut filename = "tmp/syndrome_patterns.txt".to_string();
         let config = config.as_object_mut().expect("config must be JSON object");
-        config.remove("filename").map(|value| filename = value.as_str().expect("filename string").to_string());
+        if let Some(value) = config.remove("filename") {
+            filename = value.as_str().expect("filename string").to_string();
+        }
         if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
         let mut file = File::create(filename).unwrap();
         file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();

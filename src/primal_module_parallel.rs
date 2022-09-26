@@ -75,6 +75,12 @@ pub struct PrimalModuleParallelUnitEventTime {
     pub end: f64,
 }
 
+impl Default for PrimalModuleParallelUnitEventTime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PrimalModuleParallelUnitEventTime {
     pub fn new() -> Self {
         Self {
@@ -120,7 +126,7 @@ impl PrimalModuleParallel {
         thread_pool.scope(|_| {
             (0..unit_count).into_par_iter().map(|unit_index| {
                 // println!("unit_index: {unit_index}");
-                let primal_module = PrimalModuleSerial::new(&initializer);
+                let primal_module = PrimalModuleSerial::new(initializer);
                 PrimalModuleParallelUnitPtr::new_wrapper(primal_module, unit_index, Arc::clone(&partition_info))
             }).collect_into_vec(&mut units);
         });
@@ -212,11 +218,11 @@ impl PrimalModuleParallel {
                             visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![interface_ptr, dual_module, primal_module]).unwrap();
                         };
                     } else {
-                        visualizer.snapshot_combined(format!("unit solved"), vec![interface_ptr, dual_module, primal_module]).unwrap();
+                        visualizer.snapshot_combined("unit solved".to_string(), vec![interface_ptr, dual_module, primal_module]).unwrap();
                     }
                 });
             let last_unit = self.units.last().unwrap().read_recursive();
-            visualizer.snapshot_combined(format!("solved"), vec![&last_unit.interface_ptr, parallel_dual_module, self]).unwrap();
+            visualizer.snapshot_combined("solved".to_string(), vec![&last_unit.interface_ptr, parallel_dual_module, self]).unwrap();
         } else {
             self.parallel_solve(syndrome_pattern, parallel_dual_module);
         }
@@ -325,7 +331,7 @@ impl PrimalModuleParallelUnitPtr {
             primal_unit.serial_module.solve_step_callback_interface_loaded(&interface_ptr, dual_unit.deref_mut()
                 , |interface, dual_module, primal_module, group_max_update_length| {
                     if let Some(callback) = callback.as_mut() {
-                        callback(interface, dual_module, primal_module, Some(&group_max_update_length));
+                        callback(interface, dual_module, primal_module, Some(group_max_update_length));
                     }
                 });
         } else {  // this is a leaf, proceed it as normal serial one
@@ -336,7 +342,7 @@ impl PrimalModuleParallelUnitPtr {
             primal_unit.serial_module.solve_step_callback(&interface_ptr, &syndrome_pattern, dual_unit.deref_mut()
                 , |interface, dual_module, primal_module, group_max_update_length| {
                     if let Some(callback) = callback.as_mut() {
-                        callback(interface, dual_module, primal_module, Some(&group_max_update_length));
+                        callback(interface, dual_module, primal_module, Some(group_max_update_length));
                     }
                 });
         };
@@ -399,14 +405,12 @@ impl PrimalModuleParallelUnit {
             let primal_node_ptr = &self.serial_module.nodes[*node_index];
             if let Some(primal_node_ptr) = primal_node_ptr {
                 let mut primal_node = primal_node_ptr.write();
-                if let Some((match_target, _)) = &primal_node.temporary_match {
-                    if let MatchTarget::VirtualVertex(vertex_index) = match_target {
-                        if self.partition_info.vertex_to_owning_unit[*vertex_index] == self.unit_index {
-                            primal_node.temporary_match = None;
-                            self.interface_ptr.set_grow_state(&primal_node.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
-                        } else {  // still possible break
-                            possible_break.push(*node_index);
-                        }
+                if let Some((MatchTarget::VirtualVertex(vertex_index), _)) = &primal_node.temporary_match {
+                    if self.partition_info.vertex_to_owning_unit[*vertex_index] == self.unit_index {
+                        primal_node.temporary_match = None;
+                        self.interface_ptr.set_grow_state(&primal_node.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
+                    } else {  // still possible break
+                        possible_break.push(*node_index);
                     }
                 }
             }

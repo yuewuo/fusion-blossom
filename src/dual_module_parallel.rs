@@ -190,7 +190,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                 unit_index,
                 vertex_num: initializer.vertex_num,
                 edge_num: initializer.weighted_edges.len(),
-                owning_range: owning_range.clone(),
+                owning_range: *owning_range,
                 owning_interface: if unit_index < partition_info.config.partitions.len() { None } else { Some(partition_units[unit_index].downgrade()) },
                 weighted_edges: vec![],  // to be filled later
                 interfaces,
@@ -221,23 +221,34 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                     partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
                 } else {
                     // iterate every leaf unit of the `descendant_unit_index` to see if adding the edge or not
-                    fn dfs_add(unit_index: usize, partition_config: &PartitionConfig, partition_info: &PartitionInfo, i: VertexIndex, j: VertexIndex
-                            , weight: Weight, contained_vertices_vec: &Vec<BTreeSet<VertexIndex>>, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>
-                            , edge_index: EdgeIndex) {
-                        if unit_index >= partition_config.partitions.len() {
-                            let (left_index, right_index) = &partition_info.units[unit_index].children.expect("fusion unit must have children");
-                            dfs_add(*left_index, partition_config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
-                            dfs_add(*right_index, partition_config, partition_info, i, j, weight, contained_vertices_vec, partitioned_initializers, edge_index);
+                    struct DfsInfo<'a> {
+                        partition_config: &'a PartitionConfig,
+                        partition_info: &'a PartitionInfo,
+                        i: VertexIndex,
+                        j: VertexIndex,
+                        weight: Weight,
+                        contained_vertices_vec: &'a Vec<BTreeSet<VertexIndex>>,
+                        edge_index: EdgeIndex,
+                    }
+                    let dfs_info = DfsInfo {
+                        partition_config: &partition_info.config, partition_info: &partition_info
+                        , i, j, weight, contained_vertices_vec: &contained_vertices_vec, edge_index,
+                    };
+                    fn dfs_add(unit_index: usize, dfs_info: &DfsInfo, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>) {
+                        if unit_index >= dfs_info.partition_config.partitions.len() {
+                            let (left_index, right_index) = &dfs_info.partition_info.units[unit_index].children.expect("fusion unit must have children");
+                            dfs_add(*left_index, dfs_info, partitioned_initializers);
+                            dfs_add(*right_index, dfs_info, partitioned_initializers);
                         } else {
-                            let contain_i = contained_vertices_vec[unit_index].contains(&i);
-                            let contain_j = contained_vertices_vec[unit_index].contains(&j);
-                            assert!(!(contain_i ^ contain_j), "{} and {} must either be both contained or not contained by {}", i, j, unit_index);
+                            let contain_i = dfs_info.contained_vertices_vec[unit_index].contains(&dfs_info.i);
+                            let contain_j = dfs_info.contained_vertices_vec[unit_index].contains(&dfs_info.j);
+                            assert!(!(contain_i ^ contain_j), "{} and {} must either be both contained or not contained by {}", dfs_info.i, dfs_info.j, unit_index);
                             if contain_i {
-                                partitioned_initializers[unit_index].weighted_edges.push((i, j, weight, edge_index));
+                                partitioned_initializers[unit_index].weighted_edges.push((dfs_info.i, dfs_info.j, dfs_info.weight, dfs_info.edge_index));
                             }
                         }
                     }
-                    dfs_add(descendant_unit_index, &partition_info.config, &partition_info, i, j, weight, &contained_vertices_vec, &mut partitioned_initializers, edge_index);
+                    dfs_add(descendant_unit_index, &dfs_info, &mut partitioned_initializers);
                 }
             }
         }
@@ -276,7 +287,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                 for child_weak in [left_children_weak, right_children_weak] {
                     // note: although iterating over HashSet is not performance optimal, this only happens at initialization and thus it's fine
                     for vertex_index in child_weak.upgrade_force().read_recursive().extra_descendant_mirrored_vertices.iter() {
-                        if !whole_range.contains(&vertex_index) {
+                        if !whole_range.contains(vertex_index) {
                             unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
                         }
                     }
@@ -364,10 +375,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     // although not the intended way to use it, we do support these common APIs for compatibility with normal primal modules
 
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
-        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
             let mut unit = unit_ptr.write();
-            unit.add_dual_node(&dual_node_ptr);
+            unit.add_dual_node(dual_node_ptr);
         })
     }
 
@@ -380,18 +391,18 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
-        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
             let mut unit = unit_ptr.write();
-            unit.set_grow_state(&dual_node_ptr, grow_state);
+            unit.set_grow_state(dual_node_ptr, grow_state);
         })
     }
 
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
-        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
             let mut unit = unit_ptr.write();
-            unit.compute_maximum_update_length_dual_node(&dual_node_ptr, is_grow, simultaneous_update)
+            unit.compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update)
         })
     }
 
@@ -411,10 +422,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     }
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
-        let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
+        let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
             let mut unit = unit_ptr.write();
-            unit.grow_dual_node(&dual_node_ptr, length);
+            unit.grow_dual_node(dual_node_ptr, length);
         })
     }
 
@@ -544,7 +555,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     /// no need to deduplicate the events: the result will always be consistent with the last one
-    fn execute_sync_events(&mut self, sync_requests: &Vec<SyncRequest>) {
+    fn execute_sync_events(&mut self, sync_requests: &[SyncRequest]) {
         // println!("sync_requests: {sync_requests:?}");
         for sync_request in sync_requests.iter() {
             sync_request.update();
@@ -642,7 +653,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_add_blossom(blossom_ptr, nodes_circle, representative_vertex, nodes_circle_vertices);
             }
         }
-        if self.owning_range.contains_any(&nodes_circle_vertices) || self.serial_module.contains_dual_nodes_any(nodes_circle) {
+        if self.owning_range.contains_any(nodes_circle_vertices) || self.serial_module.contains_dual_nodes_any(nodes_circle) {
             self.serial_module.add_blossom(blossom_ptr);
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
@@ -740,7 +751,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     fn iterative_remove_blossom(&mut self, dual_node_ptr: &DualNodePtr, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(&dual_node_ptr) {
+        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
             return  // no descendant related to this dual node
         }
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
@@ -755,7 +766,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_remove_blossom(dual_node_ptr, representative_vertex);
             }
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(&dual_node_ptr) {
+        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
             self.serial_module.remove_blossom(dual_node_ptr.clone());
         }
     }

@@ -213,6 +213,12 @@ impl IntermediateMatching {
 
 }
 
+impl Default for PerfectMatching {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerfectMatching {
 
     pub fn new() -> Self {
@@ -247,9 +253,9 @@ impl PerfectMatching {
         }
         let mut mwpm_result = Vec::with_capacity(syndrome_vertices.len());
         for syndrome_vertex in syndrome_vertices.iter() {
-            if let Some(a) = peer_matching_maps.get(&syndrome_vertex) {
+            if let Some(a) = peer_matching_maps.get(syndrome_vertex) {
                 mwpm_result.push(*a);
-            } else if let Some(v) = virtual_matching_maps.get(&syndrome_vertex) {
+            } else if let Some(v) = virtual_matching_maps.get(syndrome_vertex) {
                 mwpm_result.push(*v);
             } else { panic!("cannot find syndrome vertex {}", syndrome_vertex) }
         }
@@ -293,7 +299,7 @@ impl SubGraphBuilder {
     }
 
     /// temporarily set some edges to 0 weight, and when it resets, those edges will be reverted back to the original weight
-    pub fn load_erasures(&mut self, erasures: &Vec<EdgeIndex>) {
+    pub fn load_erasures(&mut self, erasures: &[EdgeIndex]) {
         self.complete_graph.load_erasures(erasures);
     }
 
@@ -347,7 +353,7 @@ impl SubGraphBuilder {
 
     /// get subgraph as a vec
     pub fn get_subgraph(&self) -> Vec<EdgeIndex> {
-        self.subgraph.iter().map(|x| *x).collect()
+        self.subgraph.iter().copied().collect()
     }
 
 }
