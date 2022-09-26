@@ -130,7 +130,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         for virtual_vertex in initializer.virtual_vertices.iter() {
             is_vertex_virtual[*virtual_vertex] = true;
         }
-        let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new(PartitionUnit {
+        let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new_value(PartitionUnit {
             unit_index,
             enabled: unit_index < partition_info.config.partitions.len(),
         })).collect();
@@ -355,7 +355,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
 impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModuleParallel<SerialModule> {
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
-    fn new(initializer: &SolverInitializer) -> Self {
+    fn new_empty(initializer: &SolverInitializer) -> Self {
         Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), DualModuleParallelConfig::default())
     }
 
@@ -779,7 +779,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<Seria
     pub fn new_wrapper(serial_module: SerialModule, unit_index: usize, partition_info: Arc<PartitionInfo>, partition_unit: PartitionUnitPtr
             , enable_parallel_execution: bool) -> Self {
         let partition_unit_info = &partition_info.units[unit_index];
-        Self::new(DualModuleParallelUnit {
+        Self::new_value(DualModuleParallelUnit {
             unit_index,
             partition_info: partition_info.clone(),
             partition_unit,
@@ -802,7 +802,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<Seria
 impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModuleParallelUnit<SerialModule> {
 
     /// clear all growth and existing dual nodes
-    fn new(_initializer: &SolverInitializer) -> Self {
+    fn new_empty(_initializer: &SolverInitializer) -> Self {
         panic!("creating parallel unit directly from initializer is forbidden, use `DualModuleParallel::new` instead");
     }
 
@@ -986,7 +986,7 @@ pub mod tests {
 
     pub fn dual_module_parallel_basic_standard_syndrome_optional_viz<F>(mut code: impl ExampleCode, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
-            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
         println!("{syndrome_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
@@ -1009,8 +1009,8 @@ pub mod tests {
         let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
         dual_module.static_fuse_all();
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1021,7 +1021,7 @@ pub mod tests {
 
     pub fn dual_module_parallel_standard_syndrome<F>(code: impl ExampleCode, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
             , final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
-            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
         dual_module_parallel_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), syndrome_vertices, final_dual, partition_func, reordered_vertices)
     }
 

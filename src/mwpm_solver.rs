@@ -8,7 +8,7 @@ use super::util::*;
 use super::dual_module::{DualModuleInterfacePtr, DualModuleImpl};
 use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching};
 use super::dual_module_serial::DualModuleSerial;
-use super::primal_module_serial::PrimalModuleSerial;
+use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::dual_module_parallel::*;
 use super::example::*;
 use super::primal_module_parallel::*;
@@ -26,7 +26,7 @@ pub struct LegacySolverSerial {
     initializer: SolverInitializer,
     /// a serial implementation of the primal module
     #[derivative(Debug="ignore")]
-    primal_module: PrimalModuleSerial,
+    primal_module: PrimalModuleSerialPtr,
     /// a serial implementation of the dual module
     #[derivative(Debug="ignore")]
     dual_module: DualModuleSerial,
@@ -46,8 +46,8 @@ impl LegacySolverSerial {
 
     /// create a new decoder
     pub fn new(initializer: &SolverInitializer) -> Self {
-        let dual_module = DualModuleSerial::new(initializer);
-        let primal_module = PrimalModuleSerial::new(initializer);
+        let dual_module = DualModuleSerial::new_empty(initializer);
+        let primal_module = PrimalModuleSerialPtr::new_empty(initializer);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         let subgraph_builder = SubGraphBuilder::new(initializer);
         Self {
@@ -127,15 +127,15 @@ pub trait PrimalDualSolver {
 
 pub struct SolverSerial {
     dual_module: DualModuleSerial,
-    primal_module: PrimalModuleSerial,
+    primal_module: PrimalModuleSerialPtr,
     interface_ptr: DualModuleInterfacePtr,
 }
 
 impl SolverSerial {
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
-            dual_module: DualModuleSerial::new(initializer),
-            primal_module: PrimalModuleSerial::new(initializer),
+            dual_module: DualModuleSerial::new_empty(initializer),
+            primal_module: PrimalModuleSerialPtr::new_empty(initializer),
             interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
     }
@@ -162,7 +162,7 @@ impl PrimalDualSolver for SolverSerial {
 
 pub struct SolverDualParallel {
     dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleSerial,
+    primal_module: PrimalModuleSerialPtr,
     interface_ptr: DualModuleInterfacePtr,
 }
 
@@ -171,7 +171,7 @@ impl SolverDualParallel {
         let config = DualModuleParallelConfig::default();
         Self {
             dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), config),
-            primal_module: PrimalModuleSerial::new(initializer),
+            primal_module: PrimalModuleSerialPtr::new_empty(initializer),
             interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
     }

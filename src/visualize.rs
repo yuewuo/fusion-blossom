@@ -346,7 +346,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         let syndrome_vertices = vec![39, 63, 52, 100, 90];
         for syndrome_vertex in syndrome_vertices.iter() {
             code.vertices[*syndrome_vertex].is_syndrome = true;
@@ -476,7 +476,7 @@ mod tests {
         }
         visualizer.set_positions(positions, true);  // automatic center all vertices
         let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(syndrome_vertices), &mut dual_module);
         // grow edges
         for &edge_index in grow_edges.iter() {
@@ -507,7 +507,7 @@ mod tests {
             print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
             // create dual module
             let initializer = code.get_initializer();
-            let mut dual_module = DualModuleSerial::new(&initializer);
+            let mut dual_module = DualModuleSerial::new_empty(&initializer);
             // hardcode syndrome          1   2   0   3    5    4    6    7
             let syndrome_vertices = vec![25, 33, 20, 76, 203, 187, 243, 315];
             code.set_syndrome_vertices(&syndrome_vertices);

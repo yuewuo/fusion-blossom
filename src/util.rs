@@ -469,7 +469,7 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
 
     fn new_ptr(ptr: Arc<RwLock<ObjType>>) -> Self;
 
-    fn new(obj: ObjType) -> Self;
+    fn new_value(obj: ObjType) -> Self;
 
     fn ptr(&self) -> &Arc<RwLock<ObjType>>;
 
@@ -520,7 +520,7 @@ pub trait RwLockPtr<ObjType> {
 
     fn new_ptr(ptr: Arc<RwLock<ObjType>>) -> Self;
 
-    fn new(obj: ObjType) -> Self;
+    fn new_value(obj: ObjType) -> Self;
 
     fn ptr(&self) -> &Arc<RwLock<ObjType>>;
 
@@ -579,7 +579,7 @@ impl<T> Clone for ArcRwLock<T> {
 
 impl<T> RwLockPtr<T> for ArcRwLock<T> {
     fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr }  }
-    fn new(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+    fn new_value(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
     #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
     #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
 }
@@ -657,7 +657,7 @@ impl<T: FastClear> Clone for FastClearArcRwLock<T> {
 
 impl<T: FastClear> FastClearRwLockPtr<T> for FastClearArcRwLock<T> {
     fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr }  }
-    fn new(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
+    fn new_value(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
     #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
     #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
 }

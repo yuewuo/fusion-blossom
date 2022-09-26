@@ -12,7 +12,11 @@ use super::dual_module::*;
 use std::cmp::Ordering;
 
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct PrimalModuleSerial {
+    /// unit index of this interface, default to 0
+    pub unit_index: usize,
     /// nodes internal information
     pub nodes: Vec<Option<PrimalNodeInternalPtr>>,
     /// current nodes length, to enable constant-time clear operation
@@ -23,6 +27,29 @@ pub struct PrimalModuleSerial {
     pub possible_break: Vec<NodeIndex>,
     /// debug mode: only resolve one conflict each time
     pub debug_resolve_only_one: bool,
+    /// the parent of this serial module, when fused
+    pub parent: Option<PrimalModuleSerialWeak>,
+    /// when fused, this will indicate the relative bias given by the parent
+    pub index_bias: NodeIndex,
+    /// the two children of this serial module, when fused; following the length of this child,
+    /// given that fused children serial modules will not have new nodes anymore
+    pub children: Option<((PrimalModuleSerialWeak, NodeIndex), (PrimalModuleSerialWeak, NodeIndex))>,
+}
+
+pub type PrimalModuleSerialPtr = ArcRwLock<PrimalModuleSerial>;
+pub type PrimalModuleSerialWeak = WeakRwLock<PrimalModuleSerial>;
+
+impl std::fmt::Debug for PrimalModuleSerialPtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let interface = self.read_recursive();
+        write!(f, "{}", interface.unit_index)
+    }
+}
+
+impl std::fmt::Debug for PrimalModuleSerialWeak {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.upgrade_force().fmt(f)
+    }
 }
 
 #[derive(Derivative)]
@@ -57,6 +84,8 @@ pub struct PrimalNodeInternal {
     pub tree_node: Option<AlternatingTreeNode>,
     /// temporary match with another node, (target, touching_grandson)
     pub temporary_match: Option<(MatchTarget, DualNodeWeak)>,
+    /// belonging of the dual module interface; a dual node is never standalone
+    pub belonging: PrimalModuleSerialWeak,
 }
 
 pub type PrimalNodeInternalPtr = ArcRwLock<PrimalNodeInternal>;
@@ -103,59 +132,94 @@ impl PrimalNodeInternal {
 
 }
 
-impl PrimalModuleImpl for PrimalModuleSerial {
+impl PrimalNodeInternalPtr {
 
-    fn new(_initializer: &SolverInitializer) -> Self {
-        Self {
+    /// when fused, primal node may be outdated; refresh here
+    pub fn update(&self) -> &Self {
+        let mut current_belonging = self.read_recursive().belonging.upgrade_force();
+        let mut bias = 0;
+        let mut node = self.write();
+        while current_belonging.read_recursive().parent.is_some() {
+            let belonging_module = current_belonging.read_recursive();
+            bias += belonging_module.index_bias;
+            let new_current_belonging = belonging_module.parent.clone().unwrap().upgrade_force();
+            drop(belonging_module);
+            current_belonging = new_current_belonging;
+        }
+        node.belonging = current_belonging.downgrade();
+        node.index += bias;
+        self
+    }
+
+}
+
+impl PrimalModuleImpl for PrimalModuleSerialPtr {
+
+    fn new_empty(_initializer: &SolverInitializer) -> Self {
+        Self::new_value(PrimalModuleSerial {
+            unit_index: 0,  // if necessary, manually change it
             nodes: vec![],
             nodes_length: 0,
             disable_pointer_reuse: false,
             possible_break: vec![],
             debug_resolve_only_one: false,
-        }
+            parent: None,
+            index_bias: 0,
+            children: None,
+        })
     }
 
     fn clear(&mut self) {
-        self.nodes_length = 0;  // without actually dropping all the nodes, to enable constant time clear
-        self.possible_break.clear();
+        let mut module = self.write();
+        module.nodes_length = 0;  // without actually dropping all the nodes, to enable constant time clear
+        module.possible_break.clear();
+        module.parent = None;
+        module.index_bias = 0;
+        module.children = None;
     }
 
     fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
+        let belonging = self.downgrade();
         let node = dual_node_ptr.read_recursive();
-        assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
-        assert_eq!(node.index, self.nodes_length, "must load in order");
-        let node_index = node.index;
-        let primal_node_internal_ptr = if !self.disable_pointer_reuse && node_index < self.nodes.len() && self.nodes[node_index].is_some() {
-            let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
+        debug_assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
+        let mut module = self.write();
+        let local_node_index = module.nodes_length;
+        let node_index = module.nodes_count();
+        assert_eq!(node.index, node_index, "must load in order");
+        let primal_node_internal_ptr = if !module.disable_pointer_reuse && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
+            let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.origin = dual_node_ptr.downgrade();
             node.index = node_index;
             node.tree_node = None;
             node.temporary_match = None;
+            node.belonging = belonging;
             drop(node);
             node_ptr
         } else {
-            PrimalNodeInternalPtr::new(PrimalNodeInternal {
+            PrimalNodeInternalPtr::new_value(PrimalNodeInternal {
                 origin: dual_node_ptr.downgrade(),
                 index: node_index,
                 tree_node: None,
                 temporary_match: None,
+                belonging,
             })
         };
-        self.nodes_length += 1;
-        if self.nodes.len() < self.nodes_length {
-            self.nodes.push(None);
+        module.nodes_length += 1;
+        if module.nodes.len() < module.nodes_length {
+            module.nodes.push(None);
         }
-        self.nodes[node.index] = Some(primal_node_internal_ptr);
+        module.nodes[local_node_index] = Some(primal_node_internal_ptr);
     }
 
     #[allow(clippy::collapsible_else_if)]
     fn resolve<D: DualModuleImpl>(&mut self, mut group_max_update_length: GroupMaxUpdateLength, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         debug_assert!(!group_max_update_length.is_empty() && group_max_update_length.get_none_zero_growth().is_none());
         let mut current_conflict_index = 0;
+        let debug_resolve_only_one = self.read_recursive().debug_resolve_only_one;
         while let Some(conflict) = group_max_update_length.pop() {
             current_conflict_index += 1;
-            if self.debug_resolve_only_one && current_conflict_index > 1 {  // debug mode
+            if debug_resolve_only_one && current_conflict_index > 1 {  // debug mode
                 break
             }
             // println!("conflict: {conflict:?}");
@@ -374,29 +438,37 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                                 touching_children
                             };
                             let blossom_node_ptr = interface_ptr.create_blossom(nodes_circle, touching_children, dual_module);
-                            let node_index = self.nodes_length;
-                            let primal_node_internal_blossom_ptr = if !self.disable_pointer_reuse && node_index < self.nodes.len() && self.nodes[node_index].is_some() {
-                                let node_ptr = self.nodes[node_index].as_ref().unwrap().clone();
-                                let mut node = node_ptr.write();
-                                node.origin = blossom_node_ptr.downgrade();
-                                node.index = node_index;
-                                node.tree_node = None;
-                                node.temporary_match = None;
-                                drop(node);
-                                node_ptr
-                            } else {
-                                PrimalNodeInternalPtr::new(PrimalNodeInternal {
-                                    origin: blossom_node_ptr.downgrade(),
-                                    index: node_index,
-                                    tree_node: None,
-                                    temporary_match: None,
-                                })
+                            let primal_node_internal_blossom_ptr = {  // create the corresponding primal node
+                                let belonging = self.downgrade();
+                                let mut module = self.write();
+                                let local_node_index = module.nodes_length;
+                                let node_index = module.nodes_count();
+                                let primal_node_internal_blossom_ptr = if !module.disable_pointer_reuse && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
+                                    let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
+                                    let mut node = node_ptr.write();
+                                    node.origin = blossom_node_ptr.downgrade();
+                                    node.index = node_index;
+                                    node.tree_node = None;
+                                    node.temporary_match = None;
+                                    node.belonging = belonging;
+                                    drop(node);
+                                    node_ptr
+                                } else {
+                                    PrimalNodeInternalPtr::new_value(PrimalNodeInternal {
+                                        origin: blossom_node_ptr.downgrade(),
+                                        index: node_index,
+                                        tree_node: None,
+                                        temporary_match: None,
+                                        belonging,
+                                    })
+                                };
+                                module.nodes_length += 1;
+                                if module.nodes.len() < module.nodes_length {
+                                    module.nodes.push(None);
+                                }
+                                module.nodes[local_node_index] = Some(primal_node_internal_blossom_ptr.clone());
+                                primal_node_internal_blossom_ptr
                             };
-                            self.nodes_length += 1;
-                            if self.nodes.len() < self.nodes_length {
-                                self.nodes.push(None);
-                            }
-                            self.nodes[node_index] = Some(primal_node_internal_blossom_ptr.clone());
                             // handle other part of the tree structure
                             let mut children = vec![];
                             for path in [&path_1, &path_2] {
@@ -495,7 +567,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     if primal_node_internal.is_free() {
                         primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr.downgrade()));
                         if is_mirror {
-                            self.possible_break.push(primal_node_internal.index);
+                            let mut module = self.write();
+                            module.possible_break.push(primal_node_internal.index);
                         }
                         interface_ptr.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         continue
@@ -503,7 +576,8 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                     // tree touching virtual boundary will just augment the whole tree
                     if primal_node_internal.tree_node.is_some() {
                         if is_mirror {
-                            self.possible_break.push(primal_node_internal.index);
+                            let mut module = self.write();
+                            module.possible_break.push(primal_node_internal.index);
                         }
                         drop(primal_node_internal);
                         self.augment_tree_given_virtual_vertex(primal_node_internal_ptr, virtual_vertex_index, touching_ptr.downgrade(), interface_ptr, dual_module);
@@ -536,9 +610,11 @@ impl PrimalModuleImpl for PrimalModuleSerial {
                             _ => unreachable!("the expanding node is not a blossom")
                         }
                     };
-                    // remove it from nodes
-                    assert_eq!(self.nodes[primal_node_internal.index], Some(primal_node_internal_ptr.clone()), "index wrong");
-                    self.nodes[primal_node_internal.index] = None;
+                    {  // remove it from nodes
+                        let mut module = self.write();
+                        assert_eq!(module.get_node(primal_node_internal.index), Some(primal_node_internal_ptr.clone()), "index wrong");
+                        module.remove_node(primal_node_internal.index);
+                    }
                     assert!(primal_node_internal.tree_node.is_some(), "expanding blossom must belong to an alternating tree");
                     let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                     assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
@@ -678,40 +754,39 @@ impl PrimalModuleImpl for PrimalModuleSerial {
 
     fn intermediate_matching<D: DualModuleImpl>(&mut self, _interface: &DualModuleInterfacePtr, _dual_module: &mut D) -> IntermediateMatching {
         let mut immediate_matching = IntermediateMatching::new();
-        for i in 0..self.nodes_length {
-            let primal_node_internal_ptr = self.nodes[i].clone();
-            if let Some(primal_node_internal_ptr) = primal_node_internal_ptr {
-                let primal_node_internal = primal_node_internal_ptr.read_recursive();
-                assert!(primal_node_internal.tree_node.is_none(), "cannot compute perfect matching with active alternating tree");
-                let origin_ptr = primal_node_internal.origin.upgrade_force();
-                let interface_node = origin_ptr.read_recursive();
-                if interface_node.parent_blossom.is_some() {
-                    assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
-                    continue  // do not handle this blossom at this level
-                }
-                if let Some((match_target, match_touching_ptr)) = primal_node_internal.temporary_match.as_ref() {
-                    match match_target {
-                        MatchTarget::Peer(peer_internal_weak) => {
-                            let peer_internal_ptr = peer_internal_weak.upgrade_force();
-                            let peer_internal = peer_internal_ptr.read_recursive();
-                            if primal_node_internal.index < peer_internal.index {  // to avoid duplicate matched pairs
-                                let peer_touching_ptr = peer_internal.temporary_match.as_ref().unwrap().1.clone();
-                                immediate_matching.peer_matchings.push((
-                                    (primal_node_internal.origin.upgrade_force(), match_touching_ptr.clone()), 
-                                    (peer_internal.origin.upgrade_force(), peer_touching_ptr)
-                                ));
-                            }
-                        },
-                        MatchTarget::VirtualVertex(virtual_vertex) => {
-                            immediate_matching.virtual_matchings.push((
-                                (primal_node_internal.origin.upgrade_force(), match_touching_ptr.clone())
-                                , *virtual_vertex
+        let mut flattened_nodes = vec![];
+        self.flatten_nodes(&mut flattened_nodes);
+        for primal_node_internal_ptr in flattened_nodes.iter().flatten() {
+            let primal_node_internal = primal_node_internal_ptr.read_recursive();
+            assert!(primal_node_internal.tree_node.is_none(), "cannot compute perfect matching with active alternating tree");
+            let origin_ptr = primal_node_internal.origin.upgrade_force();
+            let interface_node = origin_ptr.read_recursive();
+            if interface_node.parent_blossom.is_some() {
+                assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
+                continue  // do not handle this blossom at this level
+            }
+            if let Some((match_target, match_touching_ptr)) = primal_node_internal.temporary_match.as_ref() {
+                match match_target {
+                    MatchTarget::Peer(peer_internal_weak) => {
+                        let peer_internal_ptr = peer_internal_weak.upgrade_force();
+                        let peer_internal = peer_internal_ptr.read_recursive();
+                        if primal_node_internal.index < peer_internal.index {  // to avoid duplicate matched pairs
+                            let peer_touching_ptr = peer_internal.temporary_match.as_ref().unwrap().1.clone();
+                            immediate_matching.peer_matchings.push((
+                                (primal_node_internal.origin.upgrade_force(), match_touching_ptr.clone()), 
+                                (peer_internal.origin.upgrade_force(), peer_touching_ptr)
                             ));
-                        },
-                    }
-                } else {
-                    panic!("cannot compute final matching with unmatched outer node {:?}", primal_node_internal_ptr);
+                        }
+                    },
+                    MatchTarget::VirtualVertex(virtual_vertex) => {
+                        immediate_matching.virtual_matchings.push((
+                            (primal_node_internal.origin.upgrade_force(), match_touching_ptr.clone())
+                            , *virtual_vertex
+                        ));
+                    },
                 }
+            } else {
+                panic!("cannot compute final matching with unmatched outer node {:?}", primal_node_internal_ptr);
             }
         }
         immediate_matching
@@ -719,13 +794,12 @@ impl PrimalModuleImpl for PrimalModuleSerial {
 
 }
 
-impl FusionVisualizer for PrimalModuleSerial {
+impl FusionVisualizer for PrimalModuleSerialPtr {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         // do the sanity check first before taking snapshot
-        self.sanity_check().unwrap();
+        let flattened_nodes = self.sanity_check().unwrap();
         let mut primal_nodes = Vec::<serde_json::Value>::new();
-        for node_index in 0..self.nodes_length {
-            let primal_node_ptr = &self.nodes[node_index];
+        for primal_node_ptr in flattened_nodes.iter() {
             if let Some(primal_node_ptr) = &primal_node_ptr {
                 let primal_node = primal_node_ptr.read_recursive();
                 primal_nodes.push(json!({
@@ -767,13 +841,65 @@ impl FusionVisualizer for PrimalModuleSerial {
 
 impl PrimalModuleSerial {
 
+    /// return the count of all nodes including those of the children interfaces
+    pub fn nodes_count(&self) -> NodeIndex {
+        let mut count = self.nodes_length;
+        if let Some(((_, left_count), (_, right_count))) = &self.children {
+            count += left_count + right_count;
+        }
+        count
+    }
+
+    /// get node ptr by index; if calling from the ancestor module, node_index is absolute, otherwise it's relative
+    pub fn get_node(&self, relative_node_index: NodeIndex) -> Option<PrimalNodeInternalPtr> {
+        debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this module");
+        let mut bias = 0;
+        if let Some(((left_weak, left_count), (right_weak, right_count))) = &self.children {
+            if relative_node_index < *left_count {
+                // this node belongs to the left
+                return left_weak.upgrade_force().read_recursive().get_node(relative_node_index);
+            } else if relative_node_index < *left_count + *right_count {
+                // this node belongs to the right
+                return right_weak.upgrade_force().read_recursive().get_node(relative_node_index - *left_count);
+            }
+            bias = left_count + right_count;
+        }
+        self.nodes[relative_node_index - bias].clone()
+    }
+
+    /// set the corresponding node index to None
+    pub fn remove_node(&mut self, relative_node_index: NodeIndex) {
+        debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this module");
+        let mut bias = 0;
+        if let Some(((left_weak, left_count), (right_weak, right_count))) = &self.children {
+            if relative_node_index < *left_count {
+                // this node belongs to the left
+                left_weak.upgrade_force().write().remove_node(relative_node_index);
+                return
+            } else if relative_node_index < *left_count + *right_count {
+                // this node belongs to the right
+                right_weak.upgrade_force().write().remove_node(relative_node_index - *left_count);
+                return
+            }
+            bias = left_count + right_count;
+        }
+        self.nodes[relative_node_index - bias] = None;
+    }
+
+}
+
+impl PrimalModuleSerialPtr {
+
     pub fn get_primal_node_internal_ptr_option(&self, dual_node_ptr: &DualNodePtr) -> Option<PrimalNodeInternalPtr> {
+        let module = self.read_recursive();
         let dual_node = dual_node_ptr.read_recursive();
-        self.nodes[dual_node.index].as_ref().map(|primal_node_internal_ptr| {
+        let primal_node_internal_ptr = module.get_node(dual_node.index);
+        if let Some(primal_node_internal_ptr) = &primal_node_internal_ptr {
+            primal_node_internal_ptr.update();  // every time it's accessed, make sure it's update-to-date
             debug_assert!(dual_node_ptr == &primal_node_internal_ptr.read_recursive().origin.upgrade_force()
                 , "dual node and primal internal node must corresponds to each other");
-            primal_node_internal_ptr.clone()
-        })
+        }
+        primal_node_internal_ptr
     }
 
     pub fn get_primal_node_internal_ptr(&self, dual_node_ptr: &DualNodePtr) -> PrimalNodeInternalPtr {
@@ -939,11 +1065,87 @@ impl PrimalModuleSerial {
         tree_node_internal.tree_node = None;
     }
 
+    /// DFS flatten the nodes
+    pub fn flatten_nodes(&self, flattened_nodes: &mut Vec<Option<PrimalNodeInternalPtr>>) {
+        let module = self.read_recursive();
+        let flattened_nodes_length = flattened_nodes.len();
+        // the order matters: left -> right -> myself
+        if let Some(((left_child_weak, _), (right_child_weak, _))) = &module.children {
+            left_child_weak.upgrade_force().flatten_nodes(flattened_nodes);
+            right_child_weak.upgrade_force().flatten_nodes(flattened_nodes);
+        }
+        for node_index in 0..module.nodes_length {
+            let primal_node_internal_ptr = &module.nodes[node_index];
+            if let Some(primal_node_internal_ptr) = primal_node_internal_ptr {
+                primal_node_internal_ptr.update();
+            }
+            flattened_nodes.push(primal_node_internal_ptr.clone());
+        }
+        assert_eq!(flattened_nodes.len() - flattened_nodes_length, module.nodes_count());
+    }
+
+    /// fuse two modules by copying the nodes in `other` into myself
+    pub fn slow_fuse(&self, left: &Self, right: &Self) {
+        let mut module = self.write();
+        module.disable_pointer_reuse = true;  // for safety
+        for other in [left, right] {
+            let other_module = other.read_recursive();
+            let bias = module.nodes_length;
+            for other_node_index in 0..other_module.nodes_length {
+                let node_ptr = &other_module.nodes[other_node_index];
+                if let Some(node_ptr) = node_ptr {
+                    let mut node = node_ptr.write();
+                    assert_eq!(node.index, other_node_index);
+                    node.index += bias;
+                }
+                module.nodes_length += 1;
+                if module.nodes.len() < module.nodes_length {
+                    module.nodes.push(None);
+                }
+                module.nodes[bias + other_node_index] = node_ptr.clone();
+            }
+            // copy `possible_break`
+            for node_index in other_module.possible_break.iter() {
+                module.possible_break.push(*node_index + bias);
+            }
+        }
+    }
+
+    /// fuse two modules by (virtually) copying the nodes in `other` into myself, with O(1) time complexity
+    pub fn fuse(&self, left: &Self, right: &Self) {
+        let parent_weak = self.downgrade();
+        let left_weak = left.downgrade();
+        let right_weak = right.downgrade();
+        let mut module = self.write();
+        module.disable_pointer_reuse = true;  // for safety
+        assert_eq!(module.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
+        assert!(module.children.is_none(), "cannot fuse twice");
+        let mut left_module = left.write();
+        let mut right_module = right.write();
+        assert!(left_module.parent.is_none(), "cannot fuse an module twice");
+        assert!(right_module.parent.is_none(), "cannot fuse an module twice");
+        left_module.parent = Some(parent_weak.clone());
+        right_module.parent = Some(parent_weak);
+        left_module.index_bias = 0;
+        right_module.index_bias = left_module.nodes_count();
+        module.children = Some((
+            (left_weak, left_module.nodes_count()),
+            (right_weak, right_module.nodes_count())
+        ));
+        // the possible_break should be a small subset, thus copying them is fine
+        for other_module in [left_module, right_module] {
+            for node_index in other_module.possible_break.iter() {
+                module.possible_break.push(*node_index + other_module.index_bias);
+            }
+        }
+    }
+
     /// do a sanity check of it's tree structure and internal state
     #[allow(clippy::collapsible_else_if)]
-    pub fn sanity_check(&self) -> Result<(), String> {
-        for index in 0..self.nodes_length {
-            let primal_module_internal_ptr = &self.nodes[index];
+    pub fn sanity_check(&self) -> Result<Vec<Option<PrimalNodeInternalPtr>>, String> {
+        let mut flattened_nodes = vec![];
+        self.flatten_nodes(&mut flattened_nodes);
+        for (index, primal_module_internal_ptr) in flattened_nodes.iter().enumerate() {
             if let Some(primal_module_internal_ptr) = primal_module_internal_ptr {
                 let primal_module_internal = primal_module_internal_ptr.read_recursive();
                 if primal_module_internal.index != index { return Err(format!("primal node index wrong: expected {}, actual {}", index, primal_module_internal.index)) }
@@ -985,11 +1187,12 @@ impl PrimalModuleSerial {
                             }
                         } else { return Err(format!("{}'s child {} doesn't belong to any tree, link broken", index, child.index)) }
                         // check if child is still tracked, i.e. inside self.nodes
-                        if child.index >= self.nodes_length || self.nodes[child.index].is_none() {
+                        let module = self.read_recursive();
+                        if child.index >= module.nodes_count() || module.get_node(child.index).is_none() {
                             return Err(format!("child's index {} is not in the interface", child.index))
                         }
-                        let tracked_child_ptr = self.nodes[child.index].as_ref().unwrap();
-                        if tracked_child_ptr != &child_ptr {
+                        let tracked_child_ptr = module.get_node(child.index).unwrap();
+                        if tracked_child_ptr != child_ptr {
                             return Err(format!("the tracked ptr of child {} is not what's being pointed", child.index))
                         }
                     }
@@ -1009,11 +1212,12 @@ impl PrimalModuleSerial {
                             }
                         } else { return Err(format!("{}'s parent {} doesn't belong to any tree, link broken", index, parent.index)) }
                         // check if parent is still tracked, i.e. inside self.nodes
-                        if parent.index >= self.nodes_length || self.nodes[parent.index].is_none() {
+                        let module = self.read_recursive();
+                        if parent.index >= module.nodes_count() || module.get_node(parent.index).is_none() {
                             return Err(format!("parent's index {} is not in the interface", parent.index))
                         }
-                        let tracked_parent_ptr = self.nodes[parent.index].as_ref().unwrap();
-                        if tracked_parent_ptr != &parent_ptr {
+                        let tracked_parent_ptr = module.get_node(parent.index).unwrap();
+                        if tracked_parent_ptr != parent_ptr {
                             return Err(format!("the tracked ptr of child {} is not what's being pointed", parent.index))
                         }
                     } else {
@@ -1027,11 +1231,12 @@ impl PrimalModuleSerial {
                     loop {
                         let current = current_ptr.read_recursive();
                         // check if current is still tracked, i.e. inside self.nodes
-                        if current.index >= self.nodes_length || self.nodes[current.index].is_none() {
+                        let module = self.read_recursive();
+                        if current.index >= module.nodes_count() || module.get_node(current.index).is_none() {
                             return Err(format!("current's index {} is not in the interface", current.index))
                         }
-                        let tracked_current_ptr = self.nodes[current.index].as_ref().unwrap();
-                        if tracked_current_ptr != &current_ptr {
+                        let tracked_current_ptr = module.get_node(current.index).unwrap();
+                        if tracked_current_ptr != current_ptr {
                             return Err(format!("the tracked ptr of current {} is not what's being pointed", current.index))
                         }
                         // go to parent
@@ -1059,7 +1264,7 @@ impl PrimalModuleSerial {
                 }
             }
         }
-        Ok(())
+        Ok(flattened_nodes)
     }
 
 }
@@ -1073,7 +1278,7 @@ pub mod tests {
     use super::super::*;
 
     pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
-            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleSerial) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
@@ -1087,10 +1292,10 @@ pub mod tests {
         };
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1100,7 +1305,7 @@ pub mod tests {
     }
 
     pub fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
-            -> (DualModuleInterfacePtr, PrimalModuleSerial, DualModuleSerial) {
+            -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
         primal_module_serial_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
     }
 
@@ -1214,10 +1419,10 @@ pub mod tests {
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1259,10 +1464,10 @@ pub mod tests {
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1304,10 +1509,10 @@ pub mod tests {
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1349,10 +1554,10 @@ pub mod tests {
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
-        primal_module.debug_resolve_only_one = true;  // to enable debug mode
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1394,9 +1599,9 @@ pub mod tests {
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -1454,9 +1659,9 @@ pub mod tests {
             blossom_total_weight += detail.weight;
         }
         // create dual module
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // create primal module
-        let mut primal_module = PrimalModuleSerial::new(&initializer);
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         // try to work on a simple syndrome
         code.set_syndrome_vertices(&syndrome_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();

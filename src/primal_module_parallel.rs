@@ -39,7 +39,7 @@ pub struct PrimalModuleParallelUnit {
     /// whether it's active or not; some units are "placeholder" units that are not active until they actually fuse their children
     pub is_active: bool,
     /// the owned serial primal module
-    pub serial_module: PrimalModuleSerial,
+    pub serial_module: PrimalModuleSerialPtr,
     /// left and right children dual modules
     pub children: Option<(PrimalModuleParallelUnitWeak, PrimalModuleParallelUnitWeak)>,
     /// parent dual module
@@ -126,7 +126,7 @@ impl PrimalModuleParallel {
         thread_pool.scope(|_| {
             (0..unit_count).into_par_iter().map(|unit_index| {
                 // println!("unit_index: {unit_index}");
-                let primal_module = PrimalModuleSerial::new(initializer);
+                let primal_module = PrimalModuleSerialPtr::new_empty(initializer);
                 PrimalModuleParallelUnitPtr::new_wrapper(primal_module, unit_index, Arc::clone(&partition_info))
             }).collect_into_vec(&mut units);
         });
@@ -153,7 +153,7 @@ impl PrimalModuleParallel {
 
 impl PrimalModuleImpl for PrimalModuleParallel {
 
-    fn new(initializer: &SolverInitializer) -> Self {
+    fn new_empty(initializer: &SolverInitializer) -> Self {
         Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), PrimalModuleParallelConfig::default())
     }
 
@@ -230,7 +230,7 @@ impl PrimalModuleParallel {
 
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>
             (&mut self, syndrome_pattern: &SyndromePattern, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F)
-            where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
+            where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
         let last_unit_ptr = self.units.last().unwrap().clone();
         let thread_pool = Arc::clone(&self.thread_pool);
         self.last_solve_start_time = Instant::now();
@@ -265,10 +265,10 @@ impl FusionVisualizer for PrimalModuleParallelUnit {
 impl PrimalModuleParallelUnitPtr {
 
     /// create a simple wrapper over a serial dual module
-    pub fn new_wrapper(serial_module: PrimalModuleSerial, unit_index: usize, partition_info: Arc<PartitionInfo>) -> Self {
+    pub fn new_wrapper(serial_module: PrimalModuleSerialPtr, unit_index: usize, partition_info: Arc<PartitionInfo>) -> Self {
         let partition_unit_info = &partition_info.units[unit_index];
         let is_active = partition_unit_info.children.is_none();
-        Self::new(PrimalModuleParallelUnit {
+        Self::new_value(PrimalModuleParallelUnit {
             unit_index,
             interface_ptr: DualModuleInterfacePtr::new_empty(),
             partition_info,
@@ -283,7 +283,7 @@ impl PrimalModuleParallelUnitPtr {
     /// call on the last primal node, and it will spawn tasks on the previous ones
     fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
                 , partitioned_syndrome_pattern: PartitionedSyndromePattern, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
-            where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerial, Option<&GroupMaxUpdateLength>) {
+            where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
         let mut primal_unit = self.write();
         let mut event_time = PrimalModuleParallelUnitEventTime::new();
         event_time.start = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
@@ -362,47 +362,19 @@ impl PrimalModuleParallelUnit {
     /// note that this operation doesn't update on the dual module, call [`Self::break_matching_with_mirror`] if needed
     pub fn fuse<DualSerialModule: DualModuleImpl + Send + Sync>(&mut self, dual_unit: &mut DualModuleParallelUnit<DualSerialModule>) {
         let (left_child_ptr, right_child_ptr) = (self.children.as_ref().unwrap().0.upgrade_force(), self.children.as_ref().unwrap().1.upgrade_force());
-        let mut left_child = left_child_ptr.write();
-        let right_child = right_child_ptr.write();
+        let left_child = left_child_ptr.read_recursive();
+        let right_child = right_child_ptr.read_recursive();
         dual_unit.fuse(&self.interface_ptr, (&left_child.interface_ptr, &right_child.interface_ptr));
-        let bias = left_child.serial_module.nodes_length;
-        self.serial_module.disable_pointer_reuse = true;  // it's unsafe to reuse pointer in a fusion unit
-        // copy `possible_break`
-        self.serial_module.possible_break.append(&mut left_child.serial_module.possible_break);
-        for node_index in right_child.serial_module.possible_break.iter() {
-            self.serial_module.possible_break.push(*node_index + bias);
-        }
-        // copy `nodes`
-        for left_node_index in 0..left_child.serial_module.nodes_length {
-            let node_ptr = &left_child.serial_module.nodes[left_node_index];
-            let node_index = self.serial_module.nodes_length;
-            self.serial_module.nodes_length += 1;
-            if self.serial_module.nodes.len() < self.serial_module.nodes_length {
-                self.serial_module.nodes.push(None);
-            }
-            self.serial_module.nodes[node_index] = node_ptr.clone();
-        }
-        for right_node_index in 0..right_child.serial_module.nodes_length {
-            let node_ptr = &right_child.serial_module.nodes[right_node_index];
-            if let Some(primal_node_ptr) = node_ptr {
-                let mut primal_node = primal_node_ptr.write();
-                primal_node.index += bias;
-            }
-            let node_index = self.serial_module.nodes_length;
-            self.serial_module.nodes_length += 1;
-            if self.serial_module.nodes.len() < self.serial_module.nodes_length {
-                self.serial_module.nodes.push(None);
-            }
-            self.serial_module.nodes[node_index] = node_ptr.clone();
-        }
+        self.serial_module.fuse(&left_child.serial_module, &right_child.serial_module);
     }
 
     /// break the matched pairs of interface vertices
     pub fn break_matching_with_mirror(&mut self, dual_module: &mut impl DualModuleImpl) {
         // use `possible_break` to efficiently break those
         let mut possible_break = vec![];
-        for node_index in self.serial_module.possible_break.iter() {
-            let primal_node_ptr = &self.serial_module.nodes[*node_index];
+        let module = self.serial_module.read_recursive();
+        for node_index in module.possible_break.iter() {
+            let primal_node_ptr = module.get_node(*node_index);
             if let Some(primal_node_ptr) = primal_node_ptr {
                 let mut primal_node = primal_node_ptr.write();
                 if let Some((MatchTarget::VirtualVertex(vertex_index), _)) = &primal_node.temporary_match {
@@ -415,14 +387,15 @@ impl PrimalModuleParallelUnit {
                 }
             }
         }
-        self.serial_module.possible_break = possible_break;
+        drop(module);
+        self.serial_module.write().possible_break = possible_break;
     }
 
 }
 
 impl PrimalModuleImpl for PrimalModuleParallelUnit {
 
-    fn new(_initializer: &SolverInitializer) -> Self {
+    fn new_empty(_initializer: &SolverInitializer) -> Self {
         panic!("creating parallel unit directly from initializer is forbidden, use `PrimalModuleParallel::new` instead");
     }
 

@@ -471,8 +471,8 @@ impl std::fmt::Debug for DualModuleInterfaceWeak {
 /// common trait that must be implemented for each implementation of dual module
 pub trait DualModuleImpl {
 
-    /// create a new dual module
-    fn new(initializer: &SolverInitializer) -> Self;
+    /// create a new dual module with empty syndrome
+    fn new_empty(initializer: &SolverInitializer) -> Self;
 
     /// clear all growth and existing dual nodes, prepared for the next decoding
     fn clear(&mut self);
@@ -706,7 +706,7 @@ impl DualModuleInterfacePtr {
 
     /// create an empty interface
     pub fn new_empty() -> Self {
-        Self::new(DualModuleInterface {
+        Self::new_value(DualModuleInterface {
             unit_index: 0,  // if necessary, manually change it
             nodes: Vec::new(),
             nodes_length: 0,
@@ -791,7 +791,7 @@ impl DualModuleInterfacePtr {
             drop(node);
             node_ptr
         } else {
-            DualNodePtr::new(DualNode {
+            DualNodePtr::new_value(DualNode {
                 index: node_index,
                 class: DualNodeClass::SyndromeVertex {
                     syndrome_index: vertex_idx,
@@ -851,7 +851,7 @@ impl DualModuleInterfacePtr {
             drop(node);
             node_ptr
         } else {
-            DualNodePtr::new(DualNode {
+            DualNodePtr::new_value(DualNode {
                 index: node_index,
                 class: DualNodeClass::Blossom {
                     nodes_circle: vec![],
@@ -1029,7 +1029,7 @@ impl DualModuleInterfacePtr {
         }
     }
 
-    /// fuse two interfaces by copying the nodes in `other` into myself, but with O(1) time complexity
+    /// fuse two interfaces by (virtually) copying the nodes in `other` into myself, with O(1) time complexity
     pub fn fuse(&self, left: &Self, right: &Self) {
         let parent_weak = self.downgrade();
         let left_weak = left.downgrade();

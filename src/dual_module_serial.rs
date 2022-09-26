@@ -193,10 +193,10 @@ impl std::fmt::Debug for EdgeWeak {
 impl DualModuleImpl for DualModuleSerial {
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
-    fn new(initializer: &SolverInitializer) -> Self {
+    fn new_empty(initializer: &SolverInitializer) -> Self {
         let active_timestamp = 0;
         // create vertices
-        let vertices: Vec<VertexPtr> = (0..initializer.vertex_num).map(|vertex_index| VertexPtr::new(Vertex {
+        let vertices: Vec<VertexPtr> = (0..initializer.vertex_num).map(|vertex_index| VertexPtr::new_value(Vertex {
             vertex_index,
             is_virtual: false,
             is_syndrome: false,
@@ -219,7 +219,7 @@ impl DualModuleImpl for DualModuleSerial {
             assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
             let left = usize::min(i, j);
             let right = usize::max(i, j);
-            let edge_ptr = EdgePtr::new(Edge {
+            let edge_ptr = EdgePtr::new_value(Edge {
                 edge_index: edges.len(),
                 weight,
                 left: vertices[left].downgrade(),
@@ -308,7 +308,7 @@ impl DualModuleImpl for DualModuleSerial {
             drop(node);
             node_ptr
         } else {
-            DualNodeInternalPtr::new(DualNodeInternal {
+            DualNodeInternalPtr::new_value(DualNodeInternal {
                 origin: dual_node_ptr.downgrade(),
                 index: node_index,
                 dual_variable: 0,
@@ -772,7 +772,7 @@ impl DualModuleImpl for DualModuleSerial {
     fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
         let active_timestamp = 0;
         // create vertices
-        let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new(Vertex {
+        let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new_value(Vertex {
             vertex_index,
             is_virtual: false,
             is_syndrome: false,
@@ -792,7 +792,7 @@ impl DualModuleImpl for DualModuleSerial {
         for (mirror_unit, interface_vertices) in partitioned_initializer.interfaces.iter() {
             for (vertex_index, is_virtual) in interface_vertices.iter() {
                 mirrored_vertices.insert(*vertex_index, vertices.len());
-                vertices.push(VertexPtr::new(Vertex {
+                vertices.push(VertexPtr::new_value(Vertex {
                     vertex_index: *vertex_index,
                     is_virtual: *is_virtual,  // interface vertices are always virtual at the beginning
                     is_syndrome: false,
@@ -822,7 +822,7 @@ impl DualModuleImpl for DualModuleSerial {
             } else {
                 mirrored_vertices[&right]
             };
-            let edge_ptr = EdgePtr::new(Edge {
+            let edge_ptr = EdgePtr::new_value(Edge {
                 edge_index,
                 weight,
                 left: vertices[left_index].downgrade(),
@@ -1386,7 +1386,7 @@ impl DualModuleSerial {
                 drop(node);
                 node_ptr
             } else {
-                DualNodeInternalPtr::new(DualNodeInternal {
+                DualNodeInternalPtr::new_value(DualNodeInternal {
                     origin: dual_node_ptr.downgrade(),
                     index: node_index,
                     dual_variable,
@@ -1727,7 +1727,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
@@ -1766,7 +1766,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
@@ -1818,7 +1818,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[19].is_syndrome = true;
         code.vertices[25].is_syndrome = true;
@@ -1854,7 +1854,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[18].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
@@ -1955,7 +1955,7 @@ mod tests {
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[18].is_syndrome = true;
         code.vertices[26].is_syndrome = true;
@@ -2047,7 +2047,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[39].is_syndrome = true;
         code.vertices[65].is_syndrome = true;
@@ -2093,7 +2093,7 @@ mod tests {
         print_visualize_link(&visualize_filename);
         // create dual module
         let initializer = code.get_initializer();
-        let mut dual_module = DualModuleSerial::new(&initializer);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
         code.vertices[64].is_syndrome = true;
         code.set_erasures(&vec![110, 78, 57, 142, 152, 163, 164]);

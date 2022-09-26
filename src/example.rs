@@ -774,7 +774,7 @@ impl<CodeType: ExampleCode + Sync + Send + Clone> ExampleCodeParallel<CodeType> 
     pub fn new(example: CodeType, code_count: usize) -> Self {
         let mut codes = vec![];
         for _ in 0..code_count {
-            codes.push(ArcRwLock::<CodeType>::new(example.clone()));
+            codes.push(ArcRwLock::<CodeType>::new_value(example.clone()));
         }
         Self {
             example,
