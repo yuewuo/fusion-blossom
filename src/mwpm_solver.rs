@@ -16,6 +16,7 @@ use super::visualize::*;
 use crate::derivative::Derivative;
 use std::fs::File;
 use std::io::prelude::*;
+use std::io::BufWriter;
 use std::sync::Arc;
 
 
@@ -239,7 +240,7 @@ impl PrimalDualSolver for SolverParallel {
 }
 
 pub struct SolverErrorPatternLogger {
-    file: File,
+    file: BufWriter<File>,
 }
 
 impl SolverErrorPatternLogger {
@@ -250,11 +251,12 @@ impl SolverErrorPatternLogger {
             filename = value.as_str().expect("filename string").to_string();
         }
         if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
-        let mut file = File::create(filename).unwrap();
+        let file = File::create(filename).unwrap();
+        let mut file = BufWriter::new(file);
         file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
-        serde_json::to_writer(&file, &initializer).unwrap();  // large object write to file directly
+        serde_json::to_writer(&mut file, &initializer).unwrap();  // large object write to file directly
         file.write_all(b"\n").unwrap();
-        serde_json::to_writer(&file, &code.get_positions()).unwrap();
+        serde_json::to_writer(&mut file, &code.get_positions()).unwrap();
         file.write_all(b"\n").unwrap();
         Self {
             file,

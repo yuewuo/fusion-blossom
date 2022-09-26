@@ -26,6 +26,7 @@ pub mod mwpm_solver;
 pub mod dual_module_parallel;
 pub mod primal_module_parallel;
 pub mod example_partition;
+pub mod pointers;
 
 use util::*;
 use complete_graph::*;

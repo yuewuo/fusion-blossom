@@ -9,6 +9,7 @@ use crate::derivative::Derivative;
 use core::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use super::visualize::*;
+use super::pointers::*;
 
 
 /// A dual node is either a blossom or a vertex

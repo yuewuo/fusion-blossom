@@ -10,6 +10,7 @@ use std::io::{Write, Seek, SeekFrom};
 use crate::chrono::Local;
 use crate::urlencoding;
 
+
 pub trait FusionVisualizer {
     /// take a snapshot, set `abbrev` to true to save space
     fn snapshot(&self, abbrev: bool) -> serde_json::Value;
@@ -335,6 +336,8 @@ mod tests {
     use super::super::example::*;
     use super::super::dual_module_serial::*;
     use super::super::dual_module::*;
+    use super::super::pointers::*;
+
 
     #[test]
     fn visualize_test_1() {  // cargo test visualize_test_1 -- --nocapture

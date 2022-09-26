@@ -23,6 +23,7 @@ use crate::rayon::prelude::*;
 use std::collections::{BTreeSet, HashSet};
 use super::complete_graph::CompleteGraph;
 use crate::weak_table::PtrWeakHashSet;
+use super::pointers::*;
 
 
 pub struct DualModuleParallel<SerialModule: DualModuleImpl + Send + Sync> {

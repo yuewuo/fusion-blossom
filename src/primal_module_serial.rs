@@ -10,6 +10,7 @@ use super::primal_module::*;
 use super::visualize::*;
 use super::dual_module::*;
 use std::cmp::Ordering;
+use super::pointers::*;
 
 
 #[derive(Derivative)]

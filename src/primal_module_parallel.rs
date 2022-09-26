@@ -14,6 +14,7 @@ use super::dual_module::*;
 use std::sync::Arc;
 use std::ops::DerefMut;
 use std::time::Instant;
+use super::pointers::*;
 
 
 pub struct PrimalModuleParallel {

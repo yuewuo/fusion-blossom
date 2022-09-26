@@ -14,6 +14,7 @@ use super::dual_module::*;
 use super::visualize::*;
 use std::collections::HashMap;
 use crate::weak_table::PtrWeakKeyHashMap;
+use super::pointers::*;
 
 
 pub struct DualModuleSerial {

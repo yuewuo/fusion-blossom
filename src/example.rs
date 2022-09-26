@@ -17,6 +17,7 @@ use crate::derivative::Derivative;
 use std::fs::File;
 use std::io::{self, BufRead};
 use crate::rayon::prelude::*;
+use super::pointers::*;
 
 
 /// Vertex corresponds to a stabilizer measurement bit
