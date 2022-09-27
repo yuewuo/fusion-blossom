@@ -434,8 +434,9 @@ pub struct DualModuleInterface {
     /// current nodes length, to enable constant-time clear operation
     pub nodes_length: usize,
     /// allow pointer reuse will reduce the time of reallocation, but it's unsafe if not owning it;
-    /// this will be automatically disabled when [`DualModuleInterface::fuse`] is called
-    pub disable_pointer_reuse: bool,
+    /// this will be automatically disabled when [`DualModuleInterface::fuse`] is called;
+    /// if an interface is involved in a fusion operation (whether as parent or child), it will be set.
+    pub is_fusion: bool,
     /// record the total growing nodes, should be non-negative in a normal running algorithm
     pub sum_grow_speed: Weight,
     /// record the total sum of dual variables
@@ -711,7 +712,7 @@ impl DualModuleInterfacePtr {
             unit_index: 0,  // if necessary, manually change it
             nodes: Vec::new(),
             nodes_length: 0,
-            disable_pointer_reuse: false,
+            is_fusion: false,
             sum_grow_speed: 0,
             sum_dual_variables: 0,
             debug_print_actions: false,
@@ -747,6 +748,7 @@ impl DualModuleInterfacePtr {
         interface.sum_grow_speed = 0;
         interface.sum_dual_variables = 0;
         interface.dual_variable_global_progress = 0;
+        interface.is_fusion = false;
         interface.parent = None;
         interface.index_bias = 0;
         interface.children = None;
@@ -778,7 +780,7 @@ impl DualModuleInterfacePtr {
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
         // try to reuse existing pointer to avoid list allocation
-        let node_ptr = if !interface.disable_pointer_reuse && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
+        let node_ptr = if !interface.is_fusion && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
             let node_ptr = interface.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.index = node_index;
@@ -837,7 +839,7 @@ impl DualModuleInterfacePtr {
         assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
-        let blossom_node_ptr = if !interface.disable_pointer_reuse && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
+        let blossom_node_ptr = if !interface.is_fusion && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
             let node_ptr = interface.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.index = node_index;
@@ -912,8 +914,9 @@ impl DualModuleInterfacePtr {
                 eprintln!("[expand blossom] {:?} -> {:?}", blossom_node_ptr, nodes_circle);
             } else { unreachable!() }
         }
+        let is_fusion = interface.is_fusion;
         drop(interface);
-        {  // must update all the nodes before calling `remove_blossom` of the implementation
+        if is_fusion {  // must update all the nodes before calling `remove_blossom` of the implementation
             let node = blossom_node_ptr.read_recursive();
             if let DualNodeClass::Blossom { nodes_circle, .. } = &node.class {
                 for node_weak in nodes_circle.iter() {
@@ -960,7 +963,9 @@ impl DualModuleInterfacePtr {
 
     /// a helper function to update grow state
     pub fn set_grow_state(&self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState, dual_module_impl: &mut impl DualModuleImpl) {
-        dual_node_ptr.update();  // these dual node may not be update-to-date in fusion
+        if self.read_recursive().is_fusion {
+            dual_node_ptr.update();  // these dual node may not be update-to-date in fusion
+        }
         let mut interface = self.write();
         if interface.debug_print_actions {
             eprintln!("[set grow state] {:?} {:?}", dual_node_ptr, grow_state);
@@ -1007,9 +1012,10 @@ impl DualModuleInterfacePtr {
     /// fuse two interfaces by copying the nodes in `other` into myself
     pub fn slow_fuse(&self, left: &Self, right: &Self) {
         let mut interface = self.write();
-        interface.disable_pointer_reuse = true;  // for safety
+        interface.is_fusion = true;  // for safety
         for other in [left, right] {
-            let other_interface = other.read_recursive();
+            let mut other_interface = other.write();
+            other_interface.is_fusion = true;
             let bias = interface.nodes_length;
             for other_node_index in 0..other_interface.nodes_length {
                 let node_ptr = &other_interface.nodes[other_node_index];
@@ -1036,11 +1042,13 @@ impl DualModuleInterfacePtr {
         let left_weak = left.downgrade();
         let right_weak = right.downgrade();
         let mut interface = self.write();
-        interface.disable_pointer_reuse = true;  // for safety
+        interface.is_fusion = true;  // for safety
         assert_eq!(interface.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
         assert!(interface.children.is_none(), "cannot fuse twice");
         let mut left_interface = left.write();
         let mut right_interface = right.write();
+        left_interface.is_fusion = true;
+        right_interface.is_fusion = true;
         assert!(left_interface.parent.is_none(), "cannot fuse an interface twice");
         assert!(right_interface.parent.is_none(), "cannot fuse an interface twice");
         left_interface.parent = Some(parent_weak.clone());

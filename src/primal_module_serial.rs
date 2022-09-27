@@ -23,7 +23,7 @@ pub struct PrimalModuleSerial {
     /// current nodes length, to enable constant-time clear operation
     pub nodes_length: usize,
     /// allow pointer reuse will reduce the time of reallocation, but it's unsafe if not owning it
-    pub disable_pointer_reuse: bool,
+    pub is_fusion: bool,
     /// the indices of primal nodes that is possibly matched to the mirrored vertex, and need to break when mirrored vertices are no longer mirrored
     pub possible_break: Vec<NodeIndex>,
     /// debug mode: only resolve one conflict each time
@@ -161,7 +161,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
             unit_index: 0,  // if necessary, manually change it
             nodes: vec![],
             nodes_length: 0,
-            disable_pointer_reuse: false,
+            is_fusion: false,
             possible_break: vec![],
             debug_resolve_only_one: false,
             parent: None,
@@ -174,6 +174,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         let mut module = self.write();
         module.nodes_length = 0;  // without actually dropping all the nodes, to enable constant time clear
         module.possible_break.clear();
+        module.is_fusion = false;
         module.parent = None;
         module.index_bias = 0;
         module.children = None;
@@ -187,7 +188,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         let local_node_index = module.nodes_length;
         let node_index = module.nodes_count();
         assert_eq!(node.index, node_index, "must load in order");
-        let primal_node_internal_ptr = if !module.disable_pointer_reuse && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
+        let primal_node_internal_ptr = if !module.is_fusion && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
             let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
             node.origin = dual_node_ptr.downgrade();
@@ -444,7 +445,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 let mut module = self.write();
                                 let local_node_index = module.nodes_length;
                                 let node_index = module.nodes_count();
-                                let primal_node_internal_blossom_ptr = if !module.disable_pointer_reuse && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
+                                let primal_node_internal_blossom_ptr = if !module.is_fusion && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
                                     let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
                                     let mut node = node_ptr.write();
                                     node.origin = blossom_node_ptr.downgrade();
@@ -896,7 +897,9 @@ impl PrimalModuleSerialPtr {
         let dual_node = dual_node_ptr.read_recursive();
         let primal_node_internal_ptr = module.get_node(dual_node.index);
         if let Some(primal_node_internal_ptr) = &primal_node_internal_ptr {
-            primal_node_internal_ptr.update();  // every time it's accessed, make sure it's update-to-date
+            if module.is_fusion {
+                primal_node_internal_ptr.update();  // every time it's accessed, make sure it's update-to-date
+            }
             debug_assert!(dual_node_ptr == &primal_node_internal_ptr.read_recursive().origin.upgrade_force()
                 , "dual node and primal internal node must corresponds to each other");
         }
@@ -1088,9 +1091,10 @@ impl PrimalModuleSerialPtr {
     /// fuse two modules by copying the nodes in `other` into myself
     pub fn slow_fuse(&self, left: &Self, right: &Self) {
         let mut module = self.write();
-        module.disable_pointer_reuse = true;  // for safety
+        module.is_fusion = true;  // for safety
         for other in [left, right] {
-            let other_module = other.read_recursive();
+            let mut other_module = other.write();
+            other_module.is_fusion = true;  // enable pointer update
             let bias = module.nodes_length;
             for other_node_index in 0..other_module.nodes_length {
                 let node_ptr = &other_module.nodes[other_node_index];
@@ -1118,7 +1122,7 @@ impl PrimalModuleSerialPtr {
         let left_weak = left.downgrade();
         let right_weak = right.downgrade();
         let mut module = self.write();
-        module.disable_pointer_reuse = true;  // for safety
+        module.is_fusion = true;  // for safety
         assert_eq!(module.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
         assert!(module.children.is_none(), "cannot fuse twice");
         let mut left_module = left.write();

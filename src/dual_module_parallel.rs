@@ -306,6 +306,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
     }
 
     /// find the active ancestor to handle this dual node (should be unique, i.e. any time only one ancestor is active)
+    #[inline(never)]
     pub fn find_active_ancestor(&self, dual_node_ptr: &DualNodePtr) -> DualModuleParallelUnitPtr<SerialModule> {
         self.find_active_ancestor_option(dual_node_ptr).unwrap()
     }
@@ -870,7 +871,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         // TODO: execute on all nodes that handles this dual node
         let max_update_length = self.serial_module.compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update);
-        max_update_length.update();  // because fusion may exist
+        if !(self.children.is_none() && self.is_active) {  // for those base partitions without being fused, we don't need to update
+            max_update_length.update();  // only necessary after involved in fusion
+        }
         max_update_length
     }
 
@@ -880,7 +883,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         // them do the functions independently
         let mut group_max_update_length = GroupMaxUpdateLength::new();
         self.iterative_compute_maximum_update_length(&mut group_max_update_length);
-        group_max_update_length.update();  // because fusion may exist
+        if !(self.children.is_none() && self.is_active) {  // for those base partitions without being fused, we don't need to update
+            group_max_update_length.update();  // only necessary after involved in fusion
+        }
         group_max_update_length
     }
 
