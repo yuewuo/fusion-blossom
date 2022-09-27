@@ -278,6 +278,280 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
     }
 }
 
+  
+/*
+ * unsafe APIs, used for production environment
+ */
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="unsafe_pointer")] {
+
+        pub trait FastClearUnsafePtr<ObjType> where ObjType: FastClear {
+
+            fn new_ptr(ptr: Arc<ObjType>) -> Self;
+
+            fn new_value(obj: ObjType) -> Self;
+
+            fn ptr(&self) -> &Arc<ObjType>;
+
+            fn ptr_mut(&mut self) -> &mut Arc<ObjType>;
+
+            #[inline(always)]
+            fn read_recursive(&self, active_timestamp: FastClearTimestamp) -> &ObjType {
+                let ret = self.ptr();
+                ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+                ret
+            }
+
+            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+            #[inline(always)]
+            fn read_recursive_force(&self) -> &ObjType {
+                self.ptr()
+            }
+
+            #[inline(always)]
+            fn write(&self, active_timestamp: FastClearTimestamp) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let ptr = self.ptr();
+                    let const_ptr = ptr as *const Arc<ObjType>;
+                    let mut_ptr = const_ptr as *mut Arc<ObjType>;
+                    let ret = Arc::get_mut_unchecked(&mut *mut_ptr);
+                    ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+                    ret
+                }
+            }
+
+            /// without sanity check: useful only in implementing hard_clear
+            #[inline(always)]
+            fn write_force(&self) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let ptr = self.ptr();
+                    let const_ptr = ptr as *const Arc<ObjType>;
+                    let mut_ptr = const_ptr as *mut Arc<ObjType>;
+                    Arc::get_mut_unchecked(&mut *mut_ptr)
+                }
+            }
+
+            /// dynamically clear it if not already cleared; it's safe to call many times, but it will acquire a writer lock
+            #[inline(always)]
+            fn dynamic_clear(&self, active_timestamp: FastClearTimestamp) {
+                let value = self.write_force();
+                value.dynamic_clear(active_timestamp);
+            }
+
+            fn ptr_eq(&self, other: &Self) -> bool {
+                Arc::ptr_eq(self.ptr(), other.ptr())
+            }
+
+        }
+
+        pub trait UnsafePtr<ObjType> {
+
+            fn new_ptr(ptr: Arc<ObjType>) -> Self;
+
+            fn new_value(obj: ObjType) -> Self;
+
+            fn ptr(&self) -> &Arc<ObjType>;
+
+            fn ptr_mut(&mut self) -> &mut Arc<ObjType>;
+
+            #[inline(always)]
+            fn read_recursive(&self) -> &ObjType {
+                self.ptr()
+            }
+
+            #[inline(always)]
+            fn write(&self) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let ptr = self.ptr();
+                    let const_ptr = ptr as *const Arc<ObjType>;
+                    let mut_ptr = const_ptr as *mut Arc<ObjType>;
+                    Arc::get_mut_unchecked(&mut *mut_ptr)
+                }
+            }
+
+            fn ptr_eq(&self, other: &Self) -> bool {
+                Arc::ptr_eq(self.ptr(), other.ptr())
+            }
+
+        }
+
+        pub struct ArcUnsafe<T> {
+            ptr: Arc<T>,
+        }
+
+        pub struct WeakUnsafe<T> {
+            ptr: Weak<T>,
+        }
+
+        impl<T> ArcUnsafe<T> {
+            pub fn downgrade(&self) -> WeakUnsafe<T> {
+                WeakUnsafe::<T> {
+                    ptr: Arc::downgrade(&self.ptr)
+                }
+            }
+        }
+
+        impl<T> WeakUnsafe<T> {
+            pub fn upgrade_force(&self) -> ArcUnsafe<T> {
+                ArcUnsafe::<T> {
+                    ptr: self.ptr.upgrade().unwrap()
+                }
+            }
+            pub fn upgrade(&self) -> Option<ArcUnsafe<T>> {
+                self.ptr.upgrade().map(|x| ArcUnsafe::<T> { ptr: x })
+            }
+        }
+
+        impl<T> Clone for ArcUnsafe<T> {
+            fn clone(&self) -> Self {
+                Self::new_ptr(Arc::clone(self.ptr()))
+            }
+        }
+
+        impl<T> UnsafePtr<T> for ArcUnsafe<T> {
+            fn new_ptr(ptr: Arc<T>) -> Self { Self { ptr }  }
+            fn new_value(obj: T) -> Self { Self::new_ptr(Arc::new(obj)) }
+            #[inline(always)] fn ptr(&self) -> &Arc<T> { &self.ptr }
+            #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<T> { &mut self.ptr }
+        }
+
+        impl<T> PartialEq for ArcUnsafe<T> {
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl<T> Eq for ArcUnsafe<T> { }
+
+        impl<T> Clone for WeakUnsafe<T> {
+            fn clone(&self) -> Self {
+                Self { ptr: self.ptr.clone() }
+            }
+        }
+
+        impl<T> PartialEq for WeakUnsafe<T> {
+            fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+        }
+
+        impl<T> Eq for WeakUnsafe<T> { }
+
+        impl<T> std::ops::Deref for ArcUnsafe<T> {
+            type Target = T;
+            fn deref(&self) -> &Self::Target {
+                &self.ptr
+            }
+        }
+
+        impl<T> weak_table::traits::WeakElement for WeakUnsafe<T> {
+            type Strong = ArcUnsafe<T>;
+            fn new(view: &Self::Strong) -> Self {
+                view.downgrade()
+            }
+            fn view(&self) -> Option<Self::Strong> {
+                self.upgrade()
+            }
+            fn clone(view: &Self::Strong) -> Self::Strong {
+                view.clone()
+            }
+        }
+
+        pub struct FastClearArcUnsafe<T: FastClear> {
+            ptr: Arc<T>,
+        }
+
+        pub struct FastClearWeakUnsafe<T: FastClear> {
+            ptr: Weak<T>,
+        }
+
+        impl<T: FastClear> FastClearArcUnsafe<T> {
+            pub fn downgrade(&self) -> FastClearWeakUnsafe<T> {
+                FastClearWeakUnsafe::<T> {
+                    ptr: Arc::downgrade(&self.ptr)
+                }
+            }
+        }
+
+        impl<T: FastClear> FastClearWeakUnsafe<T> {
+            pub fn upgrade_force(&self) -> FastClearArcUnsafe<T> {
+                FastClearArcUnsafe::<T> {
+                    ptr: self.ptr.upgrade().unwrap()
+                }
+            }
+            pub fn upgrade(&self) -> Option<FastClearArcUnsafe<T>> {
+                self.ptr.upgrade().map(|x| FastClearArcUnsafe::<T> { ptr: x })
+            }
+        }
+
+        impl<T: FastClear> Clone for FastClearArcUnsafe<T> {
+            fn clone(&self) -> Self {
+                Self::new_ptr(Arc::clone(self.ptr()))
+            }
+        }
+
+        impl<T: FastClear> FastClearUnsafePtr<T> for FastClearArcUnsafe<T> {
+            fn new_ptr(ptr: Arc<T>) -> Self { Self { ptr }  }
+            fn new_value(obj: T) -> Self { Self::new_ptr(Arc::new(obj)) }
+            #[inline(always)] fn ptr(&self) -> &Arc<T> { &self.ptr }
+            #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<T> { &mut self.ptr }
+        }
+
+        impl<T: FastClear> PartialEq for FastClearArcUnsafe<T> {
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl<T: FastClear> Eq for FastClearArcUnsafe<T> { }
+
+        impl<T: FastClear> Clone for FastClearWeakUnsafe<T> {
+            fn clone(&self) -> Self {
+                Self { ptr: self.ptr.clone() }
+            }
+        }
+
+        impl<T: FastClear> PartialEq for FastClearWeakUnsafe<T> {
+            fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+        }
+
+        impl<T: FastClear> Eq for FastClearWeakUnsafe<T> { }
+
+        impl<T: FastClear> std::ops::Deref for FastClearArcUnsafe<T> {
+            type Target = T;
+            fn deref(&self) -> &Self::Target {
+                &self.ptr
+            }
+        }
+
+        impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakUnsafe<T> {
+            type Strong = FastClearArcUnsafe<T>;
+            fn new(view: &Self::Strong) -> Self {
+                view.downgrade()
+            }
+            fn view(&self) -> Option<Self::Strong> {
+                self.upgrade()
+            }
+            fn clone(view: &Self::Strong) -> Self::Strong {
+                view.clone()
+            }
+        }
+
+    }
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="unsafe_pointer")] {
+        pub type FastClearArcManualSafeLock<T> = FastClearArcUnsafe<T>;
+        pub type FastClearWeakManualSafeLock<T> = FastClearWeakUnsafe<T>;
+        pub type ArcManualSafeLock<T> = ArcUnsafe<T>;
+        pub type WeakManualSafeLock<T> = WeakUnsafe<T>;
+    } else {
+        pub type FastClearArcManualSafeLock<T> = FastClearArcRwLock<T>;
+        pub type FastClearWeakManualSafeLock<T> = FastClearWeakRwLock<T>;
+        pub type ArcManualSafeLock<T> = ArcRwLock<T>;
+        pub type WeakManualSafeLock<T> = WeakRwLock<T>;
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -313,5 +587,23 @@ mod tests {
         weak.upgrade_force().write().idx = 2;
         assert_eq!(ptr.read_recursive().idx, 2);
     }
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="unsafe_pointer")] {
+
+        type TesterUnsafePtr = ArcRwLock<Tester>;
+
+        #[test]
+        fn pointers_test_2() {  // cargo test pointers_test_2 --features unsafe_pointer -- --nocapture
+            let ptr = TesterUnsafePtr::new_value(Tester { idx: 0 });
+            let weak = ptr.downgrade();
+            ptr.write().idx = 1;
+            assert_eq!(weak.upgrade_force().read_recursive().idx, 1);
+            weak.upgrade_force().write().idx = 2;
+            assert_eq!(ptr.read_recursive().idx, 2);
+        }
+
+    }
+}
 
 }

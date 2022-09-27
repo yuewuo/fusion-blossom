@@ -158,8 +158,8 @@ pub struct PartitionUnit {
     pub enabled: bool,
 }
 
-pub type PartitionUnitPtr = ArcRwLock<PartitionUnit>;
-pub type PartitionUnitWeak = WeakRwLock<PartitionUnit>;
+pub type PartitionUnitPtr = ArcManualSafeLock<PartitionUnit>;
+pub type PartitionUnitWeak = WeakManualSafeLock<PartitionUnit>;
 
 impl std::fmt::Debug for PartitionUnitPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

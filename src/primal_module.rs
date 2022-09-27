@@ -9,6 +9,7 @@ use crate::derivative::Derivative;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use super::complete_graph::*;
 use super::visualize::*;
+use super::pointers::*;
 
 
 #[derive(Derivative)]

@@ -1,3 +1,5 @@
+#![feature(get_mut_unchecked)]
+
 extern crate libc;
 extern crate cfg_if;
 extern crate rand_xoshiro;

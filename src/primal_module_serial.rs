@@ -37,8 +37,8 @@ pub struct PrimalModuleSerial {
     pub children: Option<((PrimalModuleSerialWeak, NodeIndex), (PrimalModuleSerialWeak, NodeIndex))>,
 }
 
-pub type PrimalModuleSerialPtr = ArcRwLock<PrimalModuleSerial>;
-pub type PrimalModuleSerialWeak = WeakRwLock<PrimalModuleSerial>;
+pub type PrimalModuleSerialPtr = ArcManualSafeLock<PrimalModuleSerial>;
+pub type PrimalModuleSerialWeak = WeakManualSafeLock<PrimalModuleSerial>;
 
 impl std::fmt::Debug for PrimalModuleSerialPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -89,8 +89,8 @@ pub struct PrimalNodeInternal {
     pub belonging: PrimalModuleSerialWeak,
 }
 
-pub type PrimalNodeInternalPtr = ArcRwLock<PrimalNodeInternal>;
-pub type PrimalNodeInternalWeak = WeakRwLock<PrimalNodeInternal>;
+pub type PrimalNodeInternalPtr = ArcManualSafeLock<PrimalNodeInternal>;
+pub type PrimalNodeInternalWeak = WeakManualSafeLock<PrimalNodeInternal>;
 
 impl std::fmt::Debug for PrimalNodeInternalPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

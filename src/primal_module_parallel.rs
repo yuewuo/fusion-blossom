@@ -49,8 +49,8 @@ pub struct PrimalModuleParallelUnit {
     pub event_time: Option<PrimalModuleParallelUnitEventTime>,
 }
 
-pub type PrimalModuleParallelUnitPtr = ArcRwLock<PrimalModuleParallelUnit>;
-pub type PrimalModuleParallelUnitWeak = WeakRwLock<PrimalModuleParallelUnit>;
+pub type PrimalModuleParallelUnitPtr = ArcManualSafeLock<PrimalModuleParallelUnit>;
+pub type PrimalModuleParallelUnitWeak = WeakManualSafeLock<PrimalModuleParallelUnit>;
 
 impl std::fmt::Debug for PrimalModuleParallelUnitPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

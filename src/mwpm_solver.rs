@@ -18,6 +18,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::sync::Arc;
+use super::pointers::*;
 
 
 /// a serial solver

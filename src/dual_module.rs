@@ -298,8 +298,8 @@ impl DualNode {
 
 }
 
-pub type DualNodePtr = ArcRwLock<DualNode>;
-pub type DualNodeWeak = WeakRwLock<DualNode>;
+pub type DualNodePtr = ArcManualSafeLock<DualNode>;
+pub type DualNodeWeak = WeakManualSafeLock<DualNode>;
 
 impl Ord for DualNodePtr {
     // a consistent compare (during a single program)
@@ -454,8 +454,8 @@ pub struct DualModuleInterface {
     pub children: Option<((DualModuleInterfaceWeak, NodeIndex), (DualModuleInterfaceWeak, NodeIndex))>,
 }
 
-pub type DualModuleInterfacePtr = ArcRwLock<DualModuleInterface>;
-pub type DualModuleInterfaceWeak = WeakRwLock<DualModuleInterface>;
+pub type DualModuleInterfacePtr = ArcManualSafeLock<DualModuleInterface>;
+pub type DualModuleInterfaceWeak = WeakManualSafeLock<DualModuleInterface>;
 
 impl std::fmt::Debug for DualModuleInterfacePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -601,7 +601,7 @@ pub trait DualModuleParallelImpl {
 
     type UnitType: DualModuleImpl + Send + Sync;
 
-    fn get_unit(&self, unit_index: usize) -> ArcRwLock<Self::UnitType>;
+    fn get_unit(&self, unit_index: usize) -> ArcManualSafeLock<Self::UnitType>;
 
 }
 

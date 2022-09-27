@@ -67,8 +67,8 @@ pub struct UnitModuleInfo {
     pub dual_node_pointers: PtrWeakKeyHashMap<DualNodeWeak, usize>,
 }
 
-pub type DualModuleSerialPtr = ArcRwLock<DualModuleSerial>;
-pub type DualModuleSerialWeak = WeakRwLock<DualModuleSerial>;
+pub type DualModuleSerialPtr = ArcManualSafeLock<DualModuleSerial>;
+pub type DualModuleSerialWeak = WeakManualSafeLock<DualModuleSerial>;
 
 /// internal information of the dual node, added to the [`DualNode`]
 #[derive(Derivative)]
@@ -89,8 +89,8 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
-pub type DualNodeInternalPtr = ArcRwLock<DualNodeInternal>;
-pub type DualNodeInternalWeak = WeakRwLock<DualNodeInternal>;
+pub type DualNodeInternalPtr = ArcManualSafeLock<DualNodeInternal>;
+pub type DualNodeInternalWeak = WeakManualSafeLock<DualNodeInternal>;
 
 impl std::fmt::Debug for DualNodeInternalPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -127,8 +127,8 @@ pub struct Vertex {
     pub timestamp: FastClearTimestamp,
 }
 
-pub type VertexPtr= FastClearArcRwLock<Vertex>;
-pub type VertexWeak = FastClearWeakRwLock<Vertex>;
+pub type VertexPtr= FastClearArcManualSafeLock<Vertex>;
+pub type VertexWeak = FastClearWeakManualSafeLock<Vertex>;
 
 impl std::fmt::Debug for VertexPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -175,8 +175,8 @@ pub struct Edge {
     pub dedup_timestamp: (FastClearTimestamp, FastClearTimestamp),
 }
 
-pub type EdgePtr= FastClearArcRwLock<Edge>;
-pub type EdgeWeak = FastClearWeakRwLock<Edge>;
+pub type EdgePtr= FastClearArcManualSafeLock<Edge>;
+pub type EdgeWeak = FastClearWeakManualSafeLock<Edge>;
 
 impl std::fmt::Debug for EdgePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
