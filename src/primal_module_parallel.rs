@@ -293,7 +293,7 @@ impl PrimalModuleParallelUnitPtr {
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads
         let debug_sequential = primal_module_parallel.config.debug_sequential;
         if let Some((left_child_weak, right_child_weak)) = primal_unit.children.as_ref() {
-            assert!(!primal_unit.is_active, "parent must be inactive at the time of solving children");
+            debug_assert!(!primal_unit.is_active, "parent must be inactive at the time of solving children");
             let partition_unit_info = &primal_unit.partition_info.units[primal_unit.unit_index];
             let (syndrome_range, (left_partitioned, right_partitioned)) = partitioned_syndrome_pattern.partition(partition_unit_info);
             if debug_sequential {
@@ -315,7 +315,7 @@ impl PrimalModuleParallelUnitPtr {
                 for child_weak in [left_child_weak, right_child_weak] {
                     let child_ptr = child_weak.upgrade_force();
                     let mut child = child_ptr.write();
-                    assert!(child.is_active, "cannot fuse inactive children");
+                    debug_assert!(child.is_active, "cannot fuse inactive children");
                     child.is_active = false;
                 }
             }
@@ -337,7 +337,7 @@ impl PrimalModuleParallelUnitPtr {
                 });
         } else {  // this is a leaf, proceed it as normal serial one
             event_time.children_return = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();  // no children
-            assert!(primal_unit.is_active, "leaf must be active to be solved");
+            debug_assert!(primal_unit.is_active, "leaf must be active to be solved");
             let syndrome_pattern = partitioned_syndrome_pattern.expand();
             let interface_ptr = primal_unit.interface_ptr.clone();
             primal_unit.serial_module.solve_step_callback(&interface_ptr, &syndrome_pattern, dual_unit.deref_mut()

@@ -52,15 +52,15 @@ pub trait PrimalModuleImpl {
     /// load a new decoding problem given dual interface: note that all nodes MUST be syndrome node
     fn load(&mut self, interface_ptr: &DualModuleInterfacePtr) {
         let interface = interface_ptr.read_recursive();
-        assert!(interface.parent.is_none(), "cannot load an interface that is already fused");
-        assert!(interface.children.is_none(), "please customize load function if interface is fused");
+        debug_assert!(interface.parent.is_none(), "cannot load an interface that is already fused");
+        debug_assert!(interface.children.is_none(), "please customize load function if interface is fused");
         for index in 0..interface.nodes_length {
             let node = &interface.nodes[index];
-            assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
+            debug_assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
             let node_ptr = node.as_ref().unwrap();
             let node = node_ptr.read_recursive();
-            assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
-            assert_eq!(node.index, index, "must load a fresh dual module interface, found index out of order");
+            debug_assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
+            debug_assert_eq!(node.index, index, "must load a fresh dual module interface, found index out of order");
             self.load_syndrome_dual_node(node_ptr);
         }
     }

@@ -334,7 +334,7 @@ impl DualModuleImpl for DualModuleSerial {
                                 let edge_ptr = edge_weak.upgrade_force();
                                 boundary.push((*is_left, edge_weak.clone()));
                                 let mut edge = edge_ptr.write(active_timestamp);
-                                assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
+                                debug_assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
                                 debug_assert!(if *is_left { edge.left_dual_node == Some(dual_node_internal_ptr.downgrade())
                                     } else { edge.right_dual_node == Some(dual_node_internal_ptr.downgrade()) }, "edge belonging");
                                 if *is_left {
@@ -344,7 +344,7 @@ impl DualModuleImpl for DualModuleSerial {
                                 }
                             }
                         } else {
-                            assert!(self.unit_module_info.is_some(), "only partitioned could ignore some of its children");
+                            debug_assert!(self.unit_module_info.is_some(), "only partitioned could ignore some of its children");
                         }
                     }
                 },
@@ -361,7 +361,7 @@ impl DualModuleImpl for DualModuleSerial {
                         edge_ptr.dynamic_clear(active_timestamp);
                         let mut edge = edge_ptr.write(active_timestamp);
                         let is_left = vertex_ptr.downgrade() == edge.left;
-                        assert!(if is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
+                        debug_assert!(if is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
                         if is_left {
                             edge.left_dual_node = Some(node_internal_ptr.downgrade());
                             edge.left_grandson_dual_node = Some(node_internal_ptr.downgrade());
@@ -388,17 +388,17 @@ impl DualModuleImpl for DualModuleSerial {
         let node = dual_node_ptr.read_recursive();
         let dual_node_internal_ptr = self.get_dual_node_internal_ptr(&dual_node_ptr);
         let dual_node_internal = dual_node_internal_ptr.read_recursive();
-        assert_eq!(dual_node_internal.dual_variable, 0, "only blossom with dual variable = 0 can be safely removed");
-        assert!(dual_node_internal.overgrown_stack.is_empty(), "removing a blossom with non-empty overgrown stack forbidden");
+        debug_assert_eq!(dual_node_internal.dual_variable, 0, "only blossom with dual variable = 0 can be safely removed");
+        debug_assert!(dual_node_internal.overgrown_stack.is_empty(), "removing a blossom with non-empty overgrown stack forbidden");
         let node_idx = dual_node_internal.index;
-        assert!(self.nodes[node_idx].is_some(), "blossom may have already been removed, do not call twice");
-        assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_internal_ptr, "the blossom doesn't belong to this DualModuleInterface");
+        debug_assert!(self.nodes[node_idx].is_some(), "blossom may have already been removed, do not call twice");
+        debug_assert!(self.nodes[node_idx].as_ref().unwrap() == &dual_node_internal_ptr, "the blossom doesn't belong to this DualModuleInterface");
         self.nodes[node_idx] = None;  // simply remove this blossom node
         // recover edge belongings
         for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
             let edge_ptr = edge_weak.upgrade_force();
             let mut edge = edge_ptr.write(active_timestamp);
-            assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
+            debug_assert!(if *is_left { edge.left_dual_node.is_some() } else { edge.right_dual_node.is_some() }, "dual node of edge should be some");
             if *is_left {
                 edge.left_dual_node = None;
             } else {
@@ -413,7 +413,7 @@ impl DualModuleImpl for DualModuleSerial {
                     for (is_left, edge_weak) in circle_dual_node_internal.boundary.iter() {
                         let edge_ptr = edge_weak.upgrade_force();
                         let mut edge = edge_ptr.write(active_timestamp);
-                        assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
+                        debug_assert!(if *is_left { edge.left_dual_node.is_none() } else { edge.right_dual_node.is_none() }, "dual node of edge should be none");
                         if *is_left {
                             edge.left_dual_node = Some(circle_dual_node_internal_ptr.downgrade());
                         } else {
@@ -421,7 +421,7 @@ impl DualModuleImpl for DualModuleSerial {
                         }
                     }
                 } else {
-                    assert!(self.unit_module_info.is_some(), "only happens if partitioned");
+                    debug_assert!(self.unit_module_info.is_some(), "only happens if partitioned");
                 }
             }
         } else {
@@ -521,7 +521,7 @@ impl DualModuleImpl for DualModuleSerial {
                             let remaining_length = edge.weight - edge.left_growth - edge.right_growth;
                             let local_max_length_abs = match peer_dual_node.grow_state {
                                 DualNodeGrowState::Grow => {
-                                    assert!(remaining_length % 2 == 0, "there is odd gap between two growing nodes, please make sure all weights are even numbers");
+                                    debug_assert!(remaining_length % 2 == 0, "there is odd gap between two growing nodes, please make sure all weights are even numbers");
                                     remaining_length / 2
                                 },
                                 DualNodeGrowState::Shrink => {
@@ -596,7 +596,7 @@ impl DualModuleImpl for DualModuleSerial {
         // first prepare all nodes for individual grow or shrink; Stay nodes will be prepared to shrink in order to minimize effect on others
         self.prepare_all();
         // after preparing all the growth, there should be no sync requests
-        assert!(self.sync_requests.is_empty(), "no sync requests should arise here; make sure to deal with all sync requests before growing");
+        debug_assert!(self.sync_requests.is_empty(), "no sync requests should arise here; make sure to deal with all sync requests before growing");
         let mut group_max_update_length = GroupMaxUpdateLength::new();
         for i in 0..self.active_list.len() {
             let dual_node_ptr = {
@@ -629,12 +629,12 @@ impl DualModuleImpl for DualModuleSerial {
             // update node dual variable and do sanity check
             let mut dual_node_internal = dual_node_internal_ptr.write();
             dual_node_internal.dual_variable += length;
-            assert!(dual_node_internal.dual_variable >= 0, "shrinking to negative dual variable is forbidden");
+            debug_assert!(dual_node_internal.dual_variable >= 0, "shrinking to negative dual variable is forbidden");
             // update over-grown vertices
             if !dual_node_internal.overgrown_stack.is_empty() {
                 let last_index = dual_node_internal.overgrown_stack.len() - 1;
                 let (_, overgrown) = &mut dual_node_internal.overgrown_stack[last_index];
-                if length < 0 { assert!( *overgrown >= -length, "overgrown vertex cannot shrink so much"); }
+                if length < 0 { debug_assert!( *overgrown >= -length, "overgrown vertex cannot shrink so much"); }
                 *overgrown += length;
             }
         }
@@ -646,10 +646,10 @@ impl DualModuleImpl for DualModuleSerial {
                 let mut edge = edge_ptr.write(active_timestamp);
                 if is_left {
                     edge.left_growth += length;
-                    assert!(edge.left_growth >= 0, "negative growth forbidden");
+                    debug_assert!(edge.left_growth >= 0, "negative growth forbidden");
                 } else {
                     edge.right_growth += length;
-                    assert!(edge.right_growth >= 0, "negative growth forbidden");
+                    debug_assert!(edge.right_growth >= 0, "negative growth forbidden");
                 }
                 (edge.left_growth + edge.right_growth, edge.weight)
             };
@@ -677,7 +677,7 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     fn grow(&mut self, length: Weight) {
-        assert!(length > 0, "only positive growth is supported");
+        debug_assert!(length > 0, "only positive growth is supported");
         self.renew_active_list();
         // first handle shrinks and then grow, to make sure they don't conflict
         for i in 0..self.active_list.len() {
@@ -706,7 +706,7 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
-        assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
+        debug_assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         let active_timestamp = self.active_timestamp;
         for (edge_index, target_weight) in edge_modifier.iter() {
             let edge_ptr = &self.edges[*edge_index];
@@ -719,7 +719,7 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     fn prepare_all(&mut self) -> &mut Vec<SyncRequest> {
-        assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
+        debug_assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
         self.renew_active_list();
         for i in 0..self.active_list.len() {
             let dual_node_ptr = {
@@ -757,7 +757,7 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     fn prepare_nodes_shrink(&mut self, nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
-        assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
+        debug_assert!(self.sync_requests.is_empty(), "make sure to remove all sync requests before prepare to avoid out-dated requests");
         for dual_node_ptr in nodes_circle.iter() {
             if self.contains_dual_node(dual_node_ptr) {
                 self.prepare_dual_node_growth(dual_node_ptr, false);  // prepare to shrink
@@ -809,8 +809,10 @@ impl DualModuleImpl for DualModuleSerial {
         let mut edges = Vec::<EdgePtr>::new();
         for &(i, j, weight, edge_index) in partitioned_initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
-            assert!(partitioned_initializer.owning_range.contains(&i) || mirrored_vertices.contains_key(&i), "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
-            assert!(partitioned_initializer.owning_range.contains(&j) || mirrored_vertices.contains_key(&j), "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
+            debug_assert!(partitioned_initializer.owning_range.contains(&i) || mirrored_vertices.contains_key(&i)
+                , "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
+            debug_assert!(partitioned_initializer.owning_range.contains(&j) || mirrored_vertices.contains_key(&j)
+                , "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
             let left = usize::min(i, j);
             let right = usize::max(i, j);
             let left_index = if partitioned_initializer.owning_range.contains(&left) {
@@ -911,7 +913,7 @@ impl DualModuleImpl for DualModuleSerial {
         } else {  // conflict with existing value, action needed
             // first vacate the vertex, recovering dual node boundaries accordingly
             if let Some(dual_node_internal_weak) = vertex.propagated_dual_node.as_ref() {
-                assert!(!vertex.is_syndrome, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
+                debug_assert!(!vertex.is_syndrome, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
                 let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
                 let dual_node_internal_ptr = dual_node_internal_weak.upgrade_force();
                 let mut dual_node_internal = dual_node_internal_ptr.write();
@@ -983,11 +985,11 @@ impl DualModuleImpl for DualModuleSerial {
                     let mut edge = edge_ptr.write(active_timestamp);
                     let is_left = vertex_ptr.downgrade() == edge.left;
                     if is_left {
-                        assert_eq!(edge.left_dual_node, None, "edges incident to the vertex must have been vacated");
+                        debug_assert_eq!(edge.left_dual_node, None, "edges incident to the vertex must have been vacated");
                         edge.left_dual_node = Some(dual_node_internal_ptr.downgrade());
                         edge.left_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
                     } else {
-                        assert_eq!(edge.right_dual_node, None, "edges incident to the vertex must have been vacated");
+                        debug_assert_eq!(edge.right_dual_node, None, "edges incident to the vertex must have been vacated");
                         edge.right_dual_node = Some(dual_node_internal_ptr.downgrade());
                         edge.right_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
                     }
@@ -1229,11 +1231,11 @@ impl FusionVisualizer for DualModuleSerial {
             vertex_ptr.dynamic_clear(active_timestamp);
             let vertex = vertex_ptr.read_recursive(active_timestamp);
             vertices[vertex.vertex_index] = json!({
-                if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
+                if abbrev { "v" } else { "is_virtual" }: i32::from(vertex.is_virtual),
             });
             if self.owning_range.contains(&vertex.vertex_index) {  // otherwise I don't know whether it's syndrome or not
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "s" } else { "is_syndrome" }).to_string(),
-                    json!(if vertex.is_syndrome { 1 } else { 0 }));
+                    json!(i32::from(vertex.is_syndrome)));
             }
             if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "p" } else { "propagated_dual_node" }).to_string(), json!(value));
@@ -1247,7 +1249,7 @@ impl FusionVisualizer for DualModuleSerial {
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "mi" } else { "mirror_unit_index" }).to_string()
                     , json!(mirror_unit.unit_index));
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "me" } else { "mirror_enabled" }).to_string()
-                    , json!(if mirror_unit.enabled { 1 } else { 0 }));
+                    , json!(i32::from(mirror_unit.enabled)));
             }
         }
         let mut edges: Vec::<serde_json::Value> = (0..self.edge_num).map(|_| serde_json::Value::Null).collect();
@@ -1324,7 +1326,7 @@ impl DualModuleSerial {
                 unit_module_info.dual_node_pointers.insert(dual_node_ptr.clone(), self.nodes_length);
             }
         } else {
-            assert!(self.nodes_length == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
+            debug_assert!(self.nodes_length == node.index, "dual node must be created in a sequential manner: no missing or duplicating");
         }
         // println!("unit {:?}, register_dual_node_ptr: {:?}", self.unit_module_info, dual_node_ptr);
     }
@@ -1440,8 +1442,8 @@ impl DualModuleSerial {
                     if peer_vertex.is_virtual || peer_vertex.is_mirror_blocked() {  // virtual node is never propagated, so keep this edge in the boundary
                         self.updated_boundary.push((is_left, edge_weak.clone()));
                     } else {
-                        assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
-                        assert!(peer_vertex.propagated_grandson_dual_node.is_none(), "growing into another propagated vertex forbidden");
+                        debug_assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
+                        debug_assert!(peer_vertex.propagated_grandson_dual_node.is_none(), "growing into another propagated vertex forbidden");
                         self.propagating_vertices.push((peer_vertex_ptr.clone(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
                         // this edge is dropped, so we need to set both end of this edge to this dual node
                         drop(edge);  // unlock read
@@ -1570,7 +1572,7 @@ impl DualModuleSerial {
                         } else {
                             // this happens when sync request already vacate the vertex, thus no need to add edges to the boundary
                             // in fact, this will cause duplicate boundary edges if not skipped, leading to exceptions when creating blossoms
-                            assert!(self.unit_module_info.is_some(), "serial module itself cannot happen");
+                            debug_assert!(self.unit_module_info.is_some(), "serial module itself cannot happen");
                         }
                     } else {
                         break  // found non-negative overgrown in the stack
@@ -1603,7 +1605,7 @@ impl DualModuleSerial {
                         }
                     } else {
                         if edge.weight > 0 && self.unit_module_info.is_none() {  // do not check for 0-weight edges
-                            assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
+                            debug_assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
                         }
                         self.propagating_vertices.push((this_vertex_ptr.clone(), None));
                     }
@@ -1656,13 +1658,13 @@ impl DualModuleSerial {
                                 newly_propagated_edge_has_zero_weight = true;
                             }
                             if is_left {
-                                assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
-                                assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
+                                debug_assert!(edge.right_dual_node.is_some(), "unexpected shrinking to empty edge");
+                                debug_assert!(edge.right_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
                                 edge.left_dual_node = None;
                                 edge.left_grandson_dual_node = None;
                             } else {
-                                assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
-                                assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
+                                debug_assert!(edge.left_dual_node.is_some(), "unexpected shrinking to empty edge");
+                                debug_assert!(edge.left_dual_node.as_ref().unwrap() == &dual_node_internal_ptr.downgrade(), "shrinking edge should be same tree node");
                                 edge.right_dual_node = None;
                                 edge.right_grandson_dual_node = None;
                             };
@@ -1685,7 +1687,7 @@ impl DualModuleSerial {
         std::mem::swap(&mut self.updated_boundary, &mut dual_node_internal.boundary);
         // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
         if self.unit_module_info.is_none() {
-            assert!(!dual_node_internal.boundary.is_empty(), "the boundary of a dual cluster is never empty");
+            debug_assert!(!dual_node_internal.boundary.is_empty(), "the boundary of a dual cluster is never empty");
         }
         newly_propagated_edge_has_zero_weight
     }

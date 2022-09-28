@@ -321,9 +321,8 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
         let mut vertices = Vec::<serde_json::Value>::new();
         for vertex in self_vertices.iter() {
             vertices.push(json!({
-                if abbrev { "v" } else { "is_virtual" }: if vertex.is_virtual { 1 } else { 0 },
-                if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
-                // if abbrev { "s" } else { "is_syndrome" }: if vertex.is_syndrome { 1 } else { 0 },
+                if abbrev { "v" } else { "is_virtual" }: i32::from(vertex.is_virtual),
+                if abbrev { "s" } else { "is_syndrome" }: i32::from(vertex.is_syndrome),
             }));
         }
         let mut edges = Vec::<serde_json::Value>::new();

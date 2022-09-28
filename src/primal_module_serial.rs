@@ -187,7 +187,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         let mut module = self.write();
         let local_node_index = module.nodes_length;
         let node_index = module.nodes_count();
-        assert_eq!(node.index, node_index, "must load in order");
+        debug_assert_eq!(node.index, node_index, "must load in order");
         let primal_node_internal_ptr = if !module.is_fusion && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
             let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
             let mut node = node_ptr.write();
@@ -227,14 +227,14 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
             // println!("conflict: {conflict:?}");
             match conflict {
                 MaxUpdateLength::Conflicting((node_ptr_1, touching_ptr_1), (node_ptr_2, touching_ptr_2)) => {
-                    assert!(node_ptr_1 != node_ptr_2, "one cannot conflict with itself, double check to avoid deadlock");
+                    debug_assert!(node_ptr_1 != node_ptr_2, "one cannot conflict with itself, double check to avoid deadlock");
                     if self.get_primal_node_internal_ptr_option(&node_ptr_1).is_none() { continue }  // ignore out-of-date event
                     if self.get_primal_node_internal_ptr_option(&node_ptr_2).is_none() { continue }  // ignore out-of-date event
                     // always use outer node in case it's already wrapped into a blossom
                     let primal_node_internal_ptr_1 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_1));
                     let primal_node_internal_ptr_2 = self.get_outer_node(self.get_primal_node_internal_ptr(&node_ptr_2));
                     if primal_node_internal_ptr_1 == primal_node_internal_ptr_2 {
-                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
+                        debug_assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict because both of them belongs to a single blossom
                     }
                     let mut primal_node_internal_1 = primal_node_internal_ptr_1.write();
@@ -242,7 +242,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     let grow_state_1 = primal_node_internal_1.origin.upgrade_force().read_recursive().grow_state;
                     let grow_state_2 = primal_node_internal_2.origin.upgrade_force().read_recursive().grow_state;
                     if !grow_state_1.is_against(&grow_state_2) {
-                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
+                        debug_assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict
                     }
                     // this is the most probable case, so put it in the front
@@ -334,7 +334,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                             MatchTarget::Peer(leaf_node_internal_weak) => {
                                 let leaf_node_internal_ptr = leaf_node_internal_weak.upgrade_force();
                                 let tree_node = tree_node_internal.tree_node.as_mut().unwrap();
-                                assert!(tree_node.depth % 2 == 0, "conflicting one must be + node");
+                                debug_assert!(tree_node.depth % 2 == 0, "conflicting one must be + node");
                                 // simply add this matched pair to the children
                                 tree_node.children.push((matched_node_internal_ptr.downgrade(), tree_touching_ptr.downgrade()));
                                 // link children to parent
@@ -562,7 +562,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     let mut primal_node_internal = primal_node_internal_ptr.write();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
                     if grow_state != DualNodeGrowState::Grow {
-                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
+                        debug_assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict
                     }
                     // this is the most probable case, so put it in the front
@@ -595,13 +595,13 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     let outer_primal_node_internal_ptr = self.get_outer_node(primal_node_internal_ptr.clone());
                     if outer_primal_node_internal_ptr != primal_node_internal_ptr {
                         // this blossom is now wrapped into another blossom, so we don't need to expand it anymore
-                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
+                        debug_assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue
                     }
                     let primal_node_internal = primal_node_internal_ptr.read_recursive();
                     let grow_state = primal_node_internal.origin.upgrade_force().read_recursive().grow_state;
                     if grow_state != DualNodeGrowState::Shrink {
-                        assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
+                        debug_assert!(current_conflict_index != 1, "the first conflict cannot be ignored, otherwise may cause hidden infinite loop");
                         continue  // this is no longer a conflict
                     }
                     // copy the nodes circle
@@ -614,12 +614,12 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     };
                     {  // remove it from nodes
                         let mut module = self.write();
-                        assert_eq!(module.get_node(primal_node_internal.index), Some(primal_node_internal_ptr.clone()), "index wrong");
+                        debug_assert_eq!(module.get_node(primal_node_internal.index), Some(primal_node_internal_ptr.clone()), "index wrong");
                         module.remove_node(primal_node_internal.index);
                     }
-                    assert!(primal_node_internal.tree_node.is_some(), "expanding blossom must belong to an alternating tree");
+                    debug_assert!(primal_node_internal.tree_node.is_some(), "expanding blossom must belong to an alternating tree");
                     let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
-                    assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
+                    debug_assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
                     let (parent_ptr, parent_touching_ptr, parent_touching_child_ptr) = {  // remove it from it's parent's tree
                         let (parent_weak, parent_touching_child_ptr) = &tree_node.parent.as_ref().unwrap();
                         let parent_ptr = parent_weak.upgrade_force();
@@ -760,11 +760,11 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         self.flatten_nodes(&mut flattened_nodes);
         for primal_node_internal_ptr in flattened_nodes.iter().flatten() {
             let primal_node_internal = primal_node_internal_ptr.read_recursive();
-            assert!(primal_node_internal.tree_node.is_none(), "cannot compute perfect matching with active alternating tree");
+            debug_assert!(primal_node_internal.tree_node.is_none(), "cannot compute perfect matching with active alternating tree");
             let origin_ptr = primal_node_internal.origin.upgrade_force();
             let interface_node = origin_ptr.read_recursive();
             if interface_node.parent_blossom.is_some() {
-                assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
+                debug_assert_eq!(primal_node_internal.temporary_match, None, "blossom internal nodes should not be matched");
                 continue  // do not handle this blossom at this level
             }
             if let Some((match_target, match_touching_ptr)) = primal_node_internal.temporary_match.as_ref() {
@@ -932,7 +932,7 @@ impl PrimalModuleSerialPtr {
             let primal_node_internal_2 = primal_node_internal_ptr_2.read_recursive();
             let tree_node_1 = primal_node_internal_1.tree_node.as_ref().unwrap();
             let tree_node_2 = primal_node_internal_2.tree_node.as_ref().unwrap();
-            assert_eq!(tree_node_1.root, tree_node_2.root, "must belong to the same tree");
+            debug_assert_eq!(tree_node_1.root, tree_node_2.root, "must belong to the same tree");
             (tree_node_1.depth, tree_node_2.depth)
         };
         let mut path_1 = vec![];
@@ -1085,7 +1085,7 @@ impl PrimalModuleSerialPtr {
             }
             flattened_nodes.push(primal_node_internal_ptr.clone());
         }
-        assert_eq!(flattened_nodes.len() - flattened_nodes_length, module.nodes_count());
+        debug_assert_eq!(flattened_nodes.len() - flattened_nodes_length, module.nodes_count());
     }
 
     /// fuse two modules by copying the nodes in `other` into myself
@@ -1100,7 +1100,7 @@ impl PrimalModuleSerialPtr {
                 let node_ptr = &other_module.nodes[other_node_index];
                 if let Some(node_ptr) = node_ptr {
                     let mut node = node_ptr.write();
-                    assert_eq!(node.index, other_node_index);
+                    debug_assert_eq!(node.index, other_node_index);
                     node.index += bias;
                 }
                 module.nodes_length += 1;
@@ -1123,12 +1123,12 @@ impl PrimalModuleSerialPtr {
         let right_weak = right.downgrade();
         let mut module = self.write();
         module.is_fusion = true;  // for safety
-        assert_eq!(module.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
-        assert!(module.children.is_none(), "cannot fuse twice");
+        debug_assert_eq!(module.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
+        debug_assert!(module.children.is_none(), "cannot fuse twice");
         let mut left_module = left.write();
         let mut right_module = right.write();
-        assert!(left_module.parent.is_none(), "cannot fuse an module twice");
-        assert!(right_module.parent.is_none(), "cannot fuse an module twice");
+        debug_assert!(left_module.parent.is_none(), "cannot fuse an module twice");
+        debug_assert!(right_module.parent.is_none(), "cannot fuse an module twice");
         left_module.parent = Some(parent_weak.clone());
         right_module.parent = Some(parent_weak);
         left_module.index_bias = 0;

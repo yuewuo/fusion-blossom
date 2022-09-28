@@ -361,7 +361,7 @@ impl DualNodePtr {
     /// helper function to set grow state with sanity check
     fn set_grow_state(&self, grow_state: DualNodeGrowState) {
         let mut dual_node = self.write();
-        assert!(dual_node.parent_blossom.is_none(), "setting node grow state inside a blossom forbidden");
+        debug_assert!(dual_node.parent_blossom.is_none(), "setting node grow state inside a blossom forbidden");
         dual_node.grow_state = grow_state;
     }
 
@@ -770,7 +770,7 @@ impl DualModuleInterfacePtr {
             }
             flattened_nodes.push(dual_node_ptr.clone());
         }
-        assert_eq!(flattened_nodes.len() - flattened_nodes_length, interface.nodes_count());
+        debug_assert_eq!(flattened_nodes.len() - flattened_nodes_length, interface.nodes_count());
     }
 
     pub fn create_syndrome_node(&self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
@@ -836,7 +836,7 @@ impl DualModuleInterfacePtr {
         if touching_children.is_empty() {  // automatically fill the children, only works when nodes_circle consists of all syndrome nodes
             touching_children = nodes_circle.iter().map(|ptr| (ptr.downgrade(), ptr.downgrade())).collect();
         }
-        assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
+        debug_assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
         let blossom_node_ptr = if !interface.is_fusion && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
@@ -870,8 +870,8 @@ impl DualModuleInterfacePtr {
         for (i, node_ptr) in nodes_circle.iter().enumerate() {
             debug_assert!(self.check_ptr_belonging(node_ptr), "this ptr doesn't belong to this interface");
             let node = node_ptr.read_recursive();
-            assert!(node.parent_blossom.is_none(), "cannot create blossom on a node that already belongs to a blossom");
-            assert!(&node.grow_state == (if i % 2 == 0 { &DualNodeGrowState::Grow } else { &DualNodeGrowState::Shrink })
+            debug_assert!(node.parent_blossom.is_none(), "cannot create blossom on a node that already belongs to a blossom");
+            debug_assert!(&node.grow_state == (if i % 2 == 0 { &DualNodeGrowState::Grow } else { &DualNodeGrowState::Shrink })
                 , "the nodes circle MUST starts with a growing node and ends with a shrinking node");
             drop(node);
             // set state must happen before setting parent
@@ -933,8 +933,8 @@ impl DualModuleInterfacePtr {
             DualNodeGrowState::Stay => { },
         }
         let node_idx = node.index;
-        assert!(interface.get_node(node_idx).is_some(), "the blossom should not be expanded before");
-        assert!(interface.get_node(node_idx).as_ref().unwrap() == &blossom_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
+        debug_assert!(interface.get_node(node_idx).is_some(), "the blossom should not be expanded before");
+        debug_assert!(interface.get_node(node_idx).as_ref().unwrap() == &blossom_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
         interface.remove_node(node_idx);  // remove this blossom from root
         drop(interface);
         match &node.class {
@@ -942,9 +942,9 @@ impl DualModuleInterfacePtr {
                 for node_weak in nodes_circle.iter() {
                     let node_ptr = node_weak.upgrade_force();
                     let mut node = node_ptr.write();
-                    assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &blossom_node_ptr.downgrade()
+                    debug_assert!(node.parent_blossom.is_some() && node.parent_blossom.as_ref().unwrap() == &blossom_node_ptr.downgrade()
                         , "internal error: parent blossom must be this blossom");
-                    assert!(node.grow_state == DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
+                    debug_assert!(node.grow_state == DualNodeGrowState::Stay, "internal error: children node must be DualNodeGrowState::Stay");
                     node.parent_blossom = None;
                     drop(node);
                     {  // safest way: to avoid sub-optimal result being found, set all nodes to growing state
@@ -1021,7 +1021,7 @@ impl DualModuleInterfacePtr {
                 let node_ptr = &other_interface.nodes[other_node_index];
                 if let Some(node_ptr) = node_ptr {
                     let mut node = node_ptr.write();
-                    assert_eq!(node.index, other_node_index);
+                    debug_assert_eq!(node.index, other_node_index);
                     node.index += bias;
                     node.dual_variable_cache = (node.get_dual_variable(&other_interface), interface.dual_variable_global_progress)
                 }
@@ -1043,14 +1043,14 @@ impl DualModuleInterfacePtr {
         let right_weak = right.downgrade();
         let mut interface = self.write();
         interface.is_fusion = true;  // for safety
-        assert_eq!(interface.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
-        assert!(interface.children.is_none(), "cannot fuse twice");
+        debug_assert_eq!(interface.nodes_length, 0, "fast fuse doesn't support non-empty fuse");
+        debug_assert!(interface.children.is_none(), "cannot fuse twice");
         let mut left_interface = left.write();
         let mut right_interface = right.write();
         left_interface.is_fusion = true;
         right_interface.is_fusion = true;
-        assert!(left_interface.parent.is_none(), "cannot fuse an interface twice");
-        assert!(right_interface.parent.is_none(), "cannot fuse an interface twice");
+        debug_assert!(left_interface.parent.is_none(), "cannot fuse an interface twice");
+        debug_assert!(right_interface.parent.is_none(), "cannot fuse an interface twice");
         left_interface.parent = Some(parent_weak.clone());
         right_interface.parent = Some(parent_weak);
         left_interface.index_bias = 0;

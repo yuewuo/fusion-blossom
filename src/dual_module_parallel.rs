@@ -345,7 +345,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                     if !left_child.is_active && !right_child.is_active {
                         continue  // already fused, it's ok to just ignore
                     }
-                    assert!(left_child.is_active && right_child.is_active, "children must be active at the same time if fusing all together");
+                    debug_assert!(left_child.is_active && right_child.is_active, "children must be active at the same time if fusing all together");
                 }
                 unit.static_fuse();
             }
@@ -507,11 +507,11 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
 
     /// statically fuse the children of this unit
     pub fn static_fuse(&mut self) {
-        assert!(!self.is_active, "cannot fuse the child an already active unit");
+        debug_assert!(!self.is_active, "cannot fuse the child an already active unit");
         let (left_child_ptr, right_child_ptr) = (self.children.as_ref().unwrap().0.upgrade_force(), self.children.as_ref().unwrap().1.upgrade_force());
         let mut left_child = left_child_ptr.write();
         let mut right_child = right_child_ptr.write();
-        assert!(left_child.is_active && right_child.is_active, "cannot fuse inactive pairs");
+        debug_assert!(left_child.is_active && right_child.is_active, "cannot fuse inactive pairs");
         // update active state
         self.is_active = true;
         left_child.is_active = false;
