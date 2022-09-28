@@ -317,7 +317,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         free_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), free_touching_ptr.downgrade()));
                         interface_ptr.set_grow_state(&free_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
                         drop(tree_node_internal);  // unlock
-                        self.augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr.downgrade(), interface_ptr, dual_module);
+                        Self::augment_tree_given_matched(tree_node_internal_ptr, free_node_internal_ptr, tree_touching_ptr.downgrade(), interface_ptr, dual_module);
                         continue
                     }
                     // fourth probable case: tree touches matched pair
@@ -363,7 +363,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 matched_node_internal.temporary_match = Some((MatchTarget::Peer(tree_node_internal_ptr.downgrade()), matched_touching_ptr.downgrade()));
                                 drop(matched_node_internal);  // unlock
                                 drop(tree_node_internal);  // unlock
-                                self.augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr.downgrade(), interface_ptr, dual_module);
+                                Self::augment_tree_given_matched(tree_node_internal_ptr, matched_node_internal_ptr, tree_touching_ptr.downgrade(), interface_ptr, dual_module);
                                 continue
                             }
                         }
@@ -547,9 +547,9 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         } else {
                             drop(primal_node_internal_1);  // unlock
                             drop(primal_node_internal_2);  // unlock
-                            self.augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1.downgrade()
+                            Self::augment_tree_given_matched(primal_node_internal_ptr_1.clone(), primal_node_internal_ptr_2.clone(), touching_ptr_1.downgrade()
                                 , interface_ptr, dual_module);
-                            self.augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2.downgrade()
+                            Self::augment_tree_given_matched(primal_node_internal_ptr_2.clone(), primal_node_internal_ptr_1.clone(), touching_ptr_2.downgrade()
                                 , interface_ptr, dual_module);
                             continue
                         }
@@ -979,7 +979,7 @@ impl PrimalModuleSerialPtr {
     }
 
     /// for any - node, match the children by matching them with + node
-    pub fn match_subtree<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
+    pub fn match_subtree<D: DualModuleImpl>(tree_node_internal_ptr: PrimalNodeInternalPtr, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 1, "only match - node is possible");
@@ -993,14 +993,14 @@ impl PrimalModuleSerialPtr {
         let child_tree_node = child_node_internal.tree_node.as_ref().unwrap();
         interface_ptr.set_grow_state(&child_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
         for (grandson_ptr, _) in child_tree_node.children.iter() {
-            self.match_subtree(grandson_ptr.upgrade_force(), interface_ptr, dual_module);
+            Self::match_subtree(grandson_ptr.upgrade_force(), interface_ptr, dual_module);
         }
         child_node_internal.tree_node = None;
     }
 
     /// for any + node, match it with another node will augment the whole tree, breaking out into several matched pairs;
     /// `tree_grandson_ptr` is the grandson of tree_node_internal_ptr that touches `match_node_internal_ptr`
-    pub fn augment_tree_given_matched<D: DualModuleImpl>(&self, tree_node_internal_ptr: PrimalNodeInternalPtr, match_node_internal_ptr: PrimalNodeInternalPtr
+    pub fn augment_tree_given_matched<D: DualModuleImpl>(tree_node_internal_ptr: PrimalNodeInternalPtr, match_node_internal_ptr: PrimalNodeInternalPtr
             , tree_touching_ptr: DualNodeWeak, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
         let mut tree_node_internal = tree_node_internal_ptr.write();
         tree_node_internal.temporary_match = Some((MatchTarget::Peer(match_node_internal_ptr.downgrade()), tree_touching_ptr));
@@ -1009,7 +1009,7 @@ impl PrimalModuleSerialPtr {
         debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
         for (child_ptr, _) in tree_node.children.iter() {
             if child_ptr != &match_node_internal_ptr.downgrade() {
-                self.match_subtree(child_ptr.upgrade_force(), interface_ptr, dual_module);
+                Self::match_subtree(child_ptr.upgrade_force(), interface_ptr, dual_module);
             }
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
@@ -1030,7 +1030,7 @@ impl PrimalModuleSerialPtr {
                 let idx = grandparent_tree_node.children.iter().position(|(ptr, _)| ptr == &parent_node_internal_weak).expect("should find child");
                 grandparent_tree_node.children[idx].1.clone()
             };
-            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr, grandparent_touching_ptr, interface_ptr, dual_module);
+            Self::augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr, grandparent_touching_ptr, interface_ptr, dual_module);
         }
         tree_node_internal.tree_node = None;
     }
@@ -1044,7 +1044,7 @@ impl PrimalModuleSerialPtr {
         let tree_node = tree_node_internal.tree_node.as_ref().unwrap();
         debug_assert!(tree_node.depth % 2 == 0, "only augment + node is possible");
         for (child_ptr, _) in tree_node.children.iter() {
-            self.match_subtree(child_ptr.upgrade_force(), interface_ptr, dual_module);
+            Self::match_subtree(child_ptr.upgrade_force(), interface_ptr, dual_module);
         }
         if tree_node.depth != 0 {  // it's not root, then we need to match parent to grandparent
             let parent_node_internal_weak = tree_node.parent.as_ref().unwrap().0.clone();
@@ -1064,7 +1064,7 @@ impl PrimalModuleSerialPtr {
                 let idx = grandparent_tree_node.children.iter().position(|(ptr, _)| ptr == &parent_node_internal_weak).expect("should find child");
                 grandparent_tree_node.children[idx].1.clone()
             };
-            self.augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr, grandparent_touching_ptr, interface_ptr, dual_module);
+            Self::augment_tree_given_matched(grandparent_node_internal_ptr, parent_node_internal_ptr, grandparent_touching_ptr, interface_ptr, dual_module);
         }
         tree_node_internal.tree_node = None;
     }
