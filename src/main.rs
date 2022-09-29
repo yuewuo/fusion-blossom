@@ -15,6 +15,7 @@ use std::sync::Arc;
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
 use serde_json::json;
+use std::env;
 
 
 pub fn main() {
@@ -225,6 +226,8 @@ impl Cli {
                 if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
                     panic!("need blossom V library, see README.md")
                 }
+                // whether to disable progress bar, useful when running jobs in background
+                let disable_progress_bar = env::var("DISABLE_PROGRESS_BAR").is_ok();
                 let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight, code_config);
                 if pe != 0. { code.set_erasure_probability(pe); }
                 if enable_visualizer {  // print visualizer file path only once
@@ -237,11 +240,19 @@ impl Cli {
                 let mut result_verifier = verifier.build(&initializer);
                 let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, partition_info.as_ref())));
                 // prepare progress bar display
-                let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
-                pb.message(format!("{pb_message} ").as_str());
+                let mut pb = if !disable_progress_bar {
+                    let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
+                    pb.message(format!("{pb_message} ").as_str());
+                    Some(pb)
+                } else {
+                    if !pb_message.is_empty() {
+                        println!("{pb_message}");
+                    }
+                    None
+                };
                 let mut rng = thread_rng();
                 for round in (starting_iteration as u64)..(total_rounds as u64) {
-                    pb.set(round);
+                    pb.as_mut().map(|pb| pb.set(round));
                     let seed = if use_deterministic_seed { round } else { rng.gen() };
                     let syndrome_pattern = code.generate_random_errors(seed);
                     if print_syndrome_pattern {
@@ -261,12 +272,18 @@ impl Cli {
                     result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                     primal_dual_solver.clear();  // also count the clear operation
                     benchmark_profiler.end(Some(&*primal_dual_solver));
-                    if pb_message.is_empty() {
-                        pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
-                    }
+                    pb.as_mut().map(|pb| {
+                        if pb_message.is_empty() {
+                            pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
+                        }
+                    });
                 }
-                pb.finish();
-                println!();
+                if disable_progress_bar {  // always print out brief
+                    println!("{}", benchmark_profiler.brief());
+                } else {
+                    pb.as_mut().map(|pb| pb.finish());
+                    println!();
+                }
             },
             Commands::Test { command } => {
                 match command {
