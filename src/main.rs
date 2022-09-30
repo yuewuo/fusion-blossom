@@ -265,23 +265,21 @@ impl Cli {
                         new_visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
                         visualizer = Some(new_visualizer);
                     }
-                    // println!("syndrome_vertices: {syndrome_vertices:?}");
-                    // println!("erasures: {erasures:?}");
                     benchmark_profiler.begin(&syndrome_pattern);
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
                     result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
                     primal_dual_solver.clear();  // also count the clear operation
                     benchmark_profiler.end(Some(&*primal_dual_solver));
-                    pb.as_mut().map(|pb| {
+                    if let Some(pb) = pb.as_mut() {
                         if pb_message.is_empty() {
                             pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
                         }
-                    });
+                    }
                 }
                 if disable_progress_bar {  // always print out brief
                     println!("{}", benchmark_profiler.brief());
                 } else {
-                    pb.as_mut().map(|pb| pb.finish());
+                    if let Some(pb) = pb.as_mut() { pb.finish() }
                     println!();
                 }
             },

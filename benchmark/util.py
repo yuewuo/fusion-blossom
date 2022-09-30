@@ -15,6 +15,8 @@ class Profile:
             value = json.loads(line)
             if line_idx == 0:
                 self.partition_config = PartitionConfig.from_json(value)
+            elif line_idx == 1:
+                self.benchmark_config = value
             else:
                 self.entries.append(value)
     def __repr__(self):
