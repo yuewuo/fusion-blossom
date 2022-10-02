@@ -169,8 +169,8 @@ pub struct SolverDualParallel {
 }
 
 impl SolverDualParallel {
-    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, solver_config: serde_json::Value) -> Self {
-        let config: DualModuleParallelConfig = serde_json::from_value(solver_config).unwrap();
+    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, primal_dual_config: serde_json::Value) -> Self {
+        let config: DualModuleParallelConfig = serde_json::from_value(primal_dual_config).unwrap();
         Self {
             dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), config),
             primal_module: PrimalModuleSerialPtr::new_empty(initializer),
@@ -205,17 +205,17 @@ pub struct SolverParallel {
 }
 
 impl SolverParallel {
-    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, mut solver_config: serde_json::Value) -> Self {
-        let solver_config = solver_config.as_object_mut().expect("config must be JSON object");
+    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, mut primal_dual_config: serde_json::Value) -> Self {
+        let primal_dual_config = primal_dual_config.as_object_mut().expect("config must be JSON object");
         let mut dual_config = DualModuleParallelConfig::default();
         let mut primal_config = PrimalModuleParallelConfig::default();
-        if let Some(value) = solver_config.remove("dual") {
+        if let Some(value) = primal_dual_config.remove("dual") {
             dual_config = serde_json::from_value(value).unwrap();
         }
-        if let Some(value) = solver_config.remove("primal") {
+        if let Some(value) = primal_dual_config.remove("primal") {
             primal_config = serde_json::from_value(value).unwrap();
         }
-        if !solver_config.is_empty() { panic!("unknown solver_config keys: {:?}", solver_config.keys().collect::<Vec<&String>>()); }
+        if !primal_dual_config.is_empty() { panic!("unknown primal_dual_config keys: {:?}", primal_dual_config.keys().collect::<Vec<&String>>()); }
         Self {
             dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), dual_config),
             primal_module: PrimalModuleParallel::new_config(initializer, Arc::clone(partition_info), primal_config),
