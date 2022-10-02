@@ -99,6 +99,9 @@ enum Commands {
         /// skip some iterations, useful when debugging
         #[clap(long, default_value_t = 0)]
         starting_iteration: usize,
+        /// configuration to the solver
+        #[clap(long, default_value_t = json!({}))]
+        solver_config: serde_json::Value,
     },
     /// built-in tests
     Test {
@@ -221,7 +224,7 @@ impl Cli {
         match self.command {
             Commands::Benchmark { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
                     , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
-                    , benchmark_profiler_output, print_syndrome_pattern, starting_iteration } => {
+                    , benchmark_profiler_output, print_syndrome_pattern, starting_iteration, solver_config } => {
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
                     panic!("need blossom V library, see README.md")
@@ -236,7 +239,7 @@ impl Cli {
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut *code, d, noisy_measurements, partition_config);
                 let partition_info = partition_config.into_info();
-                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &*code, primal_dual_config);
+                let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &*code, primal_dual_config, solver_config);
                 let mut result_verifier = verifier.build(&initializer);
                 let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, partition_info.as_ref())));
                 // prepare progress bar display
@@ -533,7 +536,7 @@ impl PartitionStrategy {
 
 impl PrimalDualType {
     fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, code: &dyn ExampleCode
-            , primal_dual_config: serde_json::Value) -> Box<dyn PrimalDualSolver> {
+            , primal_dual_config: serde_json::Value, solver_config: serde_json::Value) -> Box<dyn PrimalDualSolver> {
         match self {
             Self::Serial => {
                 assert_eq!(primal_dual_config, json!({}));
@@ -542,11 +545,11 @@ impl PrimalDualType {
             },
             Self::DualParallel => {
                 assert_eq!(primal_dual_config, json!({}));
-                Box::new(SolverDualParallel::new(initializer, partition_info))
+                Box::new(SolverDualParallel::new(initializer, partition_info, solver_config))
             },
             Self::Parallel => {
                 assert_eq!(primal_dual_config, json!({}));
-                Box::new(SolverParallel::new(initializer, partition_info))
+                Box::new(SolverParallel::new(initializer, partition_info, solver_config))
             },
             Self::ErrorPatternLogger => {
                 Box::new(SolverErrorPatternLogger::new(initializer, code, primal_dual_config))

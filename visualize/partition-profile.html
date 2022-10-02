@@ -152,17 +152,14 @@ h3 {
             <g v-for="([event_time, info], display_index) in display_info_vec">
                 <rect :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
                     :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + display_index * (job_height + margin)"
-                    style="fill:lightgray;" rx="10" ry="10"/>
-                <rect :width="length_scale * (event_time.end - event_time.children_return)" :height="job_height"
-                    :x="left_panel + margin + length_scale * event_time.children_return" :y="job_y_bias + display_index * (job_height + margin)"
                     style="fill:lightblue;" rx="10" ry="10"/>
                 <line v-if="info.left_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.left_event_time.end" :y1="job_y_bias + info.left_display_index * (job_height + margin) + job_height / 2"
-                    :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin)"
+                    :x2="left_panel + margin + length_scale * event_time.start" :y2="job_y_bias + display_index * (job_height + margin)"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
                 <line v-if="info.right_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.right_event_time.end" :y1="job_y_bias + info.right_display_index * (job_height + margin) + job_height / 2"
-                    :x2="left_panel + margin + length_scale * event_time.children_return" :y2="job_y_bias + display_index * (job_height + margin) + job_height"
+                    :x2="left_panel + margin + length_scale * event_time.start" :y2="job_y_bias + display_index * (job_height + margin) + job_height"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
             </g>
             <!-- left panel -->
@@ -182,7 +179,7 @@ h3 {
                     text-anchor="end">
                         finish at {{ Number.parseFloat(event_time.end).toExponential(3) }} (s)
                         , duration: {{ Number.parseFloat(event_time.end - event_time.start).toExponential(3) }} (s)
-                        , computation: {{ Number.parseFloat(event_time.end - event_time.children_return).toExponential(3) }} (s)</text>
+                        , computation: {{ Number.parseFloat(event_time.end - event_time.start).toExponential(3) }} (s)</text>
             </g>
         </svg>
     </q-scroll-area>
@@ -589,9 +586,9 @@ const App = {
             let computation_cpu_seconds = 0
             let computation_cpu_seconds_base_partition = 0
             for (let i=0; i<event_time_vec.length; ++i) {
-                computation_cpu_seconds += event_time_vec[i].end - event_time_vec[i].children_return
+                computation_cpu_seconds += event_time_vec[i].end - event_time_vec[i].start
                 if (i < this.partition_config.partitions.length) {
-                    computation_cpu_seconds_base_partition += event_time_vec[i].end - event_time_vec[i].children_return
+                    computation_cpu_seconds_base_partition += event_time_vec[i].end - event_time_vec[i].start
                 }
             }
             let computation_cpu_seconds_fusion = computation_cpu_seconds - computation_cpu_seconds_base_partition

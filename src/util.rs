@@ -74,6 +74,7 @@ pub struct PartitionedSyndromePattern<'a> {
 }
 
 impl<'a> PartitionedSyndromePattern<'a> {
+
     pub fn new(syndrome_pattern: &'a SyndromePattern) -> Self {
         assert!(syndrome_pattern.erasures.is_empty(), "erasure partition not supported yet;
         even if the edges in the erasure is well ordered, they may not be able to be represented as
@@ -83,6 +84,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
             whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.syndrome_vertices.len()),
         }
     }
+
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -299,7 +301,7 @@ impl PartitionInfo {
 impl<'a> PartitionedSyndromePattern<'a> {
 
     /// partition the syndrome pattern into 2 partitioned syndrome pattern and my whole range
-    pub fn partition(&self, partition_unit_info: &PartitionUnitInfo) -> (SyndromeRange, (Self, Self)) {
+    pub fn partition(&self, partition_unit_info: &PartitionUnitInfo) -> (Self, (Self, Self)) {
         // first binary search the start of owning syndrome vertices
         let owning_start_index = {
             let mut left_index = self.whole_syndrome_range.start();
@@ -330,7 +332,10 @@ impl<'a> PartitionedSyndromePattern<'a> {
             }
             left_index
         };
-        (SyndromeRange::new(owning_start_index, owning_end_index), (Self {
+        (Self {
+            syndrome_pattern: self.syndrome_pattern,
+            whole_syndrome_range: SyndromeRange::new(owning_start_index, owning_end_index),
+        }, (Self {
             syndrome_pattern: self.syndrome_pattern,
             whole_syndrome_range: SyndromeRange::new(self.whole_syndrome_range.start(), owning_start_index),
         }, Self {
@@ -563,9 +568,9 @@ pub mod tests {
         for (syndrome_vertices, expected_syndrome_range) in tests.into_iter() {
             let syndrome_pattern = SyndromePattern::new(syndrome_vertices, vec![]);
             let partitioned_syndrome_pattern = PartitionedSyndromePattern::new(&syndrome_pattern);
-            let (syndrome_range, (_left_partitioned, _right_partitioned)) = partitioned_syndrome_pattern.partition(&partition_info.units[2]);
-            println!("syndrome_range: {syndrome_range:?}");
-            assert_eq!(syndrome_range, expected_syndrome_range);
+            let (owned_partitioned, (_left_partitioned, _right_partitioned)) = partitioned_syndrome_pattern.partition(&partition_info.units[2]);
+            println!("syndrome_range: {:?}", owned_partitioned.whole_syndrome_range);
+            assert_eq!(owned_partitioned.whole_syndrome_range, expected_syndrome_range);
         }
     }
 

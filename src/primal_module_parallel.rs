@@ -11,7 +11,7 @@ use super::primal_module_serial::*;
 use super::dual_module_parallel::*;
 use super::visualize::*;
 use super::dual_module::*;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, Condvar};
 use std::ops::DerefMut;
 use std::time::Instant;
 use super::pointers::*;
@@ -70,8 +70,6 @@ impl std::fmt::Debug for PrimalModuleParallelUnitWeak {
 pub struct PrimalModuleParallelUnitEventTime {
     /// unit starts executing
     pub start: f64,
-    /// unit done children execution
-    pub children_return: f64,
     /// unit ends executing
     pub end: f64,
 }
@@ -86,7 +84,6 @@ impl PrimalModuleParallelUnitEventTime {
     pub fn new() -> Self {
         Self {
             start: 0.,
-            children_return: 0.,
             end: 0.,
         }
     }
@@ -101,6 +98,9 @@ pub struct PrimalModuleParallelConfig {
     /// debug by sequentially run the fusion tasks, user must enable this for visualizer to work properly during the execution
     #[serde(default = "primal_module_parallel_default_configs::debug_sequential")]
     pub debug_sequential: bool,
+    /// schedule base partition tasks in the front
+    #[serde(default = "primal_module_parallel_default_configs::prioritize_base_partition")]
+    pub prioritize_base_partition: bool,
 }
 
 impl Default for PrimalModuleParallelConfig {
@@ -111,6 +111,7 @@ pub mod primal_module_parallel_default_configs {
     pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
     // pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
     pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
+    pub fn prioritize_base_partition() -> bool { true }  // by default enable because this is faster by placing time-consuming tasks in the front
 }
 
 impl PrimalModuleParallel {
@@ -232,12 +233,57 @@ impl PrimalModuleParallel {
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>
             (&mut self, syndrome_pattern: &SyndromePattern, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F)
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
-        let last_unit_ptr = self.units.last().unwrap().clone();
         let thread_pool = Arc::clone(&self.thread_pool);
         self.last_solve_start_time = Instant::now();
-        thread_pool.scope(|_| {
-            last_unit_ptr.iterative_solve_step_callback(self, PartitionedSyndromePattern::new(syndrome_pattern), parallel_dual_module, &mut Some(&mut callback))
-        })
+        if self.config.prioritize_base_partition {
+            if self.config.debug_sequential {
+                for unit_index in 0..self.partition_info.units.len() {
+                    let unit_ptr = self.units[unit_index].clone();
+                    unit_ptr.children_ready_solve::<DualSerialModule, F>(self, PartitionedSyndromePattern::new(syndrome_pattern)
+                        , parallel_dual_module, &mut Some(&mut callback));
+                }
+            } else {
+                let ready_vec: Vec<_> = {
+                    (0..self.partition_info.units.len()).map(|_| Arc::new((Mutex::new(false), Condvar::new()))).collect()
+                };
+                thread_pool.scope_fifo(|s| {
+                    for unit_index in 0..self.partition_info.units.len() {
+                        let ready_vec = &ready_vec;
+                        let units = &self.units;
+                        let partition_info = &self.partition_info;
+                        let parallel_unit = &self;
+                        let parallel_dual_module = &parallel_dual_module;
+                        s.spawn_fifo(move |_| {
+                            let ready_pair = ready_vec[unit_index].clone();
+                            let &(ref ready, ref condvar) = &*ready_pair;
+                            let mut is_ready = ready.lock().unwrap();
+                            let unit_ptr = units[unit_index].clone();
+                            if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
+                                let fusion_index = unit_index - partition_info.config.partitions.len();
+                                let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
+                                for child_unit_index in [left_unit_index, right_unit_index] {
+                                    let child_ready_pair = ready_vec[child_unit_index].clone();
+                                    let &(ref child_ready, ref child_condvar) = &*child_ready_pair;
+                                    let mut child_is_ready = child_ready.lock().unwrap();
+                                    while !*child_is_ready {  // hopefully this asserts false at the beginning
+                                        child_is_ready = child_condvar.wait(child_is_ready).unwrap();
+                                    }
+                                }
+                            }
+                            unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
+                                , parallel_dual_module, &mut None);
+                            *is_ready = true;
+                            condvar.notify_one();
+                        })
+                    }
+                });
+            }
+        } else {
+            let last_unit_ptr = self.units.last().unwrap().clone();
+            thread_pool.scope(|_| {
+                last_unit_ptr.iterative_solve_step_callback(self, PartitionedSyndromePattern::new(syndrome_pattern), parallel_dual_module, &mut Some(&mut callback))
+            })
+        }
     }
 
 }
@@ -281,21 +327,77 @@ impl PrimalModuleParallelUnitPtr {
         })
     }
 
+    /// call this only if children is guaranteed to be ready and solved
+    fn children_ready_solve<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
+                , partitioned_syndrome_pattern: PartitionedSyndromePattern, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
+            where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
+        let mut event_time = PrimalModuleParallelUnitEventTime::new();
+        event_time.start = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
+        let mut primal_unit = self.write();
+        let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
+        let mut dual_unit = dual_module_ptr.write();
+        let partition_unit_info = &primal_unit.partition_info.units[primal_unit.unit_index];
+        let (owned_syndrome_range, _) = partitioned_syndrome_pattern.partition(partition_unit_info);
+        let interface_ptr = primal_unit.interface_ptr.clone();
+        if let Some((left_child_weak, right_child_weak)) = primal_unit.children.as_ref() {
+            {  // set children to inactive to avoid being solved twice
+                for child_weak in [left_child_weak, right_child_weak] {
+                    let child_ptr = child_weak.upgrade_force();
+                    let mut child = child_ptr.write();
+                    debug_assert!(child.is_active, "cannot fuse inactive children");
+                    child.is_active = false;
+                }
+            }
+            primal_unit.fuse(&mut dual_unit);
+            if let Some(callback) = callback.as_mut() {  // do callback before actually breaking the matched pairs, for ease of visualization
+                callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
+            }
+            primal_unit.break_matching_with_mirror(dual_unit.deref_mut());
+            for syndrome_index in owned_syndrome_range.whole_syndrome_range.iter() {
+                let syndrome_vertex = partitioned_syndrome_pattern.syndrome_pattern.syndrome_vertices[syndrome_index];
+                primal_unit.serial_module.load_syndrome(syndrome_vertex, &interface_ptr, dual_unit.deref_mut());
+            }
+            primal_unit.serial_module.solve_step_callback_interface_loaded(&interface_ptr, dual_unit.deref_mut()
+                , |interface, dual_module, primal_module, group_max_update_length| {
+                    if let Some(callback) = callback.as_mut() {
+                        callback(interface, dual_module, primal_module, Some(group_max_update_length));
+                    }
+                });
+            if let Some(callback) = callback.as_mut() {
+                callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
+            }
+            primal_unit.is_active = true;
+            event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
+            primal_unit.event_time = Some(event_time);
+        } else {
+            debug_assert!(primal_unit.is_active, "leaf must be active to be solved");
+            let syndrome_pattern = owned_syndrome_range.expand();
+            primal_unit.serial_module.solve_step_callback(&interface_ptr, &syndrome_pattern, dual_unit.deref_mut()
+                , |interface, dual_module, primal_module, group_max_update_length| {
+                    if let Some(callback) = callback.as_mut() {
+                        callback(interface, dual_module, primal_module, Some(group_max_update_length));
+                    }
+                });
+            if let Some(callback) = callback.as_mut() {
+                callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
+            }
+            primal_unit.is_active = true;
+            event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
+            primal_unit.event_time = Some(event_time);
+        }
+    }
+
     /// call on the last primal node, and it will spawn tasks on the previous ones
     fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
                 , partitioned_syndrome_pattern: PartitionedSyndromePattern, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
-        let mut primal_unit = self.write();
-        let mut event_time = PrimalModuleParallelUnitEventTime::new();
-        event_time.start = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
-        let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
-        let mut dual_unit = dual_module_ptr.write();
+        let primal_unit = self.read_recursive();
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads
         let debug_sequential = primal_module_parallel.config.debug_sequential;
-        if let Some((left_child_weak, right_child_weak)) = primal_unit.children.as_ref() {
+        if let Some((left_child_weak, right_child_weak)) = primal_unit.children.as_ref() {  // make children ready
             debug_assert!(!primal_unit.is_active, "parent must be inactive at the time of solving children");
             let partition_unit_info = &primal_unit.partition_info.units[primal_unit.unit_index];
-            let (syndrome_range, (left_partitioned, right_partitioned)) = partitioned_syndrome_pattern.partition(partition_unit_info);
+            let (_, (left_partitioned, right_partitioned)) = partitioned_syndrome_pattern.partition(partition_unit_info);
             if debug_sequential {
                 left_child_weak.upgrade_force().iterative_solve_step_callback(primal_module_parallel, left_partitioned
                     , parallel_dual_module, callback);
@@ -310,49 +412,9 @@ impl PrimalModuleParallelUnitPtr {
                         , parallel_dual_module, &mut None)
                 });
             };
-            event_time.children_return = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
-            {  // set children to inactive to avoid being solved twice
-                for child_weak in [left_child_weak, right_child_weak] {
-                    let child_ptr = child_weak.upgrade_force();
-                    let mut child = child_ptr.write();
-                    debug_assert!(child.is_active, "cannot fuse inactive children");
-                    child.is_active = false;
-                }
-            }
-            primal_unit.fuse(&mut dual_unit);
-            if let Some(callback) = callback.as_mut() {  // do callback before actually breaking the matched pairs, for ease of visualization
-                callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
-            }
-            primal_unit.break_matching_with_mirror(dual_unit.deref_mut());
-            let interface_ptr = primal_unit.interface_ptr.clone();
-            for syndrome_index in syndrome_range.iter() {
-                let syndrome_vertex = partitioned_syndrome_pattern.syndrome_pattern.syndrome_vertices[syndrome_index];
-                primal_unit.serial_module.load_syndrome(syndrome_vertex, &interface_ptr, dual_unit.deref_mut());
-            }
-            primal_unit.serial_module.solve_step_callback_interface_loaded(&interface_ptr, dual_unit.deref_mut()
-                , |interface, dual_module, primal_module, group_max_update_length| {
-                    if let Some(callback) = callback.as_mut() {
-                        callback(interface, dual_module, primal_module, Some(group_max_update_length));
-                    }
-                });
-        } else {  // this is a leaf, proceed it as normal serial one
-            event_time.children_return = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();  // no children
-            debug_assert!(primal_unit.is_active, "leaf must be active to be solved");
-            let syndrome_pattern = partitioned_syndrome_pattern.expand();
-            let interface_ptr = primal_unit.interface_ptr.clone();
-            primal_unit.serial_module.solve_step_callback(&interface_ptr, &syndrome_pattern, dual_unit.deref_mut()
-                , |interface, dual_module, primal_module, group_max_update_length| {
-                    if let Some(callback) = callback.as_mut() {
-                        callback(interface, dual_module, primal_module, Some(group_max_update_length));
-                    }
-                });
-        };
-        if let Some(callback) = callback.as_mut() {
-            callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
         }
-        primal_unit.is_active = true;
-        event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
-        primal_unit.event_time = Some(event_time);
+        drop(primal_unit);
+        self.children_ready_solve(primal_module_parallel, partitioned_syndrome_pattern, parallel_dual_module, callback);
     }
 
 }
