@@ -129,7 +129,7 @@ h3 {
 
 <div id="app">
 <div class="div-svg" :style="{ width: sizes.canvas_width + 'px' }">
-    <q-scroll-area class="div-svg-inner" :style="{ width: sizes.canvas_width / sizes.scale + 'px' }"
+    <q-scroll-area v-if="!thread_view" class="div-svg-inner" :style="{ width: sizes.canvas_width / sizes.scale + 'px' }"
             :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
             :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
         <!-- use SVG to enable direct download of rendered profile -->
@@ -150,9 +150,12 @@ h3 {
                 <text :x="left_panel + margin + length_scale * axis_values[1] - 5" :y="margin + decoding_time_height / 2 + 5" text-anchor="end">{{ axis_label }}</text>
             </g>
             <g v-for="([event_time, info], display_index) in display_info_vec">
-                <rect :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
+                <rect v-if="info.is_base_partition" :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
                     :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + display_index * (job_height + margin)"
                     style="fill:lightblue;" rx="10" ry="10"/>
+                <rect v-if="!info.is_base_partition" :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
+                    :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + display_index * (job_height + margin)"
+                    style="fill:lightgreen;" rx="10" ry="10"/>
                 <line v-if="info.left_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.left_event_time.end" :y1="job_y_bias + info.left_display_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.start" :y2="job_y_bias + display_index * (job_height + margin)"
@@ -180,6 +183,59 @@ h3 {
                         finish at {{ Number.parseFloat(event_time.end).toExponential(3) }} (s)
                         , duration: {{ Number.parseFloat(event_time.end - event_time.start).toExponential(3) }} (s)
                         , computation: {{ Number.parseFloat(event_time.end - event_time.start).toExponential(3) }} (s)</text>
+            </g>
+        </svg>
+    </q-scroll-area>
+    <q-scroll-area v-if="thread_view" class="div-svg-inner" :style="{ width: sizes.canvas_width / sizes.scale + 'px' }"
+            :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
+            :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
+        <!-- use SVG to enable direct download of rendered profile -->
+        <svg v-if="round_select != null" :width="svg_width" :height="thread_view_svg_height" xmlns="http://www.w3.org/2000/svg" style="stroke-width:0;font: 14px sans-serif;">
+            <rect :width="length_scale * selected_profile.decoding_time" :height="decoding_time_height"
+                :x="margin + left_panel" :y="margin" style="fill:red;" rx="10" ry="10"/>
+            <!-- time axis labels -->
+            <g v-if="axis_values.length > 1">
+                <line v-for="time in axis_values" stroke-linecap="round"
+                    :x1="left_panel + margin + length_scale * time" :y1="0"
+                    :x2="left_panel + margin + length_scale * time" :y2="thread_view_svg_height"
+                    style="stroke-width:2;stroke:grey;"/>
+                <text :x="left_panel + margin + length_scale * axis_values[1] - 5" :y="margin + decoding_time_height / 2 + 5" text-anchor="end">{{ axis_label }}</text>
+            </g>
+            <g v-for="([event_time, info], _) in display_info_vec">
+                <line v-if="info.left_event_time != null" stroke-linecap="round"
+                    :x1="left_panel + margin + length_scale * info.left_event_time.end"
+                    :y1="job_y_bias + info.left_event_time.thread_index * (job_height + margin) + job_height / 2"
+                    :x2="left_panel + margin + length_scale * event_time.start"
+                    :y2="job_y_bias + event_time.thread_index * (job_height + margin) + job_height / 2"
+                    style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
+                <line v-if="info.right_event_time != null" stroke-linecap="round"
+                    :x1="left_panel + margin + length_scale * info.right_event_time.end"
+                    :y1="job_y_bias + info.right_event_time.thread_index * (job_height + margin) + job_height / 2"
+                    :x2="left_panel + margin + length_scale * event_time.start"
+                    :y2="job_y_bias + event_time.thread_index * (job_height + margin) + job_height / 2"
+                    style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
+            </g>
+            <g v-for="([event_time, info], _) in display_info_vec">
+                <rect v-if="info.is_base_partition" :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
+                    :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + event_time.thread_index * (job_height + margin)"
+                    style="fill:lightblue;" rx="10" ry="10"/>
+                <rect v-if="!info.is_base_partition" :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
+                    :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + event_time.thread_index * (job_height + margin)"
+                    style="fill:lightgreen;"/>
+            </g>
+            <!-- left panel -->
+            <text :x="left_panel + margin - 3" :y="job_y_bias - 20" text-anchor="end">thread index</text>
+            <g v-for="thread_index in selected_profile_statistics.max_thread_index + 1">
+                <text :x="left_panel + margin - 10" :y="job_y_bias + (thread_index - 0.5) * (job_height + margin)"
+                    text-anchor="end">{{ thread_index - 1 }}</text>
+            </g>
+            <!-- time information -->
+            <text :x="left_panel + length_scale * selected_profile.decoding_time" :y="margin + decoding_time_height / 2 + 5" 
+                text-anchor="end">{{ Number.parseFloat(selected_profile.decoding_time).toExponential(3) }} (s)</text>
+            <g v-for="([event_time, info], _) in display_info_vec">
+                <text v-if="info.is_base_partition" :x="left_panel + length_scale * event_time.end"
+                    :y="job_y_bias + event_time.thread_index * (job_height + margin) + job_height / 2 + 5"
+                    text-anchor="end">{{ info.unit_index }}</text>
             </g>
         </svg>
     </q-scroll-area>
@@ -217,6 +273,9 @@ h3 {
                 <q-slider v-model="relative_scale_log" :min="-1.2" :max="1.2" :step="0.01" snap color="deep-orange"
                     thumb-size="25px" track-size="8px"></q-slider>
             </div>
+        </div>
+        <div class="flex-center-div">
+            <div><q-toggle color="green" v-model="thread_view" label="thread view" size="md"/></div>
         </div>
         <q-card bordered class="select-info-div" v-if="selected_profile != null">
             <q-card-section class="bg-cyan text-white">
@@ -326,6 +385,7 @@ const App = {
             display_index_to_unit_index: reactive([]),
             unit_info_vec: reactive([]),  // local information about units
             sizes: sizes,
+            thread_view: ref(true),
             // round select
             round_num: ref(1),
             round_select: ref(null),
@@ -509,7 +569,6 @@ const App = {
             const original_event_time_vec = this.selected_profile.solver_profile.primal.event_time_vec
             let display_info_vec = []
             for (let i=0; i<original_event_time_vec.length; ++i) {
-                const unit_index = i
                 let info = { }
                 display_info_vec.push([original_event_time_vec[this.display_index_to_unit_index[i]], info])
             }
@@ -519,11 +578,14 @@ const App = {
                 let [left_vertex, right_vertex] = this.partition_config.partitions[i]
                 let [_, info] = display_info_vec[this.unit_index_to_display_index[unit_index]]
                 info.owning_range = [left_vertex, right_vertex]
+                info.is_base_partition = true
+                info.unit_index = unit_index
             }
             for (let i=0; i<this.partition_config.fusions.length; ++i) {
                 let unit_index = i + this.partition_config.partitions.length
                 let [left_index, right_index] = this.partition_config.fusions[i]
                 let [_, info] = display_info_vec[this.unit_index_to_display_index[unit_index]]
+                info.unit_index = unit_index
                 info.left_display_index = this.unit_index_to_display_index[left_index]
                 info.right_display_index = this.unit_index_to_display_index[right_index]
                 if (info.left_display_index > info.right_display_index) {  // make sure left_display_index < right_display_index
@@ -598,6 +660,12 @@ const App = {
             let decoding_time_per_measurement_round = this.selected_profile.decoding_time / (this.benchmark_config.noisy_measurements + 1)
             let cpu_time_per_syndrome = computation_cpu_seconds / this.selected_profile.syndrome_num
             let cpu_time_per_measurement_round = computation_cpu_seconds / (this.benchmark_config.noisy_measurements + 1)
+            let max_thread_index = 0
+            for (let i=0; i<event_time_vec.length; ++i) {
+                if (event_time_vec[i].thread_index > max_thread_index) {
+                    max_thread_index = event_time_vec[i].thread_index
+                }
+            }
             let profile_statistics = {
                 computation_time,
                 preparation_time,
@@ -611,9 +679,13 @@ const App = {
                 cpu_time_per_measurement_round,
                 computation_cpu_seconds_base_partition,
                 computation_cpu_seconds_fusion,
+                max_thread_index,
             }
             // console.log(profile_statistics)
             return profile_statistics
+        },
+        thread_view_svg_height() {
+            return (this.job_height + this.margin) * (this.selected_profile_statistics.max_thread_index + 1) + this.job_y_bias
         },
         vertical_thumb_style() {
             return {

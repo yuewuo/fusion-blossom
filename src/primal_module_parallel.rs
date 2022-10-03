@@ -72,6 +72,8 @@ pub struct PrimalModuleParallelUnitEventTime {
     pub start: f64,
     /// unit ends executing
     pub end: f64,
+    /// thread index
+    pub thread_index: usize,
 }
 
 impl Default for PrimalModuleParallelUnitEventTime {
@@ -85,6 +87,7 @@ impl PrimalModuleParallelUnitEventTime {
         Self {
             start: 0.,
             end: 0.,
+            thread_index: rayon::current_thread_index().expect("should be called in a rayon thread"),
         }
     }
 }
