@@ -87,7 +87,7 @@ impl PrimalModuleParallelUnitEventTime {
         Self {
             start: 0.,
             end: 0.,
-            thread_index: rayon::current_thread_index().expect("should be called in a rayon thread"),
+            thread_index: rayon::current_thread_index().unwrap_or(0),
         }
     }
 }

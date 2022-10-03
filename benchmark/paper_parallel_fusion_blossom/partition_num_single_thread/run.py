@@ -69,7 +69,7 @@ for partition_num in partition_num_vec:
         command += ["--primal-dual-type", "parallel"]
         command += ["--primal-dual-config", '{"primal":{"thread_pool_size":1}}']  # keep using single thread
         command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
-        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true}}']
+        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":false}}']
         command += ["--verifier", "none"]
         command += ["--benchmark-profiler-output", benchmark_profile_path]
         print(command)
@@ -82,13 +82,23 @@ for partition_num in partition_num_vec:
 Gather useful data
 """
 
-for idx, partition_num in enumerate(partition_num_vec):
-    benchmark_profile_path = benchmark_profile_path_vec[idx]
-    print(benchmark_profile_path)
-    profile = Profile(benchmark_profile_path)
-    print("partition_num:", partition_num)
-    print("    average_decoding_time:", profile.average_decoding_time())
-    print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
-    print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
-    print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
-    print("    average_computation_cpu_seconds:", profile.average_computation_cpu_seconds())
+data_file = os.path.join(script_dir, "data.txt")
+with open(data_file, "w", encoding="utf8") as f:
+    f.write("<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome> <average_computation_cpu_seconds>\n")
+    for idx, partition_num in enumerate(partition_num_vec):
+        benchmark_profile_path = benchmark_profile_path_vec[idx]
+        print(benchmark_profile_path)
+        profile = Profile(benchmark_profile_path)
+        print("partition_num:", partition_num)
+        print("    average_decoding_time:", profile.average_decoding_time())
+        print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
+        print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
+        print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
+        print("    average_computation_cpu_seconds:", profile.average_computation_cpu_seconds())
+        f.write("%d %.5e %.5e %.5e %.5e\n" % (
+            partition_num,
+            profile.average_decoding_time(),
+            profile.average_decoding_time() / (noisy_measurements + 1),
+            profile.average_decoding_time_per_syndrome(),
+            profile.average_computation_cpu_seconds(),
+        ))
