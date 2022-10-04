@@ -589,7 +589,7 @@ impl DualModuleImpl for DualModuleSerial {
                 }
             }
         }
-        MaxUpdateLength::NonZeroGrow(max_length_abs)
+        MaxUpdateLength::NonZeroGrow((max_length_abs, dual_node_internal.boundary.is_empty()))
     }
 
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {

@@ -81,8 +81,8 @@ impl SyncRequest {
 #[derive(Derivative, PartialEq, Eq, Clone)]
 #[derivative(Debug)]
 pub enum MaxUpdateLength {
-    /// non-zero maximum update length
-    NonZeroGrow(Weight),
+    /// non-zero maximum update length, has_empty_boundary_node (useful in fusion)
+    NonZeroGrow((Weight, bool)),
     /// conflicting growth
     Conflicting((DualNodePtr, DualNodePtr), (DualNodePtr, DualNodePtr)),  // (node_1, touching_1), (node_2, touching_2)
     /// conflicting growth because of touching virtual node
@@ -107,8 +107,8 @@ cfg_if::cfg_if! {
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub enum GroupMaxUpdateLength {
-    /// non-zero maximum update length
-    NonZeroGrow(Weight),
+    /// non-zero maximum update length, has_empty_boundary_node (useful in fusion)
+    NonZeroGrow((Weight, bool)),
     /// conflicting reasons and pending VertexShrinkStop events (empty in a single serial dual module)
     Conflicts((ConflictList, BTreeMap<VertexIndex, MaxUpdateLength>)),
 }
@@ -122,7 +122,7 @@ impl Default for GroupMaxUpdateLength {
 impl GroupMaxUpdateLength {
 
     pub fn new() -> Self {
-        Self::NonZeroGrow(Weight::MAX)
+        Self::NonZeroGrow((Weight::MAX, false))
     }
 
     /// update all the interface nodes to be up-to-date, only necessary in existence of fusion
@@ -163,9 +163,10 @@ impl GroupMaxUpdateLength {
 
     pub fn add(&mut self, max_update_length: MaxUpdateLength) {
         match self {
-            Self::NonZeroGrow(current_length) => {
-                if let MaxUpdateLength::NonZeroGrow(length) = max_update_length {
+            Self::NonZeroGrow((current_length, current_has_empty_boundary_node)) => {
+                if let MaxUpdateLength::NonZeroGrow((length, has_empty_boundary_node)) = max_update_length {
                     *current_length = std::cmp::min(*current_length, length);
+                    *current_has_empty_boundary_node |= has_empty_boundary_node;  // or
                 } else {
                     let mut list = ConflictList::new();
                     let mut pending_stops = BTreeMap::new();
@@ -218,12 +219,16 @@ impl GroupMaxUpdateLength {
     }
 
     pub fn is_empty(&self) -> bool {
-        matches!(self, Self::NonZeroGrow(Weight::MAX))
+        matches!(self, Self::NonZeroGrow((Weight::MAX, _)))  // if `has_empty_boundary_node`, then it's not considered empty
+    }
+
+    pub fn is_active(&self) -> bool {
+        !matches!(self, Self::NonZeroGrow((Weight::MAX, false)))  // if `has_empty_boundary_node`, then it's still considered active
     }
 
     pub fn get_none_zero_growth(&self) -> Option<Weight> {
         match self {
-            Self::NonZeroGrow(length) => {
+            Self::NonZeroGrow((length, _has_empty_boundary_node)) => {
                 debug_assert!(*length != Weight::MAX, "please call GroupMaxUpdateLength::is_empty to check if this group is empty");
                 Some(*length)
             },
@@ -1260,7 +1265,7 @@ impl MaxUpdateLength {
     #[inline(always)]
     pub fn get_none_zero_growth(&self) -> Option<Weight> {
         match self {
-            Self::NonZeroGrow(length) => { Some(*length) },
+            Self::NonZeroGrow((length, _has_empty_boundary_node)) => { Some(*length) },
             _ => { None },
         }
     }

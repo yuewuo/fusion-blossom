@@ -370,6 +370,17 @@ impl Cli {
                                     , format!("--pb-message"), format!("dual-parallel 2-partition circuit-level {d} {d} {p}")]);
                             }
                         }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for partition_num in [2, 3, 4, 5, 6, 7, 8, 9, 10] {  // test large number of fusion without tree fusion
+                                let d = 5;
+                                let noisy_measurement = 20;
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("circuit-level-planar-code")
+                                    , format!("--noisy-measurements"), format!("{noisy_measurement}")
+                                    , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
+                                    , format!("--partition-config"), format!("{{\"partition_num\":{partition_num},\"enable_tree_fusion\":false}}")
+                                    , format!("--pb-message"), format!("dual-parallel {partition_num}-partition circuit-level {d} {noisy_measurement} {p}")]);
+                            }
+                        }
                         let command_head = vec![format!(""), format!("benchmark")];
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
@@ -418,6 +429,17 @@ impl Cli {
                                     , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
                                     , format!("--partition-config"), "{\"partition_num\":2,\"enable_tree_fusion\":true}".to_string()
                                     , format!("--pb-message"), format!("parallel 2-partition circuit-level {d} {d} {p}")]);
+                            }
+                        }
+                        for p in [0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 0.499] {
+                            for partition_num in [2, 3, 4, 5, 6, 7, 8, 9, 10] {  // test large number of fusion without tree fusion
+                                let d = 5;
+                                let noisy_measurement = 20;
+                                parameters.push(vec![format!("{d}"), format!("{p}"), format!("--code-type"), format!("circuit-level-planar-code")
+                                    , format!("--noisy-measurements"), format!("{noisy_measurement}")
+                                    , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
+                                    , format!("--partition-config"), format!("{{\"partition_num\":{partition_num},\"enable_tree_fusion\":false}}")
+                                    , format!("--pb-message"), format!("dual-parallel {partition_num}-partition circuit-level {d} {noisy_measurement} {p}")]);
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];

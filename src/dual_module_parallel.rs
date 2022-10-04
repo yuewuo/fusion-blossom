@@ -95,6 +95,8 @@ pub struct DualModuleParallelUnit<SerialModule: DualModuleImpl + Send + Sync> {
     pub empty_sync_request: Vec<SyncRequest>,
     /// run things in thread pool
     pub enable_parallel_execution: bool,
+    /// whether any descendant unit has active dual node
+    pub has_active_node: bool,
 }
 
 pub type DualModuleParallelUnitPtr<SerialModule> = ArcManualSafeLock<DualModuleParallelUnit<SerialModule>>;
@@ -592,6 +594,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
             return  // no descendant related to this dual node
         }
+        if grow_state != DualNodeGrowState::Stay {
+            self.has_active_node = true;
+        }
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             left_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
@@ -618,6 +623,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
         }
+        self.has_active_node = true;
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
@@ -642,6 +648,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         if !self.whole_range.contains_any(nodes_circle_vertices) && !self.elevated_dual_nodes_contains_any(nodes_circle) {
             return  // no descendant related to this dual node
         }
+        self.has_active_node = true;
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
@@ -670,6 +677,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         if !self.is_vertex_in_descendant(vertex_index) {
             return
         }
+        self.has_active_node = true;
         // println!("sync_prepare_growth_update_sync_event: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
@@ -695,23 +703,35 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         }
     }
 
-    fn iterative_compute_maximum_update_length(&mut self, group_max_update_length: &mut GroupMaxUpdateLength) {
-        // TODO: early terminate if no active dual nodes anywhere in the descendant
-        group_max_update_length.extend(self.serial_module.compute_maximum_update_length());
+    fn iterative_compute_maximum_update_length(&mut self, group_max_update_length: &mut GroupMaxUpdateLength) -> bool {
+        // early terminate if no active dual nodes anywhere in the descendant
+        if !self.has_active_node {
+            return false
+        }
+        let serial_module_group_max_update_length = self.serial_module.compute_maximum_update_length();
+        if !serial_module_group_max_update_length.is_active() {
+            self.has_active_node = false;
+        }
+        group_max_update_length.extend(serial_module_group_max_update_length);
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
-            if self.enable_parallel_execution {
+            let (left_child_has_active_node, right_child_has_active_node) = if self.enable_parallel_execution {
                 let mut group_max_update_length_2 = GroupMaxUpdateLength::new();
-                rayon::join(|| {
-                    left_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
+                let (left_child_has_active_node, right_child_has_active_node) = rayon::join(|| {
+                    left_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length)
                 }, || {
-                    right_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(&mut group_max_update_length_2);
+                    right_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(&mut group_max_update_length_2)
                 });
                 group_max_update_length.extend(group_max_update_length_2);
+                (left_child_has_active_node, right_child_has_active_node)
             } else {
-                left_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
-                right_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length);
+                (left_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length),
+                    right_child_weak.upgrade_force().write().iterative_compute_maximum_update_length(group_max_update_length))
+            };
+            if left_child_has_active_node || right_child_has_active_node {
+                self.has_active_node = true
             }
         }
+        self.has_active_node
     }
 
     fn iterative_grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight, representative_vertex: VertexIndex) {
@@ -736,7 +756,10 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     fn iterative_grow(&mut self, length: Weight) {
-        // TODO: early terminate if no active dual nodes anywhere in the descendant
+        // early terminate if no active dual nodes anywhere in the descendant
+        if !self.has_active_node {
+            return
+        }
         self.serial_module.grow(length);
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
@@ -756,6 +779,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
             return  // no descendant related to this dual node
         }
+        self.has_active_node = true;
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
                 rayon::join(|| {
@@ -795,6 +819,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnitPtr<Seria
             elevated_dual_nodes: PtrWeakHashSet::new(),
             empty_sync_request: vec![],
             enable_parallel_execution,
+            has_active_node: true,  // by default to true, because children may have active nodes
         })
     }
 
@@ -810,11 +835,13 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     /// clear all growth and existing dual nodes
     fn clear(&mut self) {
+        self.has_active_node = true;
         self.serial_module.clear()
     }
 
     /// add a new dual node from dual module root
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
+        self.has_active_node = true;
         let representative_vertex = dual_node_ptr.get_representative_vertex();
         match &dual_node_ptr.read_recursive().class {
             // fast path: if dual node is a single vertex, then only add to the owning node; single vertex dual node can only add when dual variable = 0
@@ -827,7 +854,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                         let mut child_ptr = if representative_vertex < self.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() };
                         let mut is_owning_dual_node = false;
                         while !is_owning_dual_node {
-                            let child = child_ptr.read_recursive();
+                            let mut child = child_ptr.write();
+                            child.has_active_node = true;
                             debug_assert!(child.whole_range.contains(&representative_vertex), "selected child must contains the vertex");
                             is_owning_dual_node = child.owning_range.contains(&representative_vertex);
                             if !is_owning_dual_node {  // search for the grandsons
@@ -943,6 +971,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         if !self.is_vertex_in_descendant(sync_event.vertex_index) {
             return
         }
+        self.has_active_node = true;
         // println!("sync_prepare_growth_update_sync_event: vertex {}, unit index {}", sync_event.vertex_index, self.unit_index);
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
