@@ -331,9 +331,11 @@ impl PrimalModuleParallelUnitPtr {
     pub fn new_wrapper(serial_module: PrimalModuleSerialPtr, unit_index: usize, partition_info: Arc<PartitionInfo>) -> Self {
         let partition_unit_info = &partition_info.units[unit_index];
         let is_active = partition_unit_info.children.is_none();
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        interface_ptr.write().unit_index = unit_index;
         Self::new_value(PrimalModuleParallelUnit {
             unit_index,
-            interface_ptr: DualModuleInterfacePtr::new_empty(),
+            interface_ptr,
             partition_info,
             is_active,  // only activate the leaves in the dependency tree
             serial_module,
@@ -382,9 +384,6 @@ impl PrimalModuleParallelUnitPtr {
             if let Some(callback) = callback.as_mut() {
                 callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
             }
-            primal_unit.is_active = true;
-            event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
-            primal_unit.event_time = Some(event_time);
         } else {
             debug_assert!(primal_unit.is_active, "leaf must be active to be solved");
             let syndrome_pattern = owned_syndrome_range.expand();
@@ -397,10 +396,10 @@ impl PrimalModuleParallelUnitPtr {
             if let Some(callback) = callback.as_mut() {
                 callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
             }
-            primal_unit.is_active = true;
-            event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
-            primal_unit.event_time = Some(event_time);
         }
+        primal_unit.is_active = true;
+        event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
+        primal_unit.event_time = Some(event_time);
     }
 
     /// call on the last primal node, and it will spawn tasks on the previous ones

@@ -569,6 +569,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
 
     /// iteratively prepare all growing and shrinking and append the sync requests
     fn iterative_prepare_all(&mut self, sync_requests: &mut Vec<SyncRequest>) {
+        if !self.has_active_node {
+            return  // early return to avoid going through all units
+        }
         // depth-first search
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
