@@ -104,6 +104,9 @@ pub struct PrimalModuleParallelConfig {
     /// schedule base partition tasks in the front
     #[serde(default = "primal_module_parallel_default_configs::prioritize_base_partition")]
     pub prioritize_base_partition: bool,
+    /// pin threads to cores sequentially
+    #[serde(default = "primal_module_parallel_default_configs::pin_threads_to_cores")]
+    pub pin_threads_to_cores: bool,
 }
 
 impl Default for PrimalModuleParallelConfig {
@@ -114,6 +117,7 @@ pub mod primal_module_parallel_default_configs {
     pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
     // pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
     pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
+    pub fn pin_threads_to_cores() -> bool { true }  // be default pin threads to cores to achieve most stable results
     pub fn prioritize_base_partition() -> bool { true }  // by default enable because this is faster by placing time-consuming tasks in the front
 }
 
@@ -124,6 +128,15 @@ impl PrimalModuleParallel {
         let mut thread_pool_builder = rayon::ThreadPoolBuilder::new();
         if config.thread_pool_size != 0 {
             thread_pool_builder = thread_pool_builder.num_threads(config.thread_pool_size);
+        }
+        if config.pin_threads_to_cores {
+            let core_ids = core_affinity::get_core_ids().unwrap();
+            // println!("core_ids: {core_ids:?}");
+            thread_pool_builder = thread_pool_builder.start_handler(move |thread_index| {
+                if thread_index < core_ids.len() {
+                    crate::core_affinity::set_for_current(core_ids[thread_index]);
+                }  // otherwise let OS decide which core to execute
+            });
         }
         let thread_pool = thread_pool_builder.build().expect("creating thread pool failed");
         let mut units = vec![];

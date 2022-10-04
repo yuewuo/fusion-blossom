@@ -13,6 +13,7 @@ extern crate urlencoding;
 extern crate rayon;
 extern crate weak_table;
 extern crate rand;
+extern crate core_affinity;
 
 pub mod blossom_v;
 pub mod util;

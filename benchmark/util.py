@@ -53,6 +53,14 @@ class Profile:
         return total_computation_cpu_seconds
     def average_computation_cpu_seconds(self):
         return self.sum_computation_cpu_seconds() / len(self.entries)
+    def sum_job_time(self, unit_index):
+        total_job_time = 0
+        for entry in self.entries:
+            event_time = entry["solver_profile"]["primal"]["event_time_vec"][unit_index]
+            total_job_time += event_time["end"] - event_time["start"]
+        return total_job_time
+    def average_job_time(self, unit_index):
+        return self.sum_job_time(unit_index) / len(self.entries)
 
 class VertexRange:
     def __init__(self, start, end):
@@ -117,6 +125,9 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
         command += ["-n", f"{n}"]
     return command
 
+FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = False
+if 'FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY' in os.environ and os.environ["FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY"] == "TRUE":
+    FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = True
 def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_to_stdout=False):
     compile_code_if_necessary()
     env = os.environ.copy()
@@ -128,7 +139,8 @@ def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_t
         stdout = out_file
     if no_stdout:
         stdout = sys.stdout
-    process = subprocess.Popen(command, universal_newlines=True, env=env, stdout=stdout, stderr=(stdout if stderr_to_stdout else sys.stderr), bufsize=100000000)
+    process = subprocess.Popen(command, universal_newlines=True, env=env, stdout=stdout, stderr=(stdout if stderr_to_stdout else sys.stderr)
+        , bufsize=100000000, preexec_fn=(lambda : os.nice(-10)) if FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY else None)
     stdout, _ = process.communicate()
     if use_tmp_out:
         out_file.flush()
