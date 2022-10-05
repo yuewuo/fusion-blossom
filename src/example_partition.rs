@@ -220,14 +220,17 @@ pub struct PhenomenologicalPlanarCodeTimePartition {
     partition_num: usize,
     /// enable tree fusion (to minimize latency but incur log(partition_num) more memory copy)
     enable_tree_fusion: bool,
+    /// maximum amount of tree leaf; if the total partition is greater than this, it will be cut into multiple regions and each region is a separate tree;
+    /// those trees are then fused sequentially
+    maximum_tree_leaf_size: usize,
 }
 
 impl PhenomenologicalPlanarCodeTimePartition {
-    pub fn new_tree(d: usize, noisy_measurements: usize, partition_num: usize, enable_tree_fusion: bool) -> Self {
-        Self { d, noisy_measurements, partition_num, enable_tree_fusion }
+    pub fn new_tree(d: usize, noisy_measurements: usize, partition_num: usize, enable_tree_fusion: bool, maximum_tree_leaf_size: usize) -> Self {
+        Self { d, noisy_measurements, partition_num, enable_tree_fusion, maximum_tree_leaf_size }
     }
     pub fn new(d: usize, noisy_measurements: usize, partition_num: usize) -> Self {
-        Self::new_tree(d, noisy_measurements, partition_num, false)
+        Self::new_tree(d, noisy_measurements, partition_num, false, usize::MAX)
     }
 }
 
@@ -251,7 +254,15 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
             }
         }
         config.fusions.clear();
-        if self.enable_tree_fusion {
+        if !self.enable_tree_fusion || self.maximum_tree_leaf_size == 1 {
+            for unit_index in partition_num..(2 * partition_num - 1) {
+                if unit_index == partition_num {
+                    config.fusions.push((0, 1));
+                } else {
+                    config.fusions.push((unit_index - 1, unit_index - partition_num + 1));
+                }
+            }
+        } else {
             let mut whole_ranges = vec![];
             let mut left_right_leaf = vec![];
             for (unit_index, partition) in config.partitions.iter().enumerate() {
@@ -259,40 +270,55 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
                 whole_ranges.push(*partition);
                 left_right_leaf.push((unit_index, unit_index));
             }
-            let mut pending_fusion = VecDeque::new();
-            for unit_index in 0..partition_num {
-                pending_fusion.push_back(unit_index);
-            }
-            for unit_index in partition_num..(2 * partition_num - 1) {
-                let mut unit_index_1 = pending_fusion.pop_front().unwrap();
-                // iterate over all pending fusions to find a neighboring one
-                for i in 0..pending_fusion.len() {
-                    let mut unit_index_2 = pending_fusion[i];
-                    let is_neighbor = left_right_leaf[unit_index_1].0 == left_right_leaf[unit_index_2].1 + 1
-                        || left_right_leaf[unit_index_2].0 == left_right_leaf[unit_index_1].1 + 1;
-                    if is_neighbor {
-                        pending_fusion.remove(i);
-                        if whole_ranges[unit_index_1].start() > whole_ranges[unit_index_2].start() {
-                            (unit_index_1, unit_index_2) = (unit_index_2, unit_index_1);  // only lower range can fuse higher range
-                        }
-                        config.fusions.push((unit_index_1, unit_index_2));
-                        pending_fusion.push_back(unit_index);
-                        // println!("unit_index_1: {unit_index_1} {:?}, unit_index_2: {unit_index_2} {:?}", whole_ranges[unit_index_1], whole_ranges[unit_index_2]);
-                        let (whole_range, _) = whole_ranges[unit_index_1].fuse(&whole_ranges[unit_index_2]);
-                        whole_ranges.push(whole_range);
-                        left_right_leaf.push((left_right_leaf[unit_index_1].0, left_right_leaf[unit_index_2].1));
-                        break
-                    }
-                    assert!(i != pending_fusion.len() - 1, "unreachable: cannot find a neighbor");
+            // first cut into multiple regions
+            let region_count = if config.partitions.len() <= self.maximum_tree_leaf_size {
+                1
+            } else {
+                (config.partitions.len() + self.maximum_tree_leaf_size - 1) / self.maximum_tree_leaf_size
+            };
+            let mut last_sequential_unit: Option<usize> = None;
+            for region_index in 0..region_count {
+                let region_start = region_index * self.maximum_tree_leaf_size;
+                let region_end = std::cmp::min((region_index + 1) * self.maximum_tree_leaf_size, config.partitions.len());
+                // build the local tree
+                let mut pending_fusion = VecDeque::new();
+                for unit_index in region_start..region_end {
+                    pending_fusion.push_back(unit_index);
                 }
-            }
-            assert!(pending_fusion.len() == 1, "only the final unit is left");
-        } else {
-            for unit_index in partition_num..(2 * partition_num - 1) {
-                if unit_index == partition_num {
-                    config.fusions.push((0, 1));
+                let local_fusion_start_index = whole_ranges.len();
+                for unit_index in local_fusion_start_index..(local_fusion_start_index + region_end - region_start - 1) {
+                    let mut unit_index_1 = pending_fusion.pop_front().unwrap();
+                    // iterate over all pending fusions to find a neighboring one
+                    for i in 0..pending_fusion.len() {
+                        let mut unit_index_2 = pending_fusion[i];
+                        let is_neighbor = left_right_leaf[unit_index_1].0 == left_right_leaf[unit_index_2].1 + 1
+                            || left_right_leaf[unit_index_2].0 == left_right_leaf[unit_index_1].1 + 1;
+                        if is_neighbor {
+                            pending_fusion.remove(i);
+                            if whole_ranges[unit_index_1].start() > whole_ranges[unit_index_2].start() {
+                                (unit_index_1, unit_index_2) = (unit_index_2, unit_index_1);  // only lower range can fuse higher range
+                            }
+                            config.fusions.push((unit_index_1, unit_index_2));
+                            pending_fusion.push_back(unit_index);
+                            // println!("unit_index_1: {unit_index_1} {:?}, unit_index_2: {unit_index_2} {:?}", whole_ranges[unit_index_1], whole_ranges[unit_index_2]);
+                            let (whole_range, _) = whole_ranges[unit_index_1].fuse(&whole_ranges[unit_index_2]);
+                            whole_ranges.push(whole_range);
+                            left_right_leaf.push((left_right_leaf[unit_index_1].0, left_right_leaf[unit_index_2].1));
+                            break
+                        }
+                        assert!(i != pending_fusion.len() - 1, "unreachable: cannot find a neighbor");
+                    }
+                }
+                assert!(pending_fusion.len() == 1, "only the final unit is left");
+                let tree_root_unit_index = pending_fusion.pop_front().unwrap();
+                if let Some(last_sequential_unit) = last_sequential_unit.as_mut() {
+                    config.fusions.push((*last_sequential_unit, tree_root_unit_index));
+                    let (whole_range, _) = whole_ranges[*last_sequential_unit].fuse(&whole_ranges[tree_root_unit_index]);
+                    whole_ranges.push(whole_range);
+                    left_right_leaf.push((left_right_leaf[*last_sequential_unit].0, left_right_leaf[tree_root_unit_index].1));
+                    *last_sequential_unit = tree_root_unit_index + 1;
                 } else {
-                    config.fusions.push((unit_index - 1, unit_index - partition_num + 1));
+                    last_sequential_unit = Some(tree_root_unit_index);
                 }
             }
         }
@@ -431,10 +457,10 @@ pub mod tests {
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true));
+            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true, usize::MAX));
     }
 
-    /// demo of tree sequential fuse
+    /// demo of sequential fuse
     #[test]
     fn example_partition_demo_4() {  // cargo test example_partition_demo_4 -- --nocapture
         let visualize_filename = format!("example_partition_demo_4.json");
@@ -443,7 +469,19 @@ pub mod tests {
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, false));
+            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 8));
+    }
+
+    /// demo of tree + sequential fuse
+    #[test]
+    fn example_partition_demo_5() {  // cargo test example_partition_demo_5 -- --nocapture
+        let visualize_filename = format!("example_partition_demo_5.json");
+        // reorder vertices to enable the partition;
+        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let half_weight = 500;
+        let noisy_measurements = 51;
+        example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
+            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true, 3));
     }
 
 }

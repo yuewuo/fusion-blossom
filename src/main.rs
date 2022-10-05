@@ -541,14 +541,19 @@ impl PartitionStrategy {
                 let config = partition_config.as_object_mut().expect("config must be JSON object");
                 let mut partition_num = 10;
                 let mut enable_tree_fusion = false;
+                let mut maximum_tree_leaf_size = usize::MAX;
                 if let Some(value) = config.remove("partition_num") {
                     partition_num = value.as_u64().expect("partition_num: usize") as usize;
                 }
                 if let Some(value) = config.remove("enable_tree_fusion") {
                     enable_tree_fusion = value.as_bool().expect("enable_tree_fusion: bool");
                 }
+                if let Some(value) = config.remove("maximum_tree_leaf_size") {
+                    maximum_tree_leaf_size = value.as_u64().expect("maximum_tree_leaf_size: usize") as usize;
+                }
                 if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
-                PhenomenologicalPlanarCodeTimePartition::new_tree(d, noisy_measurements, partition_num, enable_tree_fusion).build_apply(code)
+                PhenomenologicalPlanarCodeTimePartition::new_tree(d, noisy_measurements, partition_num
+                        , enable_tree_fusion, maximum_tree_leaf_size).build_apply(code)
             },
         };
         (code.get_initializer(), partition_config)

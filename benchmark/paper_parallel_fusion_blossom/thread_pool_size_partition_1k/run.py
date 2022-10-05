@@ -50,7 +50,7 @@ expectation: when partition_num is small, the performance should not be affected
 
 """
 
-thread_pool_size_vec = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
+thread_pool_size_vec = [4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
 print(thread_pool_size_vec)
 benchmark_profile_path_vec = []
 for thread_pool_size in thread_pool_size_vec:
@@ -65,7 +65,8 @@ for thread_pool_size in thread_pool_size_vec:
         command += ["--primal-dual-type", "parallel"]
         command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size}}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
         command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
-        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true}}']
+        # use `maximum_tree_leaf_size` to make sure fusion jobs are distributed to multiple cores while limiting the size of tree
+        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true,"maximum_tree_leaf_size":{thread_pool_size}}}']
         command += ["--verifier", "none"]
         command += ["--benchmark-profiler-output", benchmark_profile_path]
         print(command)

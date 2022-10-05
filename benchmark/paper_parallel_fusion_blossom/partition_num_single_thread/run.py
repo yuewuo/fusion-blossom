@@ -67,7 +67,7 @@ for partition_num in partition_num_vec:
         command += ["--code-type", "error-pattern-reader"]
         command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
         command += ["--primal-dual-type", "parallel"]
-        command += ["--primal-dual-config", '{"primal":{"thread_pool_size":1}}']  # keep using single thread
+        command += ["--primal-dual-config", '{"primal":{"thread_pool_size":1},"dual":{"thread_pool_size":1}}']  # keep using single thread
         command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
         command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":false}}']
         command += ["--verifier", "none"]
