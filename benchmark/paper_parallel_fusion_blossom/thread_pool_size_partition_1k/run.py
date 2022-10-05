@@ -20,7 +20,7 @@ compile_code_if_necessary()
 First generate syndrome data under this folder
 """
 
-d = 15
+d = 21
 p = 0.005
 total_rounds = 100
 noisy_measurements = 100000
@@ -50,7 +50,7 @@ expectation: when partition_num is small, the performance should not be affected
 
 """
 
-thread_pool_size_vec = [4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
+thread_pool_size_vec = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
 print(thread_pool_size_vec)
 benchmark_profile_path_vec = []
 for thread_pool_size in thread_pool_size_vec:
