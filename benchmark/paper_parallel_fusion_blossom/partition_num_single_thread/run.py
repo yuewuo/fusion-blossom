@@ -20,7 +20,7 @@ compile_code_if_necessary()
 First generate syndrome data under this folder
 """
 
-d = 15
+d = 21
 p = 0.005
 total_rounds = 100
 noisy_measurements = 100000

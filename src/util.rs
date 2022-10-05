@@ -444,7 +444,7 @@ pub struct BenchmarkProfiler {
     /// each record corresponds to a different syndrome pattern
     pub records: Vec<BenchmarkProfilerEntry>,
     /// summation of all decoding time
-    pub sum_decoding_time: f64,
+    pub sum_round_time: f64,
     /// syndrome count
     pub sum_syndrome: usize,
     /// noisy measurement round
@@ -467,7 +467,7 @@ impl BenchmarkProfiler {
         });
         Self {
             records: vec![],
-            sum_decoding_time: 0.,
+            sum_round_time: 0.,
             sum_syndrome: 0,
             noisy_measurements,
             benchmark_profiler_output,
@@ -483,16 +483,25 @@ impl BenchmarkProfiler {
         self.records.push(entry);
         self.records.last_mut().unwrap().record_begin();
     }
+    pub fn event(&mut self, event_name: String) {
+        let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
+        last_entry.record_event(event_name);
+    }
     /// record the ending of a decoding procedure
     pub fn end(&mut self, solver: Option<&dyn PrimalDualSolver>) {
         let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
         last_entry.record_end();
-        self.sum_decoding_time += last_entry.decoding_time.unwrap();
+        self.sum_round_time += last_entry.round_time.unwrap();
         self.sum_syndrome += last_entry.syndrome_pattern.syndrome_vertices.len();
         if let Some(file) = self.benchmark_profiler_output.as_mut() {
+            let mut events = serde_json::Map::new();
+            for (event_name, time) in last_entry.events.iter() {
+                events.insert(event_name.clone(), json!(time));
+            }
             let mut value = json!({
-                "decoding_time": last_entry.decoding_time.unwrap(),
+                "round_time": last_entry.round_time.unwrap(),
                 "syndrome_num": last_entry.syndrome_pattern.syndrome_vertices.len(),
+                "events": events,
             });
             if let Some(solver) = solver {
                 let solver_profile = solver.generate_profiler_report();
@@ -504,9 +513,9 @@ impl BenchmarkProfiler {
     }
     /// print out a brief one-line statistics
     pub fn brief(&self) -> String {
-        let total = self.sum_decoding_time / (self.records.len() as f64);
+        let total = self.sum_round_time / (self.records.len() as f64);
         let per_round = total / (1. + self.noisy_measurements as f64);
-        let per_syndrome = self.sum_decoding_time / (self.sum_syndrome as f64);
+        let per_syndrome = self.sum_round_time / (self.sum_syndrome as f64);
         format!("total: {total:.3e}, round: {per_round:.3e}, syndrome: {per_syndrome:.3e},")
     }
 }
@@ -516,8 +525,10 @@ pub struct BenchmarkProfilerEntry {
     pub syndrome_pattern: SyndromePattern,
     /// the time of beginning a decoding procedure
     begin_time: Option<Instant>,
+    /// record additional events
+    pub events: Vec<(String, f64)>,
     /// interval between calling [`Self::record_begin`] to calling [`Self::record_end`]
-    pub decoding_time: Option<f64>,
+    pub round_time: Option<f64>,
 }
 
 impl BenchmarkProfilerEntry {
@@ -525,7 +536,8 @@ impl BenchmarkProfilerEntry {
         Self {
             syndrome_pattern: syndrome_pattern.clone(),
             begin_time: None,
-            decoding_time: None,
+            events: vec![],
+            round_time: None,
         }
     }
     /// record the beginning of a decoding procedure
@@ -536,10 +548,14 @@ impl BenchmarkProfilerEntry {
     /// record the ending of a decoding procedure
     pub fn record_end(&mut self) {
         let begin_time = self.begin_time.as_ref().expect("make sure to call `record_begin` before calling `record_end`");
-        self.decoding_time = Some(begin_time.elapsed().as_secs_f64());
+        self.round_time = Some(begin_time.elapsed().as_secs_f64());
+    }
+    pub fn record_event(&mut self, event_name: String) {
+        let begin_time = self.begin_time.as_ref().expect("make sure to call `record_begin` before calling `record_end`");
+        self.events.push((event_name, begin_time.elapsed().as_secs_f64()));
     }
     pub fn is_complete(&self) -> bool {
-        self.decoding_time.is_some()
+        self.round_time.is_some()
     }
 }
 

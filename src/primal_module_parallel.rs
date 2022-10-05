@@ -176,6 +176,7 @@ impl PrimalModuleImpl for PrimalModuleParallel {
         Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), PrimalModuleParallelConfig::default())
     }
 
+    #[inline(never)]
     fn clear(&mut self) {
         self.thread_pool.scope(|_| {
             self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {

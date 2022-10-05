@@ -50,7 +50,7 @@ expectation: when partition_num is small, the performance should not be affected
 
 """
 
-thread_pool_size_vec = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512]
+thread_pool_size_vec = [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256]
 print(thread_pool_size_vec)
 benchmark_profile_path_vec = []
 for thread_pool_size in thread_pool_size_vec:
@@ -63,7 +63,7 @@ for thread_pool_size in thread_pool_size_vec:
         command += ["--code-type", "error-pattern-reader"]
         command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
         command += ["--primal-dual-type", "parallel"]
-        command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size}}}}}']  # keep using single thread
+        command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size}}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
         command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
         command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true}}']
         command += ["--verifier", "none"]

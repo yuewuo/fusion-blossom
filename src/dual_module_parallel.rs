@@ -124,9 +124,6 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         if config.thread_pool_size != 0 {
             thread_pool_builder = thread_pool_builder.num_threads(config.thread_pool_size);
         }
-        if !config.enable_parallel_execution {  // force single-thread execution
-            thread_pool_builder = thread_pool_builder.num_threads(1);
-        }
         let thread_pool = thread_pool_builder.build().expect("creating thread pool failed");
         let mut units = vec![];
         let unit_count = partition_info.units.len();
@@ -367,6 +364,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     }
 
     /// clear all growth and existing dual nodes
+    #[inline(never)]
     fn clear(&mut self) {
         self.thread_pool.scope(|_| {
             self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {

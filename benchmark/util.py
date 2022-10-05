@@ -6,7 +6,7 @@ class Profile:
     read profile given filename; if provided `skip_begin_profiles`, then it will skip such number of profiles in the beginning,
     by default to 5 because usually the first few profiles are not stable yet
     """
-    def __init__(self, filename, skip_begin_profiles=5):
+    def __init__(self, filename, skip_begin_profiles=20):
         assert isinstance(filename, str)
         with open(filename, "r", encoding="utf8") as f:
             lines = f.readlines()
@@ -32,7 +32,7 @@ class Profile:
     def sum_decoding_time(self):
         decoding_time = 0
         for entry in self.entries:
-            decoding_time += entry["decoding_time"]
+            decoding_time += entry["events"]["decoded"]
         return decoding_time
     def average_decoding_time(self):
         return self.sum_decoding_time() / len(self.entries)
@@ -128,6 +128,10 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
 FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = False
 if 'FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY' in os.environ and os.environ["FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY"] == "TRUE":
     FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = True
+"""
+Note: usually changing the nice value will require root privilege, but rust toolchain may not be installed for root
+In this case, change the default nice value for user: https://bencane.com/2013/09/30/changing-the-default-nice-value-for-a-user-or-group/
+"""
 def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_to_stdout=False):
     compile_code_if_necessary()
     env = os.environ.copy()

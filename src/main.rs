@@ -267,7 +267,9 @@ impl Cli {
                     }
                     benchmark_profiler.begin(&syndrome_pattern);
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
+                    benchmark_profiler.event("decoded".to_string());
                     result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
+                    benchmark_profiler.event("verified".to_string());
                     primal_dual_solver.clear();  // also count the clear operation
                     benchmark_profiler.end(Some(&*primal_dual_solver));
                     if let Some(pb) = pb.as_mut() {
