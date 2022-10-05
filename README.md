@@ -1,3 +1,6 @@
+![Build Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomBuild&subject=test&style=flat-square)
+![Test Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomCI&subject=test&style=flat-square)
+
 # fusion-blossom
 A fast minimum-weight perfect matching solver for quantum error correction
 
