@@ -133,6 +133,7 @@ impl PrimalModuleParallel {
             let core_ids = core_affinity::get_core_ids().unwrap();
             // println!("core_ids: {core_ids:?}");
             thread_pool_builder = thread_pool_builder.start_handler(move |thread_index| {
+                // https://stackoverflow.com/questions/7274585/linux-find-out-hyper-threaded-core-id
                 if thread_index < core_ids.len() {
                     crate::core_affinity::set_for_current(core_ids[thread_index]);
                 }  // otherwise let OS decide which core to execute
