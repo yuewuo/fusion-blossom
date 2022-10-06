@@ -200,7 +200,7 @@ impl PrimalModuleImpl for PrimalModuleParallel {
     fn intermediate_matching<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D) -> IntermediateMatching {
         let mut intermediate_matching = IntermediateMatching::new();
         for unit_ptr in self.units.iter() {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             if !unit.is_active { continue }  // do not visualize inactive units
             intermediate_matching.append(&mut unit.serial_module.intermediate_matching(interface, dual_module));
         }

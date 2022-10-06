@@ -1,4 +1,11 @@
-#![feature(get_mut_unchecked)]
+#![cfg_attr(
+    feature="unsafe_pointer",
+    feature(get_mut_unchecked)
+)]
+#![cfg_attr(
+    feature="unsafe_pointer",
+    allow(unused_mut)
+)]
 
 extern crate libc;
 extern crate cfg_if;

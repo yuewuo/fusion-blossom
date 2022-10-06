@@ -126,7 +126,7 @@ impl PrimalNodeInternal {
         tree_node.root = root.downgrade();
         for (child_weak, _) in tree_node.children.iter() {
             let child_ptr = child_weak.upgrade_force();
-            let mut child = child_ptr.write();
+            lock_write!(child, child_ptr);
             child.change_sub_tree_root(depth + 1, root.clone());
         }
     }
@@ -519,7 +519,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 if lca_tree_node.parent.is_some() {
                                     let (parent_weak, _) = lca_tree_node.parent.as_ref().unwrap();
                                     let parent_ptr = parent_weak.upgrade_force();
-                                    let mut parent = parent_ptr.write();
+                                    lock_write!(parent, parent_ptr);
                                     let parent_tree_node = parent.tree_node.as_mut().unwrap();
                                     debug_assert!(parent_tree_node.children.len() == 1, "lca's parent should be a - node with only one child");
                                     let touching_ptr = parent_tree_node.children[0].1.clone();  // the touching grandson is not changed when forming blossom
@@ -530,7 +530,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                     // connect this blossom to the new alternating tree
                                     for (child_weak, _) in tree_node.children.iter() {
                                         let child_ptr = child_weak.upgrade_force();
-                                        let mut child = child_ptr.write();
+                                        lock_write!(child, child_ptr);
                                         let child_tree_node = child.tree_node.as_mut().unwrap();
                                         debug_assert!(child_tree_node.parent.is_some(), "child should have a parent");
                                         let touching_ptr = child_tree_node.parent.as_ref().unwrap().1.clone();  // the touching grandson is not changed when forming blossom
@@ -569,7 +569,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     if primal_node_internal.is_free() {
                         primal_node_internal.temporary_match = Some((MatchTarget::VirtualVertex(virtual_vertex_index), touching_ptr.downgrade()));
                         if is_mirror {
-                            let mut module = self.write();
+                            lock_write!(module, self);
                             module.possible_break.push(primal_node_internal.index);
                         }
                         interface_ptr.set_grow_state(&primal_node_internal.origin.upgrade_force(), DualNodeGrowState::Stay, dual_module);
@@ -578,7 +578,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     // tree touching virtual boundary will just augment the whole tree
                     if primal_node_internal.tree_node.is_some() {
                         if is_mirror {
-                            let mut module = self.write();
+                            lock_write!(module, self);
                             module.possible_break.push(primal_node_internal.index);
                         }
                         drop(primal_node_internal);
@@ -613,7 +613,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         }
                     };
                     {  // remove it from nodes
-                        let mut module = self.write();
+                        lock_write!(module, self);
                         debug_assert_eq!(module.get_node(primal_node_internal.index), Some(primal_node_internal_ptr.clone()), "index wrong");
                         module.remove_node(primal_node_internal.index);
                     }
@@ -623,7 +623,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                     let (parent_ptr, parent_touching_ptr, parent_touching_child_ptr) = {  // remove it from it's parent's tree
                         let (parent_weak, parent_touching_child_ptr) = &tree_node.parent.as_ref().unwrap();
                         let parent_ptr = parent_weak.upgrade_force();
-                        let mut parent = parent_ptr.write();
+                        lock_write!(parent, parent_ptr);
                         let parent_tree_node = parent.tree_node.as_mut().unwrap();
                         let idx = parent_tree_node.children.iter().position(|ptr| ptr.0 == primal_node_internal_ptr.downgrade()).expect("should find");
                         let parent_touching_ptr = parent_tree_node.children[idx].1.clone();
@@ -729,13 +729,13 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         interface_ptr.set_grow_state(&current.origin.upgrade_force(), if idx % 2 == 0 { DualNodeGrowState::Shrink } else { DualNodeGrowState::Grow }, dual_module);
                     }
                     {  // connect parent
-                        let mut parent = parent_ptr.write();
+                        lock_write!(parent, parent_ptr);
                         let parent_tree_node = parent.tree_node.as_mut().unwrap();
                         let child_ptr = self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[0]].upgrade_force());
                         parent_tree_node.children.push((child_ptr.downgrade(), parent_touching_ptr));
                     }
                     {  // connect child and fix the depth information of the child
-                        let mut child = child_ptr.write();
+                        lock_write!(child, child_ptr);
                         let child_tree_node = child.tree_node.as_mut().unwrap();
                         let parent_ptr = self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[tree_sequence.len()-1]].upgrade_force());
                         child_tree_node.parent = Some((parent_ptr.downgrade(), child_touching_ptr));

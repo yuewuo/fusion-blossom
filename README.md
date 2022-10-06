@@ -1,23 +1,47 @@
 ![Build Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomBuild&subject=build&style=flat-square)
 ![Test Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomCI&subject=test&style=flat-square)
 
-# fusion-blossom
-A fast minimum-weight perfect matching solver for quantum error correction
+# Fusion Blossom
+A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correction (QEC)
+
+## Key Features
+
+- **Linear Complexity**: The decoding time is roughly $O(N)$, proportional to the number of syndrome vertices $N$.
+- **Parallelism**: A single MWPM decoding problem can be partitioned and solved in parallel, then *fused* together to find **exact** global MWPM solution.
+
+## Benchmark Highlights
+
+- In phenomenological noise model with **$p$ = 0.005**, code distance **$d$ = 21**, planar code with $d(d-1)$ = 420 $Z$ stabilizers, 100000 measurement rounds
+  - single-thread: **3.4us per syndrome** or 41us per measurement round
+  - 64-thread: 85ns per sydnrome or **1.0us per measurement round**
+
+## Background and Key Ideas
+
+MWPM decoders are widely known for its high accuracy [[1]](#fowler2012topological) and several optimizations that further improves its accuracy [[2]](#criger2018multi). However, there weren't many publications that improve the speed of the MWPM decoder over the past 10 years. Fowler implemented an $O(N)$ asymptotic complexity MWPM decoder in [[3]](#fowler2012towards) and proposed an $O(1)$ complexity parallel MWPM decoder in [[4]](#fowler2013minimum), but none of these are publicly available to the best knowledge of us. Higgott implemented a fast but approximate MWPM decoder (namely "local matching") with roughly $O(N)$ complexity in [[5]](#higgott2022pymatching). With recent experiments of successful QEC on real hardware, it's time for a fast and accurate MWPM decoder to become available to the community.
+
+Our idea comes from our study on the Union-Find (UF) decoder. UF decoder is a fast decoder with $O(N)$ worst-case time complexity, at the cost of being less accurate compared to the MWPM decoder. Inspired by the Fowler's diagram [[3]](#fowler2012towards), we found a relationship between the UF decoder [[6]](#wu2022interpretation). This [nice animation](https://us.wuyue98.cn/aps2022/#/3/1) (press space to trigger animation) could help people see the analogy between UF and MWPM decoders. With this interpretation, we're able to combind the strength of UF and MWPM decoders together.
+
+- From the UF decoder, we learnt to use a sparse decoding graph representation for fast speed
+- From the MWPM decoder, we learnt to find an exact minimum-weight perfect matching for high accuracy
+
+## Demo
+
+We highly suggest you watch through several demos here to get a sense of how the algorithm works. All our demos are captured from real algorithm execution. In fact, we're showing you the visualized debugger tool we wrote for fusion blossom. The demo is a 3D website and you can control the view point as you like.
+
+For more details of why it finds an exact MWPM, please read our paper [coming soon 💪].
+
+
 
 ## Interface
 
-Since the weights in QEC decoding graph are computed by taking the log of error probability, e.g. <!-- $w_e = \log\{(1-p)/p\}$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=w_e%20%3D%20%5Clog%5C%7B(1-p)%2Fp%5C%7D">
-or simply <!-- $w_e = -\log{p}$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=w_e%20%3D%20-%5Clog%7Bp%7D">, we can safely use integers to save weights by e.g. scaling the weights by 1e6 and truncate to nearest integer.
-In this way, the truncation error <!-- $\Delta w_e = 1$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=%5CDelta%20w_e%20%3D%201"> of integer weights corresponds to relative error <!-- $\Delta p /{p}=10^{-6}$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=%5CDelta%20p%20%2F%7Bp%7D%3D10%5E%7B-6%7D"> which is small enough.
-Suppose physical error rate <!-- $p$ --> <img style="transform: translateY(0.1em); background: white;" src="https://render.githubusercontent.com/render/math?math=p"> is in the range of a `f64` variable (2.2e-308 to 1), the maximum weight is 7e7,which is well below
-the maximum number of a `u32` variable (4.3e9). Since weights only sum up (no multiplication), `u32` is large enough and accurate enough.
+#### Sparse Decoding Graph and Integer Weights
+
+The weights in QEC decoding graph are computed by taking the log of error probability, e.g. $w_e = \log\{(1-p)/p\}$ or roughly $w_e = -\log{p}$, we can safely use integers to save weights by e.g. scaling the weights by 1e6 and truncate to nearest integer. In this way, the truncation error $\Delta w_e = 1$ of integer weights corresponds to relative error $\Delta p /{p}=10^{-6}$ which is small enough. Suppose physical error rate $p$ is in the range of a positive `f64` variable (2.2e-308 to 1), the maximum weight is 7e7,which is well below the maximum value of a `u32` variable (4.3e9). Since weights only sum up (no multiplication), `u32` is large enough and accurate enough.
 
 We use integer also for ease of migrating to FPGA implementation. In order to fit more vertices into a single FPGA, it's necessary to reduce the
-resource usage for each vertex. Integers are much cheaper than floating-point numbers, and also it allows flexible trade-off between resource usage and accuracy,
-e.g. if all weights are equal, we can simply use a 2 bit integer.
+resource usage for each vertex. Integers are much cheaper than floating-point numbers, and also it allows flexible trade-off between resource usage and accuracy, e.g. if all weights are equal, we can simply use a 2 bit integer.
 
-Note that other libraries of MWPM solver like [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) also default to integer weights.
-Although one can change the macro to use floating-point weights, it's not recommended because "the code may even get stuck due to rounding errors".
+Note that other libraries of MWPM solver like [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) also default to integer weights as well. Although one can change the macro to use floating-point weights, it's not recommended because "the code may even get stuck due to rounding errors".
 
 ## Installation
 
@@ -60,4 +84,18 @@ cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
 
 # TODOs
 
-- [ ] add option for visualizer using high-quality renderer: https://github.com/erichlof/THREE.js-PathTracing-Renderer
+- [ ] bind to Python and publish to pip
+- [ ] support erasures in parallel solver
+
+# References
+<a id="fowler2012topological">[1]</a> Fowler, Austin G., et al. "Topological code autotune." Physical Review X 2.4 (2012): 041003.
+
+<a id="criger2018multi">[2]</a> Criger, Ben, and Imran Ashraf. "Multi-path summation for decoding 2D topological codes." Quantum 2 (2018): 102.
+
+<a id="fowler2012towards">[3]</a> Fowler, Austin G., Adam C. Whiteside, and Lloyd CL Hollenberg. "Towards practical classical processing for the surface code: timing analysis." Physical Review A 86.4 (2012): 042313.
+
+<a id="fowler2013minimum">[4]</a> Fowler, Austin G. "Minimum weight perfect matching of fault-tolerant topological quantum error correction in average $ O (1) $ parallel time." arXiv preprint arXiv:1307.1740 (2013).
+
+<a id="higgott2022pymatching">[5]</a> Higgott, Oscar. "PyMatching: A Python package for decoding quantum codes with minimum-weight perfect matching." ACM Transactions on Quantum Computing 3.3 (2022): 1-16.
+
+<a id="wu2022interpretation">[6]</a> Wu, Yue. APS 2022 March Meeting Talk "Interpretation of Union-Find Decoder on Weighted Graphs and Application to XZZX Surface Code" https://us.wuyue98.cn/aps2022

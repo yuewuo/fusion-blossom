@@ -94,7 +94,6 @@ with open(data_file, "w", encoding="utf8") as f:
         print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
         print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
         print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
-        print("    average_computation_cpu_seconds:", profile.average_computation_cpu_seconds())
         f.write("%d %.5e %.5e %.5e\n" % (
             partition_num,
             profile.average_decoding_time(),

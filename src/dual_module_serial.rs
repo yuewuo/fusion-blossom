@@ -235,7 +235,7 @@ impl DualModuleImpl for DualModuleSerial {
                 dedup_timestamp: (0, 0),
             });
             for (a, b) in [(i, j), (j, i)] {
-                let mut vertex = vertices[a].write(active_timestamp);
+                lock_write!(vertex, vertices[a], active_timestamp);
                 debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge will take effect)
                     let mut no_duplicate = true;
                     for edge_weak in vertex.edges.iter() {
@@ -840,7 +840,7 @@ impl DualModuleImpl for DualModuleSerial {
                 dedup_timestamp: (0, 0),
             });
             for (a, b) in [(left_index, right_index), (right_index, left_index)] {
-                let mut vertex = vertices[a].write(active_timestamp);
+                lock_write!(vertex, vertices[a], active_timestamp);
                 debug_assert!({  // O(N^2) sanity check, debug mode only (actually this bug is not critical, only the shorter edge will take effect)
                     let mut no_duplicate = true;
                     for edge_weak in vertex.edges.iter() {
@@ -916,7 +916,7 @@ impl DualModuleImpl for DualModuleSerial {
                 debug_assert!(!vertex.is_syndrome, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
                 let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
                 let dual_node_internal_ptr = dual_node_internal_weak.upgrade_force();
-                let mut dual_node_internal = dual_node_internal_ptr.write();
+                lock_write!(dual_node_internal, dual_node_internal_ptr);
                 vertex.propagated_dual_node = None;
                 vertex.propagated_grandson_dual_node = None;
                 // iterate over the boundary to remove any edges associated with the vertex and also reset those edges
@@ -978,7 +978,7 @@ impl DualModuleImpl for DualModuleSerial {
                 let grandson_dual_node_internal_ptr = propagated_grandson_dual_node_internal_ptr.unwrap();
                 vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
                 vertex.propagated_grandson_dual_node = Some(grandson_dual_node_internal_ptr.downgrade());
-                let mut dual_node_internal = dual_node_internal_ptr.write();
+                lock_write!(dual_node_internal, dual_node_internal_ptr);
                 for edge_weak in vertex.edges.iter() {
                     let edge_ptr = edge_weak.upgrade_force();
                     edge_ptr.dynamic_clear(active_timestamp);
@@ -1517,7 +1517,7 @@ impl DualModuleSerial {
                         }
                     }
                     if count_newly_propagated_edge == 0 {
-                        let mut dual_node_internal = dual_node_internal_ptr.write();
+                        lock_write!(dual_node_internal, dual_node_internal_ptr);
                         dual_node_internal.overgrown_stack.push((vertex_ptr.downgrade(), 0));
                     }
                 }
@@ -1525,7 +1525,7 @@ impl DualModuleSerial {
         } else {  // gracefully update the boundary to ease shrinking
             self.clear_edge_dedup();
             {
-                let mut dual_node_internal = dual_node_internal_ptr.write();
+                lock_write!(dual_node_internal, dual_node_internal_ptr);
                 while !dual_node_internal.overgrown_stack.is_empty() {
                     let last_index = dual_node_internal.overgrown_stack.len() - 1;
                     let (_, overgrown) = &dual_node_internal.overgrown_stack[last_index];
@@ -1683,7 +1683,7 @@ impl DualModuleSerial {
             }
         }
         // update the boundary
-        let mut dual_node_internal = dual_node_internal_ptr.write();
+        lock_write!(dual_node_internal, dual_node_internal_ptr);
         std::mem::swap(&mut self.updated_boundary, &mut dual_node_internal.boundary);
         // println!("{} boundary: {:?}", tree_node.boundary.len(), tree_node.boundary);
         if self.unit_module_info.is_none() {

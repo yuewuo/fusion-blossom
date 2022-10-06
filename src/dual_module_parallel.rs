@@ -276,7 +276,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         }
         // fill in the extra_descendant_mirrored_vertices
         for unit_index in 0..unit_count {
-            let mut unit = units[unit_index].write();
+            lock_write!(unit, units[unit_index]);
             let whole_range = &partition_info.units[unit_index].whole_range;
             let partitioned_initializer = &partitioned_initializers[unit_index];
             for (_, interface_vertices) in partitioned_initializer.interfaces.iter() {
@@ -337,7 +337,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
     /// statically fuse them all, may be called at any state (meaning each unit may not necessarily be solved locally)
     pub fn static_fuse_all(&mut self) {
         for unit_ptr in self.units.iter() {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             if let Some((left_child_weak, right_child_weak)) = &unit.children {
                 {  // ignore already fused children and work on others
                     let left_child_ptr = left_child_weak.upgrade_force();
@@ -368,7 +368,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn clear(&mut self) {
         self.thread_pool.scope(|_| {
             self.units.par_iter().enumerate().for_each(|(unit_idx, unit_ptr)| {
-                let mut unit = unit_ptr.write();
+                lock_write!(unit, unit_ptr);
                 unit.clear();
                 unit.is_active = unit_idx < self.partition_info.config.partitions.len();  // only partitioned serial modules are active at the beginning
                 unit.partition_unit.write().enabled = false;
@@ -382,7 +382,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
         let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             unit.add_dual_node(dual_node_ptr);
         })
     }
@@ -390,7 +390,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
         let unit_ptr = self.find_active_ancestor(&dual_node_ptr);
         self.thread_pool.scope(|_| {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             unit.remove_blossom(dual_node_ptr);
         })
     }
@@ -398,7 +398,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
         let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             unit.set_grow_state(dual_node_ptr, grow_state);
         })
     }
@@ -406,7 +406,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn compute_maximum_update_length_dual_node(&mut self, dual_node_ptr: &DualNodePtr, is_grow: bool, simultaneous_update: bool) -> MaxUpdateLength {
         let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             unit.compute_maximum_update_length_dual_node(dual_node_ptr, is_grow, simultaneous_update)
         })
     }
@@ -414,7 +414,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn compute_maximum_update_length(&mut self) -> GroupMaxUpdateLength {
         self.thread_pool.scope(|_| {
             let results: Vec<_> = self.units.par_iter().filter_map(|unit_ptr| {
-                let mut unit = unit_ptr.write();
+                lock_write!(unit, unit_ptr);
                 if !unit.is_active { return None }
                 Some(unit.compute_maximum_update_length())
             }).collect();
@@ -429,7 +429,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
         let unit_ptr = self.find_active_ancestor(dual_node_ptr);
         self.thread_pool.scope(|_| {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             unit.grow_dual_node(dual_node_ptr, length);
         })
     }
@@ -437,7 +437,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn grow(&mut self, length: Weight) {
         self.thread_pool.scope(|_| {
             self.units.par_iter().for_each(|unit_ptr| {
-                let mut unit = unit_ptr.write();
+                lock_write!(unit, unit_ptr);
                 if !unit.is_active { return }
                 unit.grow(length);
             });
@@ -447,7 +447,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         self.thread_pool.scope(|_| {
             self.units.par_iter().for_each(|unit_ptr| {
-                let mut unit = unit_ptr.write();
+                lock_write!(unit, unit_ptr);
                 if !unit.is_active { return }
                 unit.load_edge_modifier(edge_modifier);
             });
@@ -457,7 +457,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
     fn prepare_nodes_shrink(&mut self, nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
         let unit_ptr = self.find_active_ancestor(&nodes_circle[0]);
         self.thread_pool.scope(|_| {
-            let mut unit = unit_ptr.write();
+            lock_write!(unit, unit_ptr);
             unit.prepare_nodes_shrink(nodes_circle);
         });
         &mut self.empty_sync_request
@@ -529,7 +529,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         self.static_fuse();
         let (left_interface, right_interface) = children_interfaces;
         let right_child_ptr = self.children.as_ref().unwrap().1.upgrade_force();
-        let mut right_child = right_child_ptr.write();
+        lock_write!(right_child, right_child_ptr);
         // change the index of dual nodes in the right children
         let bias = left_interface.read_recursive().nodes_count();
         right_child.iterative_bias_dual_node_index(bias);
@@ -870,7 +870,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                                 child_ptr = grandson_ptr;
                             }
                         }
-                        let mut child = child_ptr.write();
+                        lock_write!(child, child_ptr);
                         child.iterative_add_syndrome_node(dual_node_ptr, *syndrome_index);
                     } else { unreachable!() }
                 }

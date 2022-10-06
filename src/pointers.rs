@@ -544,11 +544,23 @@ cfg_if::cfg_if! {
         pub type FastClearWeakManualSafeLock<T> = FastClearWeakUnsafe<T>;
         pub type ArcManualSafeLock<T> = ArcUnsafe<T>;
         pub type WeakManualSafeLock<T> = WeakUnsafe<T>;
+        #[macro_export]
+        macro_rules! lock_write {
+            ($variable:ident, $lock:expr) => { let $variable = $lock.write(); };
+            ($variable:ident, $lock:expr, $timestamp:expr) => { let $variable = $lock.write($timestamp); };
+        }
+        #[allow(unused_imports)] pub use lock_write;
     } else {
         pub type FastClearArcManualSafeLock<T> = FastClearArcRwLock<T>;
         pub type FastClearWeakManualSafeLock<T> = FastClearWeakRwLock<T>;
         pub type ArcManualSafeLock<T> = ArcRwLock<T>;
         pub type WeakManualSafeLock<T> = WeakRwLock<T>;
+        #[macro_export]
+        macro_rules! lock_write {
+            ($variable:ident, $lock:expr) => { let mut $variable = $lock.write(); };
+            ($variable:ident, $lock:expr, $timestamp:expr) => { let mut $variable = $lock.write($timestamp); };
+        }
+        #[allow(unused_imports)] pub use lock_write;
     }
 }
 

@@ -79,13 +79,21 @@ for thread_pool_size in thread_pool_size_vec:
 Gather useful data
 """
 
-for idx, thread_pool_size in enumerate(thread_pool_size_vec):
-    benchmark_profile_path = benchmark_profile_path_vec[idx]
-    print(benchmark_profile_path)
-    profile = Profile(benchmark_profile_path)
-    print("thread_pool_size:", thread_pool_size)
-    print("    average_decoding_time:", profile.average_decoding_time())
-    print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
-    print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
-    print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
-    print("    average_computation_cpu_seconds:", profile.average_computation_cpu_seconds())
+data_file = os.path.join(script_dir, "data.txt")
+with open(data_file, "w", encoding="utf8") as f:
+    f.write("<thread_pool_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>\n")
+    for idx, thread_pool_size in enumerate(thread_pool_size_vec):
+        benchmark_profile_path = benchmark_profile_path_vec[idx]
+        print(benchmark_profile_path)
+        profile = Profile(benchmark_profile_path)
+        print("thread_pool_size:", thread_pool_size)
+        print("    average_decoding_time:", profile.average_decoding_time())
+        print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
+        print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
+        print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
+        f.write("%d %.5e %.5e %.5e\n" % (
+            thread_pool_size,
+            profile.average_decoding_time(),
+            profile.average_decoding_time() / (noisy_measurements + 1),
+            profile.average_decoding_time_per_syndrome(),
+        ))
