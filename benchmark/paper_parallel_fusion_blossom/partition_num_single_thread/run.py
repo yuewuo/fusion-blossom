@@ -54,7 +54,7 @@ repeat_vec = [10, 15, 22, 33, 50, 75]
 partition_num_vec += [e for e in repeat_vec]
 partition_num_vec += [e * 10 for e in repeat_vec]
 partition_num_vec += [e * 100 for e in repeat_vec]
-partition_num_vec += [int(noisy_measurements/e) for e in range(10, 1, -1)]  # how many measurement rounds between two fusion
+# partition_num_vec += [int(noisy_measurements/e) for e in range(10, 1, -1)]  # how many measurement rounds between two fusion
 print(partition_num_vec)
 benchmark_profile_path_vec = []
 for partition_num in partition_num_vec:
@@ -84,7 +84,7 @@ Gather useful data
 
 data_file = os.path.join(script_dir, "data.txt")
 with open(data_file, "w", encoding="utf8") as f:
-    f.write("<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome> <average_computation_cpu_seconds>\n")
+    f.write("<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>\n")
     for idx, partition_num in enumerate(partition_num_vec):
         benchmark_profile_path = benchmark_profile_path_vec[idx]
         print(benchmark_profile_path)
@@ -95,10 +95,9 @@ with open(data_file, "w", encoding="utf8") as f:
         print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
         print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
         print("    average_computation_cpu_seconds:", profile.average_computation_cpu_seconds())
-        f.write("%d %.5e %.5e %.5e %.5e\n" % (
+        f.write("%d %.5e %.5e %.5e\n" % (
             partition_num,
             profile.average_decoding_time(),
             profile.average_decoding_time() / (noisy_measurements + 1),
             profile.average_decoding_time_per_syndrome(),
-            profile.average_computation_cpu_seconds(),
         ))
