@@ -18,6 +18,8 @@ use serde_json::json;
 use std::env;
 
 
+const TEST_EACH_ROUNDS: usize = 100;
+
 pub fn main() {
 
     Cli::parse().run();
@@ -323,7 +325,7 @@ impl Cli {
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];
-                        let mut command_tail = vec![];
+                        let mut command_tail = vec!["--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
@@ -384,7 +386,8 @@ impl Cli {
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];
-                        let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")];
+                        let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")
+                            , "--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
@@ -445,7 +448,8 @@ impl Cli {
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];
-                        let mut command_tail = vec![format!("--primal-dual-type"), format!("parallel")];
+                        let mut command_tail = vec![format!("--primal-dual-type"), format!("parallel")
+                            , "--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
