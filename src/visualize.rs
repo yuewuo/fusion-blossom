@@ -9,6 +9,8 @@ use crate::serde::{Serialize, Deserialize};
 use std::io::{Write, Seek, SeekFrom};
 use crate::chrono::Local;
 use crate::urlencoding;
+#[cfg(feature="python_binding")]
+use pyo3::prelude::*;
 
 
 pub trait FusionVisualizer {
@@ -17,22 +19,32 @@ pub trait FusionVisualizer {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct VisualizePosition {
     /// vertical axis, -i is up, +i is down (left-up corner is smallest i,j)
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub i: f64,
     /// horizontal axis, -j is left, +j is right (left-up corner is smallest i,j)
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub j: f64,
     /// time axis, top and bottom (orthogonal to the initial view, which looks at -t direction)
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub t: f64,
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl VisualizePosition {
     /// create a visualization position
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(i: f64, j: f64, t: f64) -> Self {
         Self {
             i, j, t
         }
     }
+    #[cfg(feature = "python_binding")]
+    fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
 #[derive(Debug)]

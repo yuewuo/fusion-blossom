@@ -8,6 +8,8 @@ use std::fs::File;
 use std::io::prelude::*;
 use super::mwpm_solver::PrimalDualSolver;
 use super::pointers::*;
+#[cfg(feature="python_binding")]
+use pyo3::prelude::*;
 
 
 cfg_if::cfg_if! {
@@ -34,34 +36,50 @@ cfg_if::cfg_if! {
     }
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolverInitializer {
     /// the number of vertices
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertex_num: VertexIndex,
     /// weighted edges, where vertex indices are within the range [0, vertex_num)
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
     /// the virtual vertices
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub virtual_vertices: Vec<VertexIndex>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SyndromePattern {
     /// the vertices corresponding to non-trivial measurements
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub syndrome_vertices: Vec<VertexIndex>,
     /// the edges that experience erasures, i.e. known errors
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub erasures: Vec<EdgeIndex>,
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(syndrome_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
         Self { syndrome_vertices, erasures }
     }
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_vertices(syndrome_vertices: Vec<VertexIndex>) -> Self {
         Self::new(syndrome_vertices, vec![])
     }
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_empty() -> Self {
         Self::new(vec![], vec![])
     }
+    #[cfg(feature = "python_binding")]
+    fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
 /// an efficient representation of partitioned vertices and erasures when they're ordered
@@ -411,7 +429,10 @@ pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, o
     }).collect()
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl SolverInitializer {
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(vertex_num: VertexIndex, weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: Vec<VertexIndex>) -> SolverInitializer {
         SolverInitializer {
             vertex_num,
@@ -419,6 +440,8 @@ impl SolverInitializer {
             virtual_vertices,
         }
     }
+    #[cfg(feature = "python_binding")]
+    fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
 /// timestamp type determines how many fast clear before a hard clear is required, see [`FastClear`]
@@ -557,6 +580,135 @@ impl BenchmarkProfilerEntry {
     pub fn is_complete(&self) -> bool {
         self.round_time.is_some()
     }
+}
+
+/**
+ * If you want to modify a field of a Rust struct, it will return a copy of it to avoid memory unsafety.
+ * Thus, typical way of modifying a python field doesn't work, e.g. `obj.a.b.c = 1` won't actually modify `obj`.
+ * This helper class is used to modify a field easier; but please note this can be very time consuming if not optimized well.
+ * 
+ * Example:
+ * with PyMut(code, "vertices") as vertices:
+ *     with fb.PyMut(vertices[0], "position") as position:
+ *         position.i = 100
+*/
+#[cfg(feature="python_binding")]
+#[pyclass]
+pub struct PyMut {
+    /// the python object that provides getter and setter function for the attribute
+    #[pyo3(get, set)]
+    object: PyObject,
+    /// the name of the attribute
+    #[pyo3(get, set)]
+    attr_name: String,
+    /// the python attribute object that is taken from `object[attr_name]`
+    #[pyo3(get, set)]
+    attr_object: Option<PyObject>,
+}
+
+#[cfg(feature="python_binding")]
+#[pymethods]
+impl PyMut {
+    #[new]
+    pub fn new(object: PyObject, attr_name: String) -> Self {
+        Self {
+            object,
+            attr_name,
+            attr_object: None,
+        }
+    }
+    pub fn __enter__(&mut self) -> PyObject {
+        assert!(self.attr_object.is_none(), "do not enter twice");
+        Python::with_gil(|py| {
+            let attr_object = self.object.getattr(py, self.attr_name.as_str()).unwrap();
+            self.attr_object = Some(attr_object.clone_ref(py));
+            attr_object
+        })
+    }
+    pub fn __exit__(&mut self, _exc_type: PyObject, _exc_val: PyObject, _exc_tb: PyObject) {
+        Python::with_gil(|py| {
+            self.object.setattr(py, self.attr_name.as_str(), self.attr_object.take().unwrap()).unwrap()
+        })
+    }
+}
+
+#[cfg(feature="python_binding")]
+pub fn json_to_pyobject_locked<'py>(value: serde_json::Value, py: Python<'py>) -> PyObject {
+    match value {
+        serde_json::Value::Null => py.None(),
+        serde_json::Value::Bool(value) => value.to_object(py).into(),
+        serde_json::Value::Number(value) => {
+            if value.is_i64() {
+                value.as_i64().to_object(py).into()
+            } else {
+                value.as_f64().to_object(py).into()
+            }
+        },
+        serde_json::Value::String(value) => value.to_object(py).into(),
+        serde_json::Value::Array(array) => {
+            let elements: Vec<PyObject> = array.into_iter().map(|value| json_to_pyobject_locked(value, py)).collect();
+            pyo3::types::PyList::new(py, elements).into()
+        },
+        serde_json::Value::Object(map) => {
+            let pydict = pyo3::types::PyDict::new(py);
+            for (key, value) in map.into_iter() {
+                let pyobject = json_to_pyobject_locked(value, py);
+                pydict.set_item(key, pyobject).unwrap();
+            }
+            pydict.into()
+        },
+    }
+}
+
+#[cfg(feature="python_binding")]
+pub fn json_to_pyobject(value: serde_json::Value) -> PyObject {
+    Python::with_gil(|py| {
+        json_to_pyobject_locked(value, py)
+    })
+}
+
+#[cfg(feature="python_binding")]
+pub fn pyobject_to_json_locked<'py>(value: PyObject, py: Python<'py>) -> serde_json::Value {
+    let value: &PyAny = value.as_ref(py);
+    if value.is_none() {
+        serde_json::Value::Null
+    } else if value.is_instance_of::<pyo3::types::PyBool>().unwrap() {
+        json!(value.extract::<bool>().unwrap())
+    } else if value.is_instance_of::<pyo3::types::PyInt>().unwrap() {
+        json!(value.extract::<i64>().unwrap())
+    } else if value.is_instance_of::<pyo3::types::PyFloat>().unwrap() {
+        json!(value.extract::<f64>().unwrap())
+    } else if value.is_instance_of::<pyo3::types::PyString>().unwrap() {
+        json!(value.extract::<String>().unwrap())
+    } else if value.is_instance_of::<pyo3::types::PyList>().unwrap() {
+        let elements: Vec<serde_json::Value> = value.extract::<Vec<PyObject>>().unwrap()
+            .into_iter().map(|object| pyobject_to_json_locked(object, py)).collect();
+        json!(elements)
+    } else if value.is_instance_of::<pyo3::types::PyDict>().unwrap() {
+        let map: &pyo3::types::PyDict = value.cast_as().unwrap();
+        let mut json_map = serde_json::Map::new();
+        for (key, value) in map.iter() {
+            json_map.insert(key.extract::<String>().unwrap(), pyobject_to_json_locked(value.to_object(py), py));
+        }
+        serde_json::Value::Object(json_map)
+    } else {
+        unimplemented!("unsupported python type, should be (cascaded) dict, list and basic numerical types")
+    }
+}
+
+#[cfg(feature="python_binding")]
+pub fn pyobject_to_json(value: PyObject) -> serde_json::Value {
+    Python::with_gil(|py| {
+        pyobject_to_json_locked(value, py)
+    })
+}
+
+#[cfg(feature="python_binding")]
+#[pyfunction]
+pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<SolverInitializer>()?;
+    m.add_class::<PyMut>()?;
+    Ok(())
 }
 
 #[cfg(test)]

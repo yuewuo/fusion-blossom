@@ -19,12 +19,17 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::sync::Arc;
 use super::pointers::*;
+#[cfg(feature="python_binding")]
+use pyo3::prelude::*;
 
 
 /// a serial solver
 #[derive(Derivative)]
 #[derivative(Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct LegacySolverSerial {
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     initializer: SolverInitializer,
     /// a serial implementation of the primal module
     #[derivative(Debug="ignore")]
@@ -286,4 +291,11 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
     fn generate_profiler_report(&self) -> serde_json::Value {
         json!({})
     }
+}
+
+#[cfg(feature="python_binding")]
+#[pyfunction]
+pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<LegacySolverSerial>()?;
+    Ok(())
 }

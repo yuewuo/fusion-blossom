@@ -6,6 +6,10 @@
     feature="unsafe_pointer",
     allow(unused_mut)
 )]
+#![cfg_attr(
+    feature="python_binding",
+    feature(cfg_eval)
+)]
 
 extern crate libc;
 extern crate cfg_if;
@@ -21,6 +25,8 @@ extern crate rayon;
 extern crate weak_table;
 extern crate rand;
 extern crate core_affinity;
+#[cfg(feature="python_binding")]
+extern crate pyo3;
 
 pub mod blossom_v;
 pub mod util;
@@ -37,10 +43,21 @@ pub mod dual_module_parallel;
 pub mod primal_module_parallel;
 pub mod example_partition;
 pub mod pointers;
+#[cfg(feature="python_binding")]
+use pyo3::prelude::*;
 
 use util::*;
 use complete_graph::*;
 
+
+#[cfg(feature="python_binding")]
+#[pymodule]
+fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    util::register(py, m)?;
+    mwpm_solver::register(py, m)?;
+    example::register(py, m)?;
+    Ok(())
+}
 
 /// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`mwpm_solver::SolverSerial`] object)
 pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<usize> {

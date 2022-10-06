@@ -60,7 +60,7 @@ enum Commands {
         #[clap(long, default_value_t = 500)]
         max_half_weight: Weight,
         /// example code type
-        #[clap(short = 'c', long, arg_enum, default_value_t = ExampleCodeType::CodeCapacityPlanarCode)]
+        #[clap(short = 'c', long, value_enum, default_value_t = ExampleCodeType::CodeCapacityPlanarCode)]
         code_type: ExampleCodeType,
         /// the configuration of the code builder
         #[clap(long, default_value_t = json!({}))]
@@ -72,19 +72,19 @@ enum Commands {
         #[clap(long, action)]
         print_syndrome_pattern: bool,
         /// the method to verify the correctness of the decoding result
-        #[clap(long, arg_enum, default_value_t = Verifier::BlossomV)]
+        #[clap(long, value_enum, default_value_t = Verifier::BlossomV)]
         verifier: Verifier,
         /// the number of iterations to run
         #[clap(short = 'r', long, default_value_t = 1000)]
         total_rounds: usize,
         /// select the combination of primal and dual module
-        #[clap(short = 'p', long, arg_enum, default_value_t = PrimalDualType::Serial)]
+        #[clap(short = 'p', long, value_enum, default_value_t = PrimalDualType::Serial)]
         primal_dual_type: PrimalDualType,
         /// the configuration of primal and dual module
         #[clap(long, default_value_t = json!({}))]
         primal_dual_config: serde_json::Value,
         /// partition strategy
-        #[clap(long, arg_enum, default_value_t = PartitionStrategy::None)]
+        #[clap(long, value_enum, default_value_t = PartitionStrategy::None)]
         partition_strategy: PartitionStrategy,
         /// the configuration of the partition strategy
         #[clap(long, default_value_t = json!({}))]

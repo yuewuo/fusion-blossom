@@ -18,39 +18,63 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use crate::rayon::prelude::*;
 use super::pointers::*;
+#[cfg(feature="python_binding")]
+use pyo3::prelude::*;
 
 
 /// Vertex corresponds to a stabilizer measurement bit
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct CodeVertex {
     /// position helps to visualize
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub position: VisualizePosition,
     /// neighbor edges helps to set find individual edge
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub neighbor_edges: Vec<usize>,
     /// virtual vertex won't report measurement results
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub is_virtual: bool,
     /// whether it shows up syndrome, note that virtual nodes should NOT have syndrome
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub is_syndrome: bool,
+}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
+impl CodeVertex {
+    fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
 /// Edge flips the measurement result of two vertices
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct CodeEdge {
     /// the two vertices incident to this edge
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertices: (usize, usize),
     /// probability of flipping the results of these two vertices; do not set p to 0 to remove edge: if desired, create a new code type
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub p: f64,
     /// probability of having a reported event of error on this edge
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub pe: f64,
     /// the integer weight of this edge
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub half_weight: Weight,
     /// whether this edge is erased
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub is_erasure: bool,
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl CodeEdge {
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(a: usize, b: usize) -> Self {
         Self {
             vertices: (a, b),
@@ -60,9 +84,11 @@ impl CodeEdge {
             is_erasure: false,
         }
     }
+    fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
 /// default function for computing (pre-scaled) weight from probability
+#[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn weight_of_p(p: f64) -> f64 {
     assert!((0. ..=0.5).contains(&p), "p must be a reasonable value between 0 and 50%");
     ((1. - p) / p).ln()
@@ -315,6 +341,54 @@ pub trait ExampleCode {
 
 }
 
+#[cfg(feature="python_binding")]
+macro_rules! bind_trait_example_code {
+    ($struct_name:ident) => {
+        #[pymethods]
+        impl $struct_name {
+            fn __repr__(&self) -> String { format!("{:?}", self) }
+            #[pyo3(name = "vertex_num")]
+            fn trait_vertex_num(&self) -> usize { self.vertex_num() }
+            #[pyo3(name = "compute_weights")]
+            fn trait_compute_weights(&mut self, max_half_weight: Weight) { self.compute_weights(max_half_weight) }
+            #[pyo3(name = "sanity_check")]
+            fn trait_sanity_check(&self) -> Option<String> { self.sanity_check().err() }
+            #[pyo3(name = "set_probability")]
+            fn trait_set_probability(&mut self, p: f64) { self.set_probability(p) }
+            #[pyo3(name = "set_erasure_probability")]
+            fn trait_set_erasure_probability(&mut self, p: f64) { self.set_erasure_probability(p) }
+            #[pyo3(name = "fill_vertices")]
+            fn trait_fill_vertices(&mut self, vertex_num: usize) { self.fill_vertices(vertex_num) }
+            #[pyo3(name = "get_positions")]
+            fn trait_get_positions(&self) -> Vec<VisualizePosition> { self.get_positions() }
+            #[pyo3(name = "get_initializer")]
+            fn trait_get_initializer(&self) -> SolverInitializer { self.get_initializer() }
+            #[pyo3(name = "set_syndrome_vertices")]
+            fn trait_set_syndrome_vertices(&mut self, syndrome_vertices: Vec<VertexIndex>) { self.set_syndrome_vertices(&syndrome_vertices) }
+            #[pyo3(name = "set_erasures")]
+            fn trait_set_erasures(&mut self, erasures: Vec<EdgeIndex>) { self.set_erasures(&erasures) }
+            #[pyo3(name = "set_syndrome")]
+            fn trait_set_syndrome(&mut self, syndrome_pattern: &SyndromePattern) { self.set_syndrome(syndrome_pattern) }
+            #[pyo3(name = "get_syndrome_vertices")]
+            fn trait_get_syndrome_vertices(&self) -> Vec<VertexIndex> { self.get_syndrome_vertices() }
+            #[pyo3(name = "get_erasures")]
+            fn trait_get_erasures(&self) -> Vec<EdgeIndex> { self.get_erasures() }
+            #[pyo3(name = "get_syndrome")]
+            fn trait_get_syndrome(&self) -> SyndromePattern { self.get_syndrome() }
+            #[pyo3(name = "generate_random_errors")]
+            fn trait_generate_random_errors(&mut self, seed: u64) -> SyndromePattern { self.generate_random_errors(seed) }
+            #[pyo3(name = "is_virtual")]
+            fn trait_is_virtual(&mut self, vertex_idx: usize) -> bool { self.is_virtual(vertex_idx) }
+            #[pyo3(name = "is_syndrome")]
+            fn trait_is_syndrome(&mut self, vertex_idx: usize) -> bool { self.is_syndrome(vertex_idx) }
+            #[pyo3(name = "reorder_vertices")]
+            fn trait_reorder_vertices(&mut self, sequential_vertices: Vec<VertexIndex>) { self.reorder_vertices(&sequential_vertices) }
+            #[pyo3(name = "snapshot")]
+            fn trait_snapshot(&mut self, abbrev: bool) -> PyObject { json_to_pyobject(self.snapshot(abbrev)) }
+        }
+    };
+}
+
 impl<T> FusionVisualizer for T where T: ExampleCode {
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let (self_vertices, self_edges) = self.immutable_vertices_edges();
@@ -342,11 +416,15 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
 }
 
 /// perfect quantum repetition code
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct CodeCapacityRepetitionCode {
     /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub edges: Vec<CodeEdge>,
 }
 
@@ -355,8 +433,14 @@ impl ExampleCode for CodeCapacityRepetitionCode {
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{CodeCapacityRepetitionCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl CodeCapacityRepetitionCode {
 
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(d: usize, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -364,6 +448,7 @@ impl CodeCapacityRepetitionCode {
         code
     }
 
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn create_code(d: usize) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let vertex_num = (d - 1) + 2;  // two virtual vertices at left and right
@@ -396,11 +481,15 @@ impl CodeCapacityRepetitionCode {
 
 /// code capacity noise model is a single measurement round with perfect stabilizer measurements;
 /// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct CodeCapacityPlanarCode {
     /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub edges: Vec<CodeEdge>,
 }
 
@@ -409,8 +498,14 @@ impl ExampleCode for CodeCapacityPlanarCode {
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{CodeCapacityPlanarCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl CodeCapacityPlanarCode {
 
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(d: usize, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -418,6 +513,7 @@ impl CodeCapacityPlanarCode {
         code
     }
 
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn create_code(d: usize) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -465,11 +561,15 @@ impl CodeCapacityPlanarCode {
 
 /// phenomenological noise model is multiple measurement rounds adding only measurement errors
 /// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct PhenomenologicalPlanarCode {
     /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub edges: Vec<CodeEdge>,
 }
 
@@ -478,8 +578,14 @@ impl ExampleCode for PhenomenologicalPlanarCode {
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{PhenomenologicalPlanarCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl PhenomenologicalPlanarCode {
 
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
@@ -487,6 +593,7 @@ impl PhenomenologicalPlanarCode {
         code
     }
 
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn create_code(d: usize, noisy_measurements: usize) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -554,11 +661,15 @@ impl PhenomenologicalPlanarCode {
 
 /// (not accurate) circuit-level noise model is multiple measurement rounds with errors between each two-qubit gates
 /// e.g. this is the decoding graph of a CSS surface code (standard one, not rotated one) with X-type stabilizers
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct CircuitLevelPlanarCode {
     /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub edges: Vec<CodeEdge>,
 }
 
@@ -567,13 +678,20 @@ impl ExampleCode for CircuitLevelPlanarCode {
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{CircuitLevelPlanarCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl CircuitLevelPlanarCode {
 
     /// by default diagonal edge has error rate p/3 to mimic the behavior of unequal weights
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
         Self::new_diagonal(d, noisy_measurements, p, max_half_weight, p/3.)
     }
 
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_diagonal(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight, diagonal_p: f64) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
@@ -593,6 +711,7 @@ impl CircuitLevelPlanarCode {
         code
     }
 
+    #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn create_code(d: usize, noisy_measurements: usize) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -671,14 +790,20 @@ impl CircuitLevelPlanarCode {
 /// the point is to avoid bad cache performance, because generating random error requires iterating over a large memory space,
 /// invalidating all cache. also, this can reduce the time of decoding by prepare the data before hand and could be shared between
 /// different partition configurations
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct ErrorPatternReader {
     /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub vertices: Vec<CodeVertex>,
     /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub edges: Vec<CodeEdge>,
     /// pre-generated syndrome patterns
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub syndrome_patterns: Vec<SyndromePattern>,
     /// cursor of current errors
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub syndrome_index: usize,
 }
 
@@ -801,6 +926,18 @@ impl<CodeType: ExampleCode + Sync + Send + Clone> ExampleCode for ExampleCodePar
     }
 }
 
+#[cfg(feature="python_binding")]
+#[pyfunction]
+pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<CodeVertex>()?;
+    m.add_class::<CodeEdge>()?;
+    m.add_function(wrap_pyfunction!(weight_of_p, m)?)?;
+    m.add_class::<CodeCapacityRepetitionCode>()?;
+    m.add_class::<CodeCapacityPlanarCode>()?;
+    m.add_class::<PhenomenologicalPlanarCode>()?;
+    m.add_class::<CircuitLevelPlanarCode>()?;
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
