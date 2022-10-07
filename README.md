@@ -37,7 +37,8 @@ Click the demo image below to view the corresponding demo
 <span style="width: 5%"></span>
 [<img src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
 <span style="width: 10%"></span>
-[<img style="margin-left: 10%;" src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
+<div style="margin-left: 10%;">[<img  src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)</div>
+
 
 #### Parallel Execution (Shown in Serial For Better Visual)
 
