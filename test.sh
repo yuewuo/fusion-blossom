@@ -12,4 +12,4 @@ cargo run --release -- test dual-parallel || exit 1
 cargo run --release -- test parallel || exit 1
 
 # just test one case would be enough
-cargo run --release -- test serial --features u32_index || exit 1
+cargo run --release --features u32_index -- test serial || exit 1
