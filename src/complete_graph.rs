@@ -8,7 +8,7 @@ use super::dual_module::EdgeWeightModifier;
 #[derive(Debug, Clone)]
 pub struct CompleteGraph {
     /// number of vertices
-    pub vertex_num: usize,
+    pub vertex_num: VertexNum,
     /// the vertices to run Dijkstra's algorithm
     pub vertices: Vec<CompleteGraphVertex>,
     /// timestamp to invalidate all vertices without iterating them; only invalidating all vertices individually when active_timestamp is usize::MAX
@@ -16,7 +16,7 @@ pub struct CompleteGraph {
     /// remember the edges that's modified by erasures
     pub edge_modifier: EdgeWeightModifier,
     /// original edge weights
-    pub weighted_edges: Vec<(usize, usize, Weight)>,
+    pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,11 +30,11 @@ pub struct CompleteGraphVertex {
 impl CompleteGraph {
 
     /// create complete graph given skeleton graph
-    pub fn new(vertex_num: usize, weighted_edges: &[(usize, usize, Weight)]) -> Self {
+    pub fn new(vertex_num: VertexNum, weighted_edges: &[(VertexIndex, VertexIndex, Weight)]) -> Self {
         let mut vertices: Vec<CompleteGraphVertex> = (0..vertex_num).map(|_| CompleteGraphVertex { edges: BTreeMap::new(), timestamp: 0, }).collect();
         for &(i, j, weight) in weighted_edges.iter() {
-            vertices[i].edges.insert(j, weight);
-            vertices[j].edges.insert(i, weight);
+            vertices[i as usize].edges.insert(j, weight);
+            vertices[j as usize].edges.insert(i, weight);
         }
         Self {
             vertex_num,
@@ -50,25 +50,25 @@ impl CompleteGraph {
         // recover erasure edges
         while self.edge_modifier.has_modified_edges() {
             let (edge_index, original_weight) = self.edge_modifier.pop_modified_edge();
-            let (vertex_idx_1, vertex_idx_2, _) = &self.weighted_edges[edge_index];
-            let vertex_1 = &mut self.vertices[*vertex_idx_1];
+            let (vertex_idx_1, vertex_idx_2, _) = &self.weighted_edges[edge_index as usize];
+            let vertex_1 = &mut self.vertices[*vertex_idx_1 as usize];
             assert_eq!(vertex_1.edges.insert(*vertex_idx_2, original_weight), Some(0), "previous weight should be 0");
-            let vertex_2 = &mut self.vertices[*vertex_idx_2];
+            let vertex_2 = &mut self.vertices[*vertex_idx_2 as usize];
             assert_eq!(vertex_2.edges.insert(*vertex_idx_1, original_weight), Some(0), "previous weight should be 0");
-            self.weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
+            self.weighted_edges[edge_index as usize] = (*vertex_idx_1, *vertex_idx_2, original_weight);
         }
     }
 
     fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         for (edge_index, target_weight) in edge_modifier.iter() {
-            let (vertex_idx_1, vertex_idx_2, original_weight) = &self.weighted_edges[*edge_index];
-            let vertex_1 = &mut self.vertices[*vertex_idx_1];
+            let (vertex_idx_1, vertex_idx_2, original_weight) = &self.weighted_edges[*edge_index as usize];
+            let vertex_1 = &mut self.vertices[*vertex_idx_1 as usize];
             vertex_1.edges.insert(*vertex_idx_2, *target_weight);
-            let vertex_2 = &mut self.vertices[*vertex_idx_2];
+            let vertex_2 = &mut self.vertices[*vertex_idx_2 as usize];
             vertex_2.edges.insert(*vertex_idx_1, *target_weight);
             self.edge_modifier.push_modified_edge(*edge_index, *original_weight);
-            self.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, *target_weight);
+            self.weighted_edges[*edge_index as usize] = (*vertex_idx_1, *vertex_idx_2, *target_weight);
         }
     }
 
@@ -83,7 +83,7 @@ impl CompleteGraph {
         if self.active_timestamp == FastClearTimestamp::MAX {  // rarely happens
             self.active_timestamp = 0;
             for i in 0..self.vertex_num {
-                self.vertices[i].timestamp = 0;  // refresh all timestamps to avoid conflicts
+                self.vertices[i as usize].timestamp = 0;  // refresh all timestamps to avoid conflicts
             }
         }
         self.active_timestamp += 1;  // implicitly invalidate all vertices
@@ -91,11 +91,11 @@ impl CompleteGraph {
     }
 
     /// get all complete graph edges from the specific vertex, but will terminate if `terminate` vertex is found
-    pub fn all_edges_with_terminate(&mut self, vertex: usize, terminate: usize) -> BTreeMap<usize, (usize, Weight)> {
+    pub fn all_edges_with_terminate(&mut self, vertex: VertexIndex, terminate: VertexIndex) -> BTreeMap<VertexIndex, (VertexIndex, Weight)> {
         let active_timestamp = self.invalidate_previous_dijkstra();
-        let mut pq = PriorityQueue::<usize, PriorityElement>::new();
+        let mut pq = PriorityQueue::<EdgeIndex, PriorityElement>::new();
         pq.push(vertex, PriorityElement::new(0, vertex));
-        let mut computed_edges = BTreeMap::<usize, (usize, Weight)>::new();  // { peer: (previous, weight) }
+        let mut computed_edges = BTreeMap::<VertexIndex, (VertexIndex, Weight)>::new();  // { peer: (previous, weight) }
         loop {  // until no more elements
             if pq.is_empty() {
                 break
@@ -106,7 +106,7 @@ impl CompleteGraph {
                 !computed_edges.contains_key(&target)  // this entry shouldn't have been set
             });
             // update entry
-            self.vertices[target].timestamp = active_timestamp;  // mark as visited
+            self.vertices[target as usize].timestamp = active_timestamp;  // mark as visited
             if target != vertex {
                 computed_edges.insert(target, (previous, weight));
                 if target == terminate {
@@ -114,7 +114,7 @@ impl CompleteGraph {
                 }
             }
             // add its neighbors to priority queue
-            for (&neighbor, &neighbor_weight) in self.vertices[target].edges.iter() {
+            for (&neighbor, &neighbor_weight) in self.vertices[target as usize].edges.iter() {
                 let edge_weight = weight + neighbor_weight;
                 if let Some(PriorityElement { weight: existing_weight, previous: existing_previous }) = pq.get_priority(&neighbor) {
                     // update the priority if weight is smaller or weight is equal but distance is smaller
@@ -132,7 +132,7 @@ impl CompleteGraph {
                         pq.change_priority(&neighbor, PriorityElement::new(edge_weight, target));
                     }
                 } else {  // insert new entry only if neighbor has not been visited
-                    if self.vertices[neighbor].timestamp != active_timestamp {
+                    if self.vertices[neighbor as usize].timestamp != active_timestamp {
                         pq.push(neighbor, PriorityElement::new(edge_weight, target));
                     }
                 }
@@ -143,7 +143,7 @@ impl CompleteGraph {
     }
 
     /// get all complete graph edges from the specific vertex
-    pub fn all_edges(&mut self, vertex: VertexIndex) -> BTreeMap<usize, (usize, Weight)> {
+    pub fn all_edges(&mut self, vertex: VertexIndex) -> BTreeMap<VertexIndex, (VertexIndex, Weight)> {
         self.all_edges_with_terminate(vertex, VertexIndex::MAX)
     }
 
@@ -174,7 +174,7 @@ impl CompleteGraph {
 #[derive(Eq, Debug)]
 pub struct PriorityElement {
     pub weight: Weight,
-    pub previous: usize,
+    pub previous: VertexIndex,
 }
 
 impl std::cmp::PartialEq for PriorityElement {
@@ -199,7 +199,7 @@ impl std::cmp::Ord for PriorityElement {
 }
 
 impl PriorityElement {
-    pub fn new(weight: Weight, previous: usize) -> Self {
+    pub fn new(weight: Weight, previous: VertexIndex) -> Self {
         Self {
             weight,
             previous,

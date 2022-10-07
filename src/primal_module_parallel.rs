@@ -375,7 +375,7 @@ impl PrimalModuleParallelUnitPtr {
             }
             primal_unit.break_matching_with_mirror(dual_unit.deref_mut());
             for syndrome_index in owned_syndrome_range.whole_syndrome_range.iter() {
-                let syndrome_vertex = partitioned_syndrome_pattern.syndrome_pattern.syndrome_vertices[syndrome_index];
+                let syndrome_vertex = partitioned_syndrome_pattern.syndrome_pattern.syndrome_vertices[syndrome_index as usize];
                 primal_unit.serial_module.load_syndrome(syndrome_vertex, &interface_ptr, dual_unit.deref_mut());
             }
             primal_unit.serial_module.solve_step_callback_interface_loaded(&interface_ptr, dual_unit.deref_mut()
@@ -459,7 +459,7 @@ impl PrimalModuleParallelUnit {
             if let Some(primal_node_ptr) = primal_node_ptr {
                 let mut primal_node = primal_node_ptr.write();
                 if let Some((MatchTarget::VirtualVertex(vertex_index), _)) = &primal_node.temporary_match {
-                    if self.partition_info.vertex_to_owning_unit[*vertex_index] == self.unit_index {
+                    if self.partition_info.vertex_to_owning_unit[*vertex_index as usize] == self.unit_index {
                         primal_node.temporary_match = None;
                         self.interface_ptr.set_grow_state(&primal_node.origin.upgrade_force(), DualNodeGrowState::Grow, dual_module);
                     } else {  // still possible break
@@ -714,7 +714,7 @@ pub mod tests {
         })()));
     }
 
-    fn primal_module_parallel_debug_planar_code_common(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    fn primal_module_parallel_debug_planar_code_common(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
         let split_horizontal = (d + 1) / 2;
         let row_count = d + 1;

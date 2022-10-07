@@ -59,13 +59,13 @@ impl ExamplePartition for NoPartition {
 /// partition into top half and bottom half
 #[derive(Default)]
 pub struct CodeCapacityPlanarCodeVerticalPartitionHalf {
-    d: usize,
+    d: VertexNum,
     /// the row of splitting: in the visualization tool, the top row is the 1st row, the bottom row is the d-th row
-    partition_row: usize,
+    partition_row: VertexNum,
 }
 
 impl CodeCapacityPlanarCodeVerticalPartitionHalf {
-    pub fn new(d: usize, partition_row: usize) -> Self {
+    pub fn new(d: VertexNum, partition_row: VertexNum) -> Self {
         Self { d, partition_row }
     }
 }
@@ -90,15 +90,15 @@ impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionHalf {
 /// partition into 4 pieces: top left and right, bottom left and right
 #[derive(Default)]
 pub struct CodeCapacityPlanarCodeVerticalPartitionFour {
-    d: usize,
+    d: VertexNum,
     /// the row of splitting: in the visualization tool, the top row is the 1st row, the bottom row is the d-th row
-    partition_row: usize,
+    partition_row: VertexNum,
     /// the row of splitting: in the visualization tool, the left (non-virtual) column is the 1st column, the right (non-virtual) column is the (d-1)-th column
-    partition_column: usize,
+    partition_column: VertexNum,
 }
 
 impl CodeCapacityPlanarCodeVerticalPartitionFour {
-    pub fn new(d: usize, partition_row: usize, partition_column: usize) -> Self {
+    pub fn new(d: VertexNum, partition_row: VertexNum, partition_column: VertexNum) -> Self {
         Self { d, partition_row, partition_column }
     }
 }
@@ -171,13 +171,13 @@ impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionFour {
 /// partition into top half and bottom half
 #[derive(Default)]
 pub struct CodeCapacityRepetitionCodePartitionHalf {
-    d: usize,
+    d: VertexNum,
     /// the position of splitting: in the visualization tool, the left (non-virtual) vertex is the 1st column, the right (non-virtual) vertex is the (d-1)-th column
-    partition_index: usize,
+    partition_index: VertexIndex,
 }
 
 impl CodeCapacityRepetitionCodePartitionHalf {
-    pub fn new(d: usize, partition_index: usize) -> Self {
+    pub fn new(d: VertexNum, partition_index: VertexIndex) -> Self {
         Self { d, partition_index }
     }
 }
@@ -214,8 +214,8 @@ impl ExamplePartition for CodeCapacityRepetitionCodePartitionHalf {
 
 /// evenly partition along the time axis
 pub struct PhenomenologicalPlanarCodeTimePartition {
-    d: usize,
-    noisy_measurements: usize,
+    d: VertexNum,
+    noisy_measurements: VertexNum,
     /// the number of partition
     partition_num: usize,
     /// enable tree fusion (to minimize latency but incur log(partition_num) more memory copy)
@@ -226,10 +226,10 @@ pub struct PhenomenologicalPlanarCodeTimePartition {
 }
 
 impl PhenomenologicalPlanarCodeTimePartition {
-    pub fn new_tree(d: usize, noisy_measurements: usize, partition_num: usize, enable_tree_fusion: bool, maximum_tree_leaf_size: usize) -> Self {
+    pub fn new_tree(d: VertexNum, noisy_measurements: VertexNum, partition_num: usize, enable_tree_fusion: bool, maximum_tree_leaf_size: usize) -> Self {
         Self { d, noisy_measurements, partition_num, enable_tree_fusion, maximum_tree_leaf_size }
     }
-    pub fn new(d: usize, noisy_measurements: usize, partition_num: usize) -> Self {
+    pub fn new(d: VertexNum, noisy_measurements: VertexNum, partition_num: usize) -> Self {
         Self::new_tree(d, noisy_measurements, partition_num, false, usize::MAX)
     }
 }
@@ -240,17 +240,17 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
         let round_vertex_num = d * (d + 1);
         let vertex_num = round_vertex_num * (noisy_measurements + 1);
         assert_eq!(code.vertex_num(), vertex_num, "code size incompatible");
-        assert!(partition_num >= 1 && partition_num <= noisy_measurements + 1);
-        let partition_length = (noisy_measurements + 1) / partition_num;
+        assert!(partition_num >= 1 && partition_num <= noisy_measurements as usize + 1);
+        let partition_length = (noisy_measurements as usize + 1) / partition_num;
         let mut config = PartitionConfig::new(vertex_num);
         config.partitions.clear();
         for partition_index in 0..partition_num {
             if partition_index < partition_num - 1 {
                 config.partitions.push(VertexRange::new_length(
-                    partition_index * partition_length * round_vertex_num, (partition_length - 1) * round_vertex_num
+                    (partition_index * partition_length) as VertexIndex * round_vertex_num, (partition_length - 1) as VertexIndex * round_vertex_num
                 ));
             } else {
-                config.partitions.push(VertexRange::new(partition_index * partition_length * round_vertex_num, vertex_num));
+                config.partitions.push(VertexRange::new((partition_index * partition_length) as VertexIndex * round_vertex_num, vertex_num));
             }
         }
         config.fusions.clear();
@@ -259,7 +259,7 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
                 if unit_index == partition_num {
                     config.fusions.push((0, 1));
                 } else {
-                    config.fusions.push((unit_index - 1, unit_index - partition_num + 1));
+                    config.fusions.push((unit_index as usize - 1, unit_index - partition_num + 1));
                 }
             }
         } else {

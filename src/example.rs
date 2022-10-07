@@ -33,7 +33,7 @@ pub struct CodeVertex {
     pub position: VisualizePosition,
     /// neighbor edges helps to set find individual edge
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub neighbor_edges: Vec<usize>,
+    pub neighbor_edges: Vec<EdgeIndex>,
     /// virtual vertex won't report measurement results
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub is_virtual: bool,
@@ -57,7 +57,7 @@ impl CodeVertex {
 pub struct CodeEdge {
     /// the two vertices incident to this edge
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub vertices: (usize, usize),
+    pub vertices: (VertexIndex, VertexIndex),
     /// probability of flipping the results of these two vertices; do not set p to 0 to remove edge: if desired, create a new code type
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub p: f64,
@@ -76,7 +76,7 @@ pub struct CodeEdge {
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl CodeEdge {
     #[cfg_attr(feature = "python_binding", new)]
-    pub fn new(a: usize, b: usize) -> Self {
+    pub fn new(a: VertexIndex, b: VertexIndex) -> Self {
         Self {
             vertices: (a, b),
             p: 0.,
@@ -103,7 +103,7 @@ pub trait ExampleCode {
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>);
 
     /// get the number of vertices
-    fn vertex_num(&self) -> usize { self.immutable_vertices_edges().0.len() }
+    fn vertex_num(&self) -> VertexNum { self.immutable_vertices_edges().0.len() as VertexNum }
 
     /// generic method that automatically computes integer weights from probabilities,
     /// scales such that the maximum integer weight is 10000 and the minimum is 1
@@ -133,19 +133,19 @@ pub trait ExampleCode {
             return Err("empty graph".to_string());
         }
         // check duplicated edges
-        let mut existing_edges = HashMap::<(usize, usize), usize>::with_capacity(edges.len() * 2);
-        for (idx, edge) in edges.iter().enumerate() {
+        let mut existing_edges = HashMap::<(VertexIndex, VertexIndex), EdgeIndex>::with_capacity(edges.len() * 2);
+        for (edge_idx, edge) in edges.iter().enumerate() {
             let (v1, v2) = edge.vertices;
             let unique_edge = if v1 < v2 { (v1, v2) } else { (v2, v1) };
             if existing_edges.contains_key(&unique_edge) {
                 let previous_idx = existing_edges[&unique_edge];
-                return Err(format!("duplicate edge {} and {} with incident vertices {} and {}", previous_idx, idx, v1, v2));
+                return Err(format!("duplicate edge {} and {} with incident vertices {} and {}", previous_idx, edge_idx, v1, v2));
             }
-            existing_edges.insert(unique_edge, idx);
+            existing_edges.insert(unique_edge, edge_idx as EdgeIndex);
         }
         // check duplicated referenced edge from each vertex
         for (vertex_idx, vertex) in vertices.iter().enumerate() {
-            let mut existing_edges = HashMap::<usize, ()>::new();
+            let mut existing_edges = HashMap::<EdgeIndex, ()>::new();
             if vertex.neighbor_edges.is_empty() {
                 return Err(format!("vertex {} do not have any neighbor edges", vertex_idx));
             }
@@ -176,10 +176,10 @@ pub trait ExampleCode {
     }
 
     /// automatically create vertices given edges
-    fn fill_vertices(&mut self, vertex_num: usize) {
+    fn fill_vertices(&mut self, vertex_num: VertexNum) {
         let (vertices, edges) = self.vertices_edges();
         vertices.clear();
-        vertices.reserve(vertex_num);
+        vertices.reserve(vertex_num as usize);
         for _ in 0..vertex_num {
             vertices.push(CodeVertex {
                 position: VisualizePosition::new(0., 0., 0.),
@@ -189,10 +189,10 @@ pub trait ExampleCode {
             });
         }
         for (edge_idx, edge) in edges.iter().enumerate() {
-            let vertex_1 = &mut vertices[edge.vertices.0];
-            vertex_1.neighbor_edges.push(edge_idx);
-            let vertex_2 = &mut vertices[edge.vertices.1];
-            vertex_2.neighbor_edges.push(edge_idx);
+            let vertex_1 = &mut vertices[edge.vertices.0 as usize];
+            vertex_1.neighbor_edges.push(edge_idx as EdgeIndex);
+            let vertex_2 = &mut vertices[edge.vertices.1 as usize];
+            vertex_2.neighbor_edges.push(edge_idx as EdgeIndex);
         }
     }
 
@@ -209,7 +209,7 @@ pub trait ExampleCode {
     /// generate standard interface to instantiate Fusion blossom solver
     fn get_initializer(&self) -> SolverInitializer {
         let (vertices, edges) = self.immutable_vertices_edges();
-        let vertex_num = vertices.len();
+        let vertex_num = vertices.len() as VertexIndex;
         let mut weighted_edges = Vec::with_capacity(edges.len());
         for edge in edges.iter() {
             weighted_edges.push((edge.vertices.0, edge.vertices.1, edge.half_weight * 2));
@@ -217,7 +217,7 @@ pub trait ExampleCode {
         let mut virtual_vertices = Vec::new();
         for (vertex_idx, vertex) in vertices.iter().enumerate() {
             if vertex.is_virtual {
-                virtual_vertices.push(vertex_idx);
+                virtual_vertices.push(vertex_idx as VertexIndex);
             }
         }
         SolverInitializer {
@@ -234,7 +234,7 @@ pub trait ExampleCode {
             vertex.is_syndrome = false;
         }
         for vertex_idx in syndrome_vertices.iter() {
-            let vertex = &mut vertices[*vertex_idx];
+            let vertex = &mut vertices[*vertex_idx as usize];
             vertex.is_syndrome = true;
         }
     }
@@ -246,7 +246,7 @@ pub trait ExampleCode {
             edge.is_erasure = false;
         }
         for edge_idx in erasures.iter() {
-            let edge = &mut edges[*edge_idx];
+            let edge = &mut edges[*edge_idx as usize];
             edge.is_erasure = true;
         }
     }
@@ -263,7 +263,7 @@ pub trait ExampleCode {
         let mut syndrome = Vec::new();
         for (vertex_idx, vertex) in vertices.iter().enumerate() {
             if vertex.is_syndrome {
-                syndrome.push(vertex_idx);
+                syndrome.push(vertex_idx as VertexIndex);
             }
         }
         syndrome
@@ -275,7 +275,7 @@ pub trait ExampleCode {
         let mut erasures = Vec::new();
         for (edge_idx, edge) in edges.iter().enumerate() {
             if edge.is_erasure {
-                erasures.push(edge_idx);
+                erasures.push(edge_idx as EdgeIndex);
             }
         }
         erasures
@@ -303,11 +303,11 @@ pub trait ExampleCode {
             };
             if rng.next_f64() < p {
                 let (v1, v2) = edge.vertices;
-                let vertex_1 = &mut vertices[v1];
+                let vertex_1 = &mut vertices[v1 as usize];
                 if !vertex_1.is_virtual {
                     vertex_1.is_syndrome = !vertex_1.is_syndrome;
                 }
-                let vertex_2 = &mut vertices[v2];
+                let vertex_2 = &mut vertices[v2 as usize];
                 if !vertex_2.is_virtual {
                     vertex_2.is_syndrome = !vertex_2.is_syndrome;
                 }
@@ -333,11 +333,11 @@ pub trait ExampleCode {
         let old_to_new = build_old_to_new(sequential_vertices);
         // change the vertices numbering
         *vertices = (0..vertices.len()).map(|new_index| {
-            vertices[sequential_vertices[new_index]].clone()
+            vertices[sequential_vertices[new_index] as usize].clone()
         }).collect();
         for edge in edges.iter_mut() {
             let (old_left, old_right) = edge.vertices;
-            edge.vertices = (old_to_new[old_left].unwrap(), old_to_new[old_right].unwrap());
+            edge.vertices = (old_to_new[old_left as usize].unwrap(), old_to_new[old_right as usize].unwrap());
         }
     }
 
@@ -350,7 +350,7 @@ macro_rules! bind_trait_example_code {
         impl $struct_name {
             fn __repr__(&self) -> String { format!("{:?}", self) }
             #[pyo3(name = "vertex_num")]
-            fn trait_vertex_num(&self) -> usize { self.vertex_num() }
+            fn trait_vertex_num(&self) -> VertexNum { self.vertex_num() }
             #[pyo3(name = "compute_weights")]
             fn trait_compute_weights(&mut self, max_half_weight: Weight) { self.compute_weights(max_half_weight) }
             #[pyo3(name = "sanity_check")]
@@ -360,7 +360,7 @@ macro_rules! bind_trait_example_code {
             #[pyo3(name = "set_erasure_probability")]
             fn trait_set_erasure_probability(&mut self, p: f64) { self.set_erasure_probability(p) }
             #[pyo3(name = "fill_vertices")]
-            fn trait_fill_vertices(&mut self, vertex_num: usize) { self.fill_vertices(vertex_num) }
+            fn trait_fill_vertices(&mut self, vertex_num: VertexNum) { self.fill_vertices(vertex_num) }
             #[pyo3(name = "get_positions")]
             fn trait_get_positions(&self) -> Vec<VisualizePosition> { self.get_positions() }
             #[pyo3(name = "get_initializer")]
@@ -445,7 +445,7 @@ impl CodeCapacityRepetitionCode {
 
     #[cfg_attr(feature = "python_binding", new)]
     #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
-    pub fn new(d: usize, p: f64, max_half_weight: Weight) -> Self {
+    pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
         code.compute_weights(max_half_weight);
@@ -453,7 +453,7 @@ impl CodeCapacityRepetitionCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    pub fn create_code(d: usize) -> Self {
+    pub fn create_code(d: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let vertex_num = (d - 1) + 2;  // two virtual vertices at left and right
         // create edges
@@ -468,8 +468,8 @@ impl CodeCapacityRepetitionCode {
         };
         // create vertices
         code.fill_vertices(vertex_num);
-        code.vertices[d-1].is_virtual = true;
-        code.vertices[d].is_virtual = true;
+        code.vertices[d as usize -1].is_virtual = true;
+        code.vertices[d as usize].is_virtual = true;
         let mut positions = Vec::new();
         for i in 0..d {
             positions.push(VisualizePosition::new(0., i as f64, 0.));
@@ -511,7 +511,7 @@ impl CodeCapacityPlanarCode {
 
     #[cfg_attr(feature = "python_binding", new)]
     #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
-    pub fn new(d: usize, p: f64, max_half_weight: Weight) -> Self {
+    pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
         code.compute_weights(max_half_weight);
@@ -519,7 +519,7 @@ impl CodeCapacityPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    pub fn create_code(d: usize) -> Self {
+    pub fn create_code(d: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
         let vertex_num = row_vertex_num * d;  // `d` rows
@@ -545,8 +545,8 @@ impl CodeCapacityPlanarCode {
         code.fill_vertices(vertex_num);
         for row in 0..d {
             let bias = row * row_vertex_num;
-            code.vertices[bias + d - 1].is_virtual = true;
-            code.vertices[bias + d].is_virtual = true;
+            code.vertices[(bias + d - 1) as usize].is_virtual = true;
+            code.vertices[(bias + d) as usize].is_virtual = true;
         }
         let mut positions = Vec::new();
         for row in 0..d {
@@ -592,7 +592,7 @@ impl PhenomenologicalPlanarCode {
 
     #[cfg_attr(feature = "python_binding", new)]
     #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
-    pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
+    pub fn new(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
         code.compute_weights(max_half_weight);
@@ -600,7 +600,7 @@ impl PhenomenologicalPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    pub fn create_code(d: usize, noisy_measurements: usize) -> Self {
+    pub fn create_code(d: VertexNum, noisy_measurements: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
         let t_vertex_num = row_vertex_num * d;  // `d` rows
@@ -642,8 +642,8 @@ impl PhenomenologicalPlanarCode {
             let t_bias = t * t_vertex_num;
             for row in 0..d {
                 let bias = t_bias + row * row_vertex_num;
-                code.vertices[bias + d - 1].is_virtual = true;
-                code.vertices[bias + d].is_virtual = true;
+                code.vertices[(bias + d - 1) as usize].is_virtual = true;
+                code.vertices[(bias + d) as usize].is_virtual = true;
             }
         }
         let mut positions = Vec::new();
@@ -694,20 +694,20 @@ impl CircuitLevelPlanarCode {
     /// by default diagonal edge has error rate p/3 to mimic the behavior of unequal weights
     #[cfg_attr(feature = "python_binding", new)]
     #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
-    pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
+    pub fn new(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         Self::new_diagonal(d, noisy_measurements, p, max_half_weight, p/3.)
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    pub fn new_diagonal(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight, diagonal_p: f64) -> Self {
+    pub fn new_diagonal(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight, diagonal_p: f64) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
         if diagonal_p != p {
             let (vertices, edges) = code.vertices_edges();
             for edge in edges.iter_mut() {
                 let (v1, v2) = edge.vertices;
-                let v1p = &vertices[v1].position;
-                let v2p = &vertices[v2].position;
+                let v1p = &vertices[v1 as usize].position;
+                let v2p = &vertices[v2 as usize].position;
                 let manhattan_distance = (v1p.i - v2p.i).abs() + (v1p.j - v2p.j).abs() + (v1p.t - v2p.t).abs();
                 if manhattan_distance > 1. {
                     edge.p = diagonal_p;
@@ -719,7 +719,7 @@ impl CircuitLevelPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    pub fn create_code(d: usize, noisy_measurements: usize) -> Self {
+    pub fn create_code(d: VertexNum, noisy_measurements: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
         let t_vertex_num = row_vertex_num * d;  // `d` rows
@@ -752,8 +752,8 @@ impl CircuitLevelPlanarCode {
                             let new_row = row as isize + di;  // row corresponds to `i`
                             let new_i = i as isize + dj;  // i corresponds to `j`
                             if new_row >= 0 && new_i >= 0 && new_row < d as isize && new_i < (d-1) as isize {
-                                let new_bias = t_bias + (new_row as usize) * row_vertex_num + t_vertex_num;
-                                edges.push(CodeEdge::new(bias + i, new_bias + new_i as usize));
+                                let new_bias = t_bias + (new_row as VertexNum) * row_vertex_num + t_vertex_num;
+                                edges.push(CodeEdge::new(bias + i, new_bias + new_i as VertexNum));
                             }
                         }
                     }
@@ -770,8 +770,8 @@ impl CircuitLevelPlanarCode {
             let t_bias = t * t_vertex_num;
             for row in 0..d {
                 let bias = t_bias + row * row_vertex_num;
-                code.vertices[bias + d - 1].is_virtual = true;
-                code.vertices[bias + d].is_virtual = true;
+                code.vertices[(bias + d - 1) as usize].is_virtual = true;
+                code.vertices[(bias + d) as usize].is_virtual = true;
             }
         }
         let mut positions = Vec::new();
@@ -859,9 +859,9 @@ impl ErrorPatternReader {
         }
         let initializer = initializer.expect("initializer not present in file");
         let positions = positions.expect("positions not present in file");
-        assert_eq!(positions.len(), initializer.vertex_num);
+        assert_eq!(positions.len(), initializer.vertex_num as usize);
         let mut code = Self {
-            vertices: Vec::with_capacity(initializer.vertex_num),
+            vertices: Vec::with_capacity(initializer.vertex_num as usize),
             edges: Vec::with_capacity(initializer.weighted_edges.len()),
             syndrome_patterns,
             syndrome_index: 0,
@@ -883,7 +883,7 @@ impl ErrorPatternReader {
             code.vertices[vertex_index].position = position;
         }
         for vertex_index in initializer.virtual_vertices {
-            code.vertices[vertex_index].is_virtual = true;
+            code.vertices[vertex_index as usize].is_virtual = true;
         }
         code
     }

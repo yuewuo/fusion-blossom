@@ -45,7 +45,7 @@ enum Commands {
     Benchmark {
         /// code distance
         #[clap(value_parser)]
-        d: usize,
+        d: VertexNum,
         /// physical error rate: the probability of each edge to 
         #[clap(value_parser)]
         p: f64,
@@ -54,7 +54,7 @@ enum Commands {
         pe: f64,
         /// rounds of noisy measurement, valid only when multiple rounds
         #[clap(short = 'n', long, default_value_t = 0)]
-        noisy_measurements: usize,
+        noisy_measurements: VertexNum,
         /// maximum half weight of edges
         #[clap(long, default_value_t = 500)]
         max_half_weight: Weight,
@@ -478,7 +478,7 @@ pub fn execute_in_cli<'a>(iter: impl Iterator<Item=&'a String> + Clone, print_co
 }
 
 impl ExampleCodeType {
-    fn build(&self, d: usize, p: f64, noisy_measurements: usize, max_half_weight: Weight, mut code_config: serde_json::Value) -> Box<dyn ExampleCode> {
+    fn build(&self, d: VertexNum, p: f64, noisy_measurements: VertexNum, max_half_weight: Weight, mut code_config: serde_json::Value) -> Box<dyn ExampleCode> {
         match self {
             Self::CodeCapacityRepetitionCode => {
                 assert_eq!(code_config, json!({}), "config not supported");
@@ -521,7 +521,7 @@ impl ExampleCodeType {
 }
 
 impl PartitionStrategy {
-    fn build(&self, code: &mut dyn ExampleCode, d: usize, noisy_measurements: usize, mut partition_config: serde_json::Value) -> (SolverInitializer, PartitionConfig) {
+    fn build(&self, code: &mut dyn ExampleCode, d: VertexNum, noisy_measurements: VertexNum, mut partition_config: serde_json::Value) -> (SolverInitializer, PartitionConfig) {
         use example_partition::*;
         let partition_config = match self {
             Self::None => {
@@ -618,9 +618,9 @@ impl ResultVerifier for VerifierBlossomV {
         // prepare modified weighted edges
         let mut edge_modifier = EdgeWeightModifier::new();
         for edge_index in syndrome_pattern.erasures.iter() {
-            let (vertex_idx_1, vertex_idx_2, original_weight) = &self.initializer.weighted_edges[*edge_index];
+            let (vertex_idx_1, vertex_idx_2, original_weight) = &self.initializer.weighted_edges[*edge_index as usize];
             edge_modifier.push_modified_edge(*edge_index, *original_weight);
-            self.initializer.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
+            self.initializer.weighted_edges[*edge_index as usize] = (*vertex_idx_1, *vertex_idx_2, 0);
         }
         // use blossom V to compute ground truth
         let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&self.initializer, &syndrome_pattern.syndrome_vertices);
@@ -644,8 +644,8 @@ impl ResultVerifier for VerifierBlossomV {
         // recover those weighted_edges
         while edge_modifier.has_modified_edges() {
             let (edge_index, original_weight) = edge_modifier.pop_modified_edge();
-            let (vertex_idx_1, vertex_idx_2, _) = &self.initializer.weighted_edges[edge_index];
-            self.initializer.weighted_edges[edge_index] = (*vertex_idx_1, *vertex_idx_2, original_weight);
+            let (vertex_idx_1, vertex_idx_2, _) = &self.initializer.weighted_edges[edge_index as usize];
+            self.initializer.weighted_edges[edge_index as usize] = (*vertex_idx_1, *vertex_idx_2, original_weight);
         }
         // also test subgraph builder
         self.subgraph_builder.clear();

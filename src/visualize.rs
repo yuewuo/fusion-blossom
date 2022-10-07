@@ -425,8 +425,8 @@ mod tests {
     #[test]
     fn visualize_paper_weighted_union_find_decoder() {  // cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
         let visualize_filename = format!("visualize_paper_weighted_union_find_decoder.json");
-        let d = 3usize;
-        let td = 4usize;
+        let d: VertexNum = 3;
+        let td: VertexNum = 4;
         let p = 0.2f64;
         let row_vertex_num = (d-1) + 2;  // two virtual vertices at left and right
         let t_vertex_num = row_vertex_num * d;  // `d` rows
@@ -435,7 +435,7 @@ mod tests {
         let half_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
         let weight = half_weight * 2;  // to make sure weight is even number for ease of this test function
         let weighted_edges = {
-            let mut weighted_edges: Vec<(usize, usize, Weight)> = Vec::new();
+            let mut weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)> = Vec::new();
             for is_z in [true, false] {
                 for t in 0..td {
                     let t_bias = t * t_vertex_num + if is_z { 0 } else { half_vertex_num };
@@ -468,8 +468,8 @@ mod tests {
                                     let new_row = row as isize + di;  // row corresponds to `i`
                                     let new_i = i as isize + dj;  // i corresponds to `j`
                                     if new_row >= 0 && new_i >= 0 && new_row < d as isize && new_i < (d-1) as isize {
-                                        let new_bias = t_bias + (new_row as usize) * row_vertex_num + t_vertex_num;
-                                        weighted_edges.push((bias + i, new_bias + new_i as usize, weight));
+                                        let new_bias = t_bias + (new_row as VertexNum) * row_vertex_num + t_vertex_num;
+                                        weighted_edges.push((bias + i, new_bias + new_i as VertexNum, weight));
                                     }
                                 }
                             }

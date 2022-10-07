@@ -60,8 +60,8 @@ pub trait PrimalModuleImpl {
         let interface = interface_ptr.read_recursive();
         debug_assert!(interface.parent.is_none(), "cannot load an interface that is already fused");
         debug_assert!(interface.children.is_none(), "please customize load function if interface is fused");
-        for index in 0..interface.nodes_length {
-            let node = &interface.nodes[index];
+        for index in 0..interface.nodes_length as NodeIndex {
+            let node = &interface.nodes[index as usize];
             debug_assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
             let node_ptr = node.as_ref().unwrap();
             let node = node_ptr.read_recursive();
@@ -263,8 +263,8 @@ impl PerfectMatching {
     }
 
     /// this interface is not very optimized, but is compatible with blossom V algorithm's result
-    pub fn legacy_get_mwpm_result(&self, syndrome_vertices: Vec<usize>) -> Vec<usize> {
-        let mut peer_matching_maps = BTreeMap::<usize, usize>::new();
+    pub fn legacy_get_mwpm_result(&self, syndrome_vertices: Vec<VertexIndex>) -> Vec<SyndromeIndex> {
+        let mut peer_matching_maps = BTreeMap::<VertexIndex, VertexIndex>::new();
         for (ptr_1, ptr_2) in self.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
@@ -277,7 +277,7 @@ impl PerfectMatching {
             peer_matching_maps.insert(a_vid, b_vid);
             peer_matching_maps.insert(b_vid, a_vid);
         }
-        let mut virtual_matching_maps = BTreeMap::<usize, usize>::new();
+        let mut virtual_matching_maps = BTreeMap::<VertexIndex, VertexIndex>::new();
         for (ptr, virtual_vertex) in self.virtual_matchings.iter() {
             let a_vid = {
                 let node = ptr.read_recursive();
@@ -319,7 +319,7 @@ impl PerfectMatching {
 #[derive(Debug, Clone)]
 pub struct SubGraphBuilder {
     /// number of vertices
-    pub vertex_num: usize,
+    pub vertex_num: VertexNum,
     /// mapping from vertex pair to edge index
     vertex_pair_edges: HashMap<(VertexIndex, VertexIndex), EdgeIndex>,
     /// an instance of complete graph to compute minimum-weight path between any pair of vertices
@@ -334,7 +334,7 @@ impl SubGraphBuilder {
         let mut vertex_pair_edges = HashMap::with_capacity(initializer.weighted_edges.len());
         for (edge_index, (i, j, _)) in initializer.weighted_edges.iter().enumerate() {
             let id = if i < j { (*i, *j) } else { (*j, *i) };
-            vertex_pair_edges.insert(id, edge_index);
+            vertex_pair_edges.insert(id, edge_index as EdgeIndex);
         }
         Self {
             vertex_num: initializer.vertex_num,
@@ -397,7 +397,7 @@ impl SubGraphBuilder {
     pub fn total_weight(&self) -> Weight {
         let mut weight = 0;
         for edge_index in self.subgraph.iter() {
-            weight += self.complete_graph.weighted_edges[*edge_index].2;
+            weight += self.complete_graph.weighted_edges[*edge_index as usize].2;
         }
         weight
     }

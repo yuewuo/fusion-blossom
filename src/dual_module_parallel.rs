@@ -132,7 +132,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         let mut contained_vertices_vec: Vec<BTreeSet<VertexIndex>> = vec![];  // all vertices maintained by each unit
         let mut is_vertex_virtual: Vec<_> = (0..initializer.vertex_num).map(|_| false).collect();
         for virtual_vertex in initializer.virtual_vertices.iter() {
-            is_vertex_virtual[*virtual_vertex] = true;
+            is_vertex_virtual[*virtual_vertex as usize] = true;
         }
         let partition_units: Vec<PartitionUnitPtr> = (0..unit_count).map(|unit_index| PartitionUnitPtr::new_value(PartitionUnit {
             unit_index,
@@ -151,14 +151,14 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                 if config.edges_in_fusion_unit {
                     for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
                         let mut is_incident = false;
-                        for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
+                        for (peer_index, _) in complete_graph.vertices[vertex_index as usize].edges.iter() {
                             if owning_range.contains(*peer_index) {
                                 is_incident = true;
                                 break
                             }
                         }
                         if is_incident {
-                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
+                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index as usize]));
                             contained_vertices.insert(vertex_index);
                         }
                     }
@@ -166,7 +166,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                     // first check if there EXISTS any vertex that's adjacent of it's contains vertex
                     let mut has_incident = false;
                     for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
-                        for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
+                        for (peer_index, _) in complete_graph.vertices[vertex_index as usize].edges.iter() {
                             if contained_vertices.contains(peer_index) {  // important diff: as long as it has an edge with contained vertex, add it
                                 has_incident = true;
                                 break
@@ -179,7 +179,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                     if has_incident {
                         // add all vertices as mirrored
                         for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
-                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index]));
+                            mirror_vertices.push((vertex_index, is_vertex_virtual[vertex_index as usize]));
                             contained_vertices.insert(vertex_index);
                         }
                     }
@@ -198,7 +198,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                 owning_interface: if unit_index < partition_info.config.partitions.len() { None } else { Some(partition_units[unit_index].downgrade()) },
                 weighted_edges: vec![],  // to be filled later
                 interfaces,
-                virtual_vertices: owning_range.iter().filter(|vertex_index| is_vertex_virtual[*vertex_index]).collect(),
+                virtual_vertices: owning_range.iter().filter(|vertex_index| is_vertex_virtual[*vertex_index as usize]).collect(),
             }  // note that all fields can be modified later
         }).collect();
         // assign each edge to its unique partition
@@ -206,8 +206,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
             assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
             assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
-            let i_unit_index = partition_info.vertex_to_owning_unit[i];
-            let j_unit_index = partition_info.vertex_to_owning_unit[j];
+            let i_unit_index = partition_info.vertex_to_owning_unit[i as usize];
+            let j_unit_index = partition_info.vertex_to_owning_unit[j as usize];
             // either left is ancestor of right or right is ancestor of left, otherwise the edge is invalid (because crossing two independent partitions)
             let is_i_ancestor = partition_info.units[i_unit_index].descendants.contains(&j_unit_index);
             let is_j_ancestor = partition_info.units[j_unit_index].descendants.contains(&i_unit_index);
@@ -217,12 +217,12 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             let descendant_unit_index = if is_i_ancestor { j_unit_index } else { i_unit_index };
             if config.edges_in_fusion_unit {
                 // the edge should be added to the descendant, and it's guaranteed that the descendant unit contains (although not necessarily owned) the vertex
-                partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
+                partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index as EdgeIndex));
             } else {
                 // add edge to every unit from the descendant (including) and the ancestor (excluding) who mirrored the vertex
                 if ancestor_unit_index < partition_info.config.partitions.len() {
                     // leaf unit holds every unit
-                    partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index));
+                    partitioned_initializers[descendant_unit_index].weighted_edges.push((i, j, weight, edge_index as EdgeIndex));
                 } else {
                     // iterate every leaf unit of the `descendant_unit_index` to see if adding the edge or not
                     struct DfsInfo<'a> {
@@ -236,7 +236,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                     }
                     let dfs_info = DfsInfo {
                         partition_config: &partition_info.config, partition_info: &partition_info
-                        , i, j, weight, contained_vertices_vec: &contained_vertices_vec, edge_index,
+                        , i, j, weight, contained_vertices_vec: &contained_vertices_vec, edge_index: edge_index as EdgeIndex,
                     };
                     fn dfs_add(unit_index: usize, dfs_info: &DfsInfo, partitioned_initializers: &mut Vec<PartitionedSolverInitializer>) {
                         if unit_index >= dfs_info.partition_config.partitions.len() {
@@ -317,7 +317,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
     pub fn find_active_ancestor_option(&self, dual_node_ptr: &DualNodePtr) -> Option<DualModuleParallelUnitPtr<SerialModule>> {
         // find the first active ancestor unit that should handle this dual node
         let representative_vertex = dual_node_ptr.get_representative_vertex();
-        let owning_unit_index = self.partition_info.vertex_to_owning_unit[representative_vertex];
+        let owning_unit_index = self.partition_info.vertex_to_owning_unit[representative_vertex as usize];
         let mut owning_unit_ptr = self.units[owning_unit_index].clone();
         loop {
             let owning_unit = owning_unit_ptr.read_recursive();
@@ -1234,7 +1234,7 @@ pub mod tests {
         })()));
     }
 
-    fn dual_module_parallel_debug_repetition_code_common(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    fn dual_module_parallel_debug_repetition_code_common(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
         let split_vertical = (d + 1) / 2;
         dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(d, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |initializer, config| {
@@ -1305,7 +1305,7 @@ pub mod tests {
         dual_module_parallel_debug_repetition_code_common(15, visualize_filename, syndrome_vertices, 7);
     }
 
-    fn dual_module_parallel_debug_planar_code_common(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    fn dual_module_parallel_debug_planar_code_common(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
         let split_horizontal = (d + 1) / 2;
         let row_count = d + 1;

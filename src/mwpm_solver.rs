@@ -86,11 +86,11 @@ impl LegacySolverSerial {
     }
 
     /// solve the minimum weight perfect matching (legacy API, the same output as the blossom V library)
-    pub fn solve_legacy(&mut self, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
+    pub fn solve_legacy(&mut self, syndrome_pattern: &SyndromePattern) -> Vec<VertexIndex> {
         self.solve_legacy_visualizer(syndrome_pattern, None)
     }
 
-    pub fn solve_legacy_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+    pub fn solve_legacy_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<VertexIndex> {
         self.primal_module.clear();
         self.dual_module.clear();
         self.interface_ptr.clear();
@@ -104,11 +104,11 @@ impl LegacySolverSerial {
 // static functions, not recommended because it doesn't reuse the data structure of dual module
 impl LegacySolverSerial {
 
-    pub fn mwpm_solve(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
+    pub fn mwpm_solve(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<VertexIndex> {
         Self::mwpm_solve_visualizer(initializer, syndrome_pattern, None)
     }
 
-    pub fn mwpm_solve_visualizer(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<usize> {
+    pub fn mwpm_solve_visualizer(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) -> Vec<VertexIndex> {
         let mut solver = Self::new(initializer);
         solver.solve_legacy_visualizer(syndrome_pattern, visualizer)
     }

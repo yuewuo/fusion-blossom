@@ -62,10 +62,10 @@ fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
 }
 
 /// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`mwpm_solver::SolverSerial`] object)
-pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<usize> {
+pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<VertexIndex> {
     // sanity check
     assert!(initializer.vertex_num > 1, "at least one vertex required");
-    let max_safe_weight = ((Weight::MAX as usize) / initializer.vertex_num) as Weight;
+    let max_safe_weight = ((Weight::MAX as usize) / initializer.vertex_num as usize) as Weight;
     for (i, j, weight) in initializer.weighted_edges.iter() {
         if weight > &max_safe_weight {
             panic!("edge {}-{} has weight {} > max safe weight {}, it may cause fusion blossom to overflow", i, j, weight, max_safe_weight);
@@ -76,14 +76,14 @@ pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromeP
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)
-pub fn blossom_v_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+pub fn blossom_v_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
     // this feature will be automatically enabled if you install blossom V source code, see README.md for more information
     if cfg!(not(feature = "blossom_v")) {
         panic!("need blossom V library, see README.md")
     }
     // sanity check
     assert!(initializer.vertex_num > 1, "at least one vertex required");
-    let max_safe_weight = ((i32::MAX as usize) / initializer.vertex_num) as Weight;
+    let max_safe_weight = ((i32::MAX as usize) / initializer.vertex_num as usize) as Weight;
     for (i, j, weight) in initializer.weighted_edges.iter() {
         if weight > &max_safe_weight {
             panic!("edge {}-{} has weight {} > max safe weight {}, it may cause blossom V library to overflow", i, j, weight, max_safe_weight);
@@ -93,33 +93,33 @@ pub fn blossom_v_mwpm(initializer: &SolverInitializer, syndrome_vertices: &Vec<u
     blossom_v_mwpm_reuse(&mut complete_graph, initializer, syndrome_vertices)
 }
 
-pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &SolverInitializer, syndrome_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
     // first collect virtual vertices and real vertices
     let mut is_virtual: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     let mut is_syndrome: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &virtual_vertex in initializer.virtual_vertices.iter() {
         assert!(virtual_vertex < initializer.vertex_num, "invalid input");
-        assert!(!is_virtual[virtual_vertex], "same virtual vertex appears twice");
-        is_virtual[virtual_vertex] = true;
+        assert!(!is_virtual[virtual_vertex as usize], "same virtual vertex appears twice");
+        is_virtual[virtual_vertex as usize] = true;
     }
     let mut mapping_to_syndrome_vertices: Vec<usize> = (0..initializer.vertex_num).map(|_| usize::MAX).collect();
     for (i, &syndrome_vertex) in syndrome_vertices.iter().enumerate() {
         assert!(syndrome_vertex < initializer.vertex_num, "invalid input");
-        assert!(!is_virtual[syndrome_vertex], "syndrome vertex cannot be virtual");
-        assert!(!is_syndrome[syndrome_vertex], "same syndrome vertex appears twice");
-        is_syndrome[syndrome_vertex] = true;
-        mapping_to_syndrome_vertices[syndrome_vertex] = i;
+        assert!(!is_virtual[syndrome_vertex as usize], "syndrome vertex cannot be virtual");
+        assert!(!is_syndrome[syndrome_vertex as usize], "same syndrome vertex appears twice");
+        is_syndrome[syndrome_vertex as usize] = true;
+        mapping_to_syndrome_vertices[syndrome_vertex as usize] = i;
     }
     // for each real vertex, add a corresponding virtual vertex to be matched
     let syndrome_num = syndrome_vertices.len();
     let legacy_vertex_num = syndrome_num * 2;
     let mut legacy_weighted_edges = Vec::<(usize, usize, u32)>::new();
-    let mut boundaries = Vec::<Option<(usize, Weight)>>::new();
+    let mut boundaries = Vec::<Option<(VertexIndex, Weight)>>::new();
     for (i, &syndrome_vertex) in syndrome_vertices.iter().enumerate() {
         let complete_graph_edges = complete_graph.all_edges(syndrome_vertex);
-        let mut boundary: Option<(usize, Weight)> = None;
+        let mut boundary: Option<(VertexIndex, Weight)> = None;
         for (&peer, &(_, weight)) in complete_graph_edges.iter() {
-            if is_virtual[peer] && (boundary.is_none() || weight < boundary.as_ref().unwrap().1) {
+            if is_virtual[peer as usize] && (boundary.is_none() || weight < boundary.as_ref().unwrap().1) {
                 boundary = Some((peer, weight));
             }
         }
@@ -129,8 +129,8 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
         }
         boundaries.push(boundary);  // save for later resolve legacy matchings
         for (&peer, &(_, weight)) in complete_graph_edges.iter() {
-            if is_syndrome[peer] {
-                let j = mapping_to_syndrome_vertices[peer];
+            if is_syndrome[peer as usize] {
+                let j = mapping_to_syndrome_vertices[peer as usize];
                 if i < j {  // remove duplicated edges
                     legacy_weighted_edges.push((i, j, weight as u32));
                     // println!{"edge {} {} {} ", i, j, weight};
@@ -163,23 +163,23 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
 #[derive(Debug, Clone)]
 pub struct DetailedMatching {
     /// must be a real vertex
-    pub a: usize,
+    pub a: SyndromeIndex,
     /// might be a virtual vertex, but if it's a real vertex, then b > a stands
-    pub b: usize,
+    pub b: SyndromeIndex,
     /// every vertex in between this pair, in the order `a -> path[0].0 -> path[1].0 -> .... -> path[-1].0` and it's guaranteed that path[-1].0 = b; might be empty if a and b are adjacent
-    pub path: Vec<(usize, Weight)>,
+    pub path: Vec<(SyndromeIndex, Weight)>,
     /// the overall weight of this path
     pub weight: Weight,
 }
 
 /// compute detailed matching information, note that the output will not include duplicated matched pairs
-pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Vec<usize>, mwpm_result: &Vec<usize>) -> Vec<DetailedMatching> {
+pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Vec<SyndromeIndex>, mwpm_result: &Vec<SyndromeIndex>) -> Vec<DetailedMatching> {
     let syndrome_num = syndrome_vertices.len();
     let mut is_syndrome: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &syndrome_vertex in syndrome_vertices.iter() {
         assert!(syndrome_vertex < initializer.vertex_num, "invalid input");
-        assert!(!is_syndrome[syndrome_vertex], "same syndrome vertex appears twice");
-        is_syndrome[syndrome_vertex] = true;
+        assert!(!is_syndrome[syndrome_vertex as usize], "same syndrome vertex appears twice");
+        is_syndrome[syndrome_vertex as usize] = true;
     }
     assert_eq!(syndrome_num, mwpm_result.len(), "invalid mwpm result");
     let mut complete_graph = complete_graph::CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);
@@ -187,7 +187,7 @@ pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Ve
     for i in 0..syndrome_num {
         let a = syndrome_vertices[i];
         let b = mwpm_result[i];
-        if !is_syndrome[b] || a < b {
+        if !is_syndrome[b as usize] || a < b {
             let (path, weight) = complete_graph.get_path(a, b);
             let detail = DetailedMatching {
                 a,

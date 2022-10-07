@@ -34,7 +34,7 @@ pub struct PrimalModuleSerial {
     pub index_bias: NodeIndex,
     /// the two children of this serial module, when fused; following the length of this child,
     /// given that fused children serial modules will not have new nodes anymore
-    pub children: Option<((PrimalModuleSerialWeak, NodeIndex), (PrimalModuleSerialWeak, NodeIndex))>,
+    pub children: Option<((PrimalModuleSerialWeak, NodeNum), (PrimalModuleSerialWeak, NodeNum))>,
 }
 
 pub type PrimalModuleSerialPtr = ArcManualSafeLock<PrimalModuleSerial>;
@@ -845,8 +845,8 @@ impl FusionVisualizer for PrimalModuleSerialPtr {
 impl PrimalModuleSerial {
 
     /// return the count of all nodes including those of the children interfaces
-    pub fn nodes_count(&self) -> NodeIndex {
-        let mut count = self.nodes_length;
+    pub fn nodes_count(&self) -> NodeNum {
+        let mut count = self.nodes_length as NodeNum;
         if let Some(((_, left_count), (_, right_count))) = &self.children {
             count += left_count + right_count;
         }
@@ -867,7 +867,7 @@ impl PrimalModuleSerial {
             }
             bias = left_count + right_count;
         }
-        self.nodes[relative_node_index - bias].clone()
+        self.nodes[(relative_node_index - bias) as usize].clone()
     }
 
     /// set the corresponding node index to None
@@ -886,7 +886,7 @@ impl PrimalModuleSerial {
             }
             bias = left_count + right_count;
         }
-        self.nodes[relative_node_index - bias] = None;
+        self.nodes[(relative_node_index - bias) as usize] = None;
     }
 
 }
@@ -1087,7 +1087,7 @@ impl PrimalModuleSerialPtr {
             }
             flattened_nodes.push(primal_node_internal_ptr.clone());
         }
-        debug_assert_eq!(flattened_nodes.len() - flattened_nodes_length, module.nodes_count());
+        debug_assert_eq!(flattened_nodes.len() - flattened_nodes_length, module.nodes_count() as usize);
     }
 
     /// fuse two modules by copying the nodes in `other` into myself
@@ -1097,9 +1097,9 @@ impl PrimalModuleSerialPtr {
         for other in [left, right] {
             let mut other_module = other.write();
             other_module.is_fusion = true;  // enable pointer update
-            let bias = module.nodes_length;
-            for other_node_index in 0..other_module.nodes_length {
-                let node_ptr = &other_module.nodes[other_node_index];
+            let bias = module.nodes_length as NodeIndex;
+            for other_node_index in 0..other_module.nodes_length as NodeIndex {
+                let node_ptr = &other_module.nodes[other_node_index as usize];
                 if let Some(node_ptr) = node_ptr {
                     let mut node = node_ptr.write();
                     debug_assert_eq!(node.index, other_node_index);
@@ -1109,7 +1109,7 @@ impl PrimalModuleSerialPtr {
                 if module.nodes.len() < module.nodes_length {
                     module.nodes.push(None);
                 }
-                module.nodes[bias + other_node_index] = node_ptr.clone();
+                module.nodes[(bias + other_node_index) as usize] = node_ptr.clone();
             }
             // copy `possible_break`
             for node_index in other_module.possible_break.iter() {
@@ -1155,7 +1155,7 @@ impl PrimalModuleSerialPtr {
         for (index, primal_module_internal_ptr) in flattened_nodes.iter().enumerate() {
             if let Some(primal_module_internal_ptr) = primal_module_internal_ptr {
                 let primal_module_internal = primal_module_internal_ptr.read_recursive();
-                if primal_module_internal.index != index { return Err(format!("primal node index wrong: expected {}, actual {}", index, primal_module_internal.index)) }
+                if primal_module_internal.index != index as NodeIndex { return Err(format!("primal node index wrong: expected {}, actual {}", index, primal_module_internal.index)) }
                 let origin_ptr = primal_module_internal.origin.upgrade_force();
                 let origin_node = origin_ptr.read_recursive();
                 if origin_node.index != primal_module_internal.index { return Err(format!("origin index wrong: expected {}, actual {}", index, origin_node.index)) }
@@ -1284,7 +1284,7 @@ pub mod tests {
     use super::super::dual_module_serial::*;
     use super::super::*;
 
-    pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: usize, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+    pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: VertexNum, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
             -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
         println!("{syndrome_vertices:?}");
         let half_weight = 500;
@@ -1311,7 +1311,7 @@ pub mod tests {
         (interface_ptr, primal_module, dual_module)
     }
 
-    pub fn primal_module_serial_basic_standard_syndrome(d: usize, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+    pub fn primal_module_serial_basic_standard_syndrome(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
             -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
         primal_module_serial_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
     }

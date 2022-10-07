@@ -669,8 +669,8 @@ impl FusionVisualizer for DualModuleInterfacePtr {
 impl DualModuleInterface {
 
     /// return the count of all nodes including those of the children interfaces
-    pub fn nodes_count(&self) -> NodeIndex {
-        let mut count = self.nodes_length;
+    pub fn nodes_count(&self) -> NodeNum {
+        let mut count = self.nodes_length as NodeNum;
         if let Some(((_, left_count), (_, right_count))) = &self.children {
             count += left_count + right_count;
         }
@@ -691,7 +691,7 @@ impl DualModuleInterface {
             }
             bias = left_count + right_count;
         }
-        self.nodes[relative_node_index - bias].clone()
+        self.nodes[(relative_node_index - bias) as usize].clone()
     }
 
     /// set the corresponding node index to None
@@ -710,7 +710,7 @@ impl DualModuleInterface {
             }
             bias = left_count + right_count;
         }
-        self.nodes[relative_node_index - bias] = None;
+        self.nodes[(relative_node_index - bias) as usize] = None;
     }
 
 }
@@ -768,7 +768,7 @@ impl DualModuleInterfacePtr {
     /// DFS flatten the nodes
     pub fn flatten_nodes(&self, flattened_nodes: &mut Vec<Option<DualNodePtr>>) {
         let interface = self.read_recursive();
-        let flattened_nodes_length = flattened_nodes.len();
+        let flattened_nodes_length = flattened_nodes.len() as NodeNum;
         // the order matters: left -> right -> myself
         if let Some(((left_child_weak, _), (right_child_weak, _))) = &interface.children {
             left_child_weak.upgrade_force().flatten_nodes(flattened_nodes);
@@ -781,7 +781,7 @@ impl DualModuleInterfacePtr {
             }
             flattened_nodes.push(dual_node_ptr.clone());
         }
-        debug_assert_eq!(flattened_nodes.len() - flattened_nodes_length, interface.nodes_count());
+        debug_assert_eq!(flattened_nodes.len() as NodeNum - flattened_nodes_length, interface.nodes_count());
     }
 
     pub fn create_syndrome_node(&self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
@@ -1027,9 +1027,9 @@ impl DualModuleInterfacePtr {
         for other in [left, right] {
             let mut other_interface = other.write();
             other_interface.is_fusion = true;
-            let bias = interface.nodes_length;
-            for other_node_index in 0..other_interface.nodes_length {
-                let node_ptr = &other_interface.nodes[other_node_index];
+            let bias = interface.nodes_length as NodeNum;
+            for other_node_index in 0..other_interface.nodes_length as NodeNum {
+                let node_ptr = &other_interface.nodes[other_node_index as usize];
                 if let Some(node_ptr) = node_ptr {
                     let mut node = node_ptr.write();
                     debug_assert_eq!(node.index, other_node_index);
@@ -1040,7 +1040,7 @@ impl DualModuleInterfacePtr {
                 if interface.nodes.len() < interface.nodes_length {
                     interface.nodes.push(None);
                 }
-                interface.nodes[bias + other_node_index] = node_ptr.clone();
+                interface.nodes[(bias + other_node_index) as usize] = node_ptr.clone();
             }
             interface.sum_dual_variables += other_interface.sum_dual_variables;
             interface.sum_grow_speed += other_interface.sum_grow_speed;
@@ -1086,13 +1086,13 @@ impl DualModuleInterfacePtr {
             eprintln!("[warning] sanity check disabled for dual_module.rs");
             return Ok(flattened_nodes);
         }
-        let mut visited_syndrome = HashSet::with_capacity(interface.nodes_count() * 2);
+        let mut visited_syndrome = HashSet::with_capacity((interface.nodes_count() * 2) as usize);
         let mut sum_individual_dual_variable = 0;
         for (index, dual_node_ptr) in flattened_nodes.iter().enumerate() {
             if let Some(dual_node_ptr) = dual_node_ptr {
                 let dual_node = dual_node_ptr.read_recursive();
                 sum_individual_dual_variable += dual_node.get_dual_variable(&interface);
-                if dual_node.index != index { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
+                if dual_node.index != index as NodeIndex { return Err(format!("dual node index wrong: expected {}, actual {}", index, dual_node.index)) }
                 match &dual_node.class {
                     DualNodeClass::Blossom { nodes_circle, touching_children } => {
                         for (idx, circle_node_weak) in nodes_circle.iter().enumerate() {

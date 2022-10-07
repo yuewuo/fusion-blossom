@@ -23,17 +23,21 @@ cfg_if::cfg_if! {
 cfg_if::cfg_if! {
     if #[cfg(feature="u32_index")] {
         // use u32 to store index, for less memory usage
-        pub type VertexIndex = u32;  // the vertex index in the decoding graph
         pub type EdgeIndex = u32;
-        pub type NodeIndex = u32;
-        pub type SyndromeIndex = u32;
-        pub type VertexNodeIndex = u32;  // must be same as VertexIndex, NodeIndex, SyndromeIndex
+        pub type VertexIndex = u32;  // the vertex index in the decoding graph
+        pub type NodeIndex = VertexIndex;
+        pub type SyndromeIndex = VertexIndex;
+        pub type VertexNodeIndex = VertexIndex;  // must be same as VertexIndex, NodeIndex, SyndromeIndex
+        pub type VertexNum = VertexIndex;
+        pub type NodeNum = VertexIndex;
     } else {
-        pub type VertexIndex = usize;
         pub type EdgeIndex = usize;
-        pub type NodeIndex = usize;
-        pub type SyndromeIndex = usize;
-        pub type VertexNodeIndex = usize;  // must be same as VertexIndex, NodeIndex, SyndromeIndex
+        pub type VertexIndex = usize;
+        pub type NodeIndex = VertexIndex;
+        pub type SyndromeIndex = VertexIndex;
+        pub type VertexNodeIndex = VertexIndex;  // must be same as VertexIndex, NodeIndex, SyndromeIndex
+        pub type VertexNum = VertexIndex;
+        pub type NodeNum = VertexIndex;
     }
 }
 
@@ -43,7 +47,7 @@ cfg_if::cfg_if! {
 pub struct SolverInitializer {
     /// the number of vertices
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub vertex_num: VertexIndex,
+    pub vertex_num: VertexNum,
     /// weighted edges, where vertex indices are within the range [0, vertex_num)
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
@@ -100,7 +104,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
         a single range simply because the partition is vertex-based. need more consideration");
         Self {
             syndrome_pattern,
-            whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.syndrome_vertices.len()),
+            whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.syndrome_vertices.len() as SyndromeIndex),
         }
     }
 
@@ -135,7 +139,7 @@ impl IndexRange {
         self.range[1] == self.range[0]
     }
     pub fn len(&self) -> usize {
-        self.range[1] - self.range[0]
+        (self.range[1] - self.range[0]) as usize
     }
     pub fn start(&self) -> VertexNodeIndex {
         self.range[0]
@@ -219,7 +223,7 @@ impl std::fmt::Debug for PartitionUnitWeak {
 pub struct PartitionConfig {
     /// the number of vertices
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub vertex_num: usize,
+    pub vertex_num: VertexNum,
     /// detailed plan of partitioning serial modules: each serial module possesses a list of vertices, including all interface vertices
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub partitions: Vec<VertexRange>,
@@ -233,10 +237,10 @@ pub struct PartitionConfig {
 impl PartitionConfig {
 
     #[cfg_attr(feature = "python_binding", new)]
-    pub fn new(vertex_num: usize) -> Self {
+    pub fn new(vertex_num: VertexNum) -> Self {
         Self {
             vertex_num,
-            partitions: vec![VertexRange::new(0, vertex_num)],
+            partitions: vec![VertexRange::new(0, vertex_num as VertexIndex)],
             fusions: vec![],
         }
     }
@@ -250,7 +254,7 @@ impl PartitionConfig {
         let mut owning_ranges = vec![];
         for &partition in self.partitions.iter() {
             partition.sanity_check();
-            assert!(partition.end() <= self.vertex_num, "invalid vertex index {} in partitions", partition.end());
+            assert!(partition.end() <= self.vertex_num as VertexIndex, "invalid vertex index {} in partitions", partition.end());
             whole_ranges.push(partition);
             owning_ranges.push(partition);
         }
@@ -276,7 +280,8 @@ impl PartitionConfig {
         // check that the final node has the full range
         let last_unit_index = self.partitions.len() + self.fusions.len() - 1;
         assert!(whole_ranges[last_unit_index].start() == 0, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
-        assert!(whole_ranges[last_unit_index].end() == self.vertex_num, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
+        assert!(whole_ranges[last_unit_index].end() == self.vertex_num as VertexIndex
+            , "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
         // construct partition info
         let mut partition_unit_info: Vec<_> = (0..self.partitions.len() + self.fusions.len()).map(|i| {
             PartitionUnitInfo {
@@ -305,7 +310,7 @@ impl PartitionConfig {
         let mut vertex_to_owning_unit: Vec<_> = (0..self.vertex_num).map(|_| usize::MAX).collect();
         for (unit_index, unit_range) in partition_unit_info.iter().map(|x| x.owning_range).enumerate() {
             for vertex_index in unit_range.iter() {
-                vertex_to_owning_unit[vertex_index] = unit_index;
+                vertex_to_owning_unit[vertex_index as usize] = unit_index;
             }
         }
         PartitionInfo {
@@ -341,7 +346,7 @@ impl PartitionInfo {
     pub fn partition_syndrome_unordered(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
         let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| SyndromePattern::new_empty()).collect();
         for syndrome_vertex in syndrome_pattern.syndrome_vertices.iter() {
-            let unit_index = self.vertex_to_owning_unit[*syndrome_vertex];
+            let unit_index = self.vertex_to_owning_unit[*syndrome_vertex as usize];
             partitioned_syndrome[unit_index].syndrome_vertices.push(*syndrome_vertex);
         }
         // TODO: partition edges
@@ -363,7 +368,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
             let mut right_index = self.whole_syndrome_range.end();
             while left_index != right_index {
                 let mid_index = (left_index + right_index) / 2;
-                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index];
+                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index as usize];
                 if mid_syndrome_vertex < partition_unit_info.owning_range.start() {
                     left_index = mid_index + 1;
                 } else {
@@ -378,7 +383,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
             let mut right_index = self.whole_syndrome_range.end();
             while left_index != right_index {
                 let mid_index = (left_index + right_index) / 2;
-                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index];
+                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index as usize];
                 if mid_syndrome_vertex < partition_unit_info.owning_range.end() {
                     left_index = mid_index + 1;
                 } else {
@@ -402,7 +407,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
     pub fn expand(&self) -> SyndromePattern {
         let mut syndrome_vertices = Vec::with_capacity(self.whole_syndrome_range.len());
         for syndrome_index in self.whole_syndrome_range.iter() {
-            syndrome_vertices.push(self.syndrome_pattern.syndrome_vertices[syndrome_index]);
+            syndrome_vertices.push(self.syndrome_pattern.syndrome_vertices[syndrome_index as usize]);
         }
         SyndromePattern::new(syndrome_vertices, vec![])
     }
@@ -444,7 +449,7 @@ pub struct PartitionedSolverInitializer {
     /// unit index
     pub unit_index: usize,
     /// the number of all vertices (including those partitioned into other serial modules)
-    pub vertex_num: usize,
+    pub vertex_num: VertexNum,
     /// the number of all edges (including those partitioned into other serial modules)
     pub edge_num: usize,
     /// vertices exclusively owned by this partition; this part must be a continuous range
@@ -463,11 +468,11 @@ pub struct PartitionedSolverInitializer {
 }
 
 /// perform index transformation
-pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<usize>> {
-    let mut old_to_new: Vec<Option<usize>> = (0..reordered_vertices.len()).map(|_| None).collect();
+pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<VertexIndex>> {
+    let mut old_to_new: Vec<Option<VertexIndex>> = (0..reordered_vertices.len()).map(|_| None).collect();
     for (new_index, old_index) in reordered_vertices.iter().enumerate() {
-        assert_eq!(old_to_new[*old_index], None, "duplicate vertex found {}", old_index);
-        old_to_new[*old_index] = Some(new_index);
+        assert_eq!(old_to_new[*old_index as usize], None, "duplicate vertex found {}", old_index);
+        old_to_new[*old_index as usize] = Some(new_index as VertexIndex);
     }
     old_to_new
 }
@@ -476,7 +481,7 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<usi
 pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_syndrome_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
     old_syndrome_vertices.iter().map(|old_index| {
-        old_to_new[*old_index].unwrap()
+        old_to_new[*old_index as usize].unwrap()
     }).collect()
 }
 
@@ -484,7 +489,7 @@ pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, o
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SolverInitializer {
     #[cfg_attr(feature = "python_binding", new)]
-    pub fn new(vertex_num: VertexIndex, weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: Vec<VertexIndex>) -> SolverInitializer {
+    pub fn new(vertex_num: VertexNum, weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: Vec<VertexIndex>) -> SolverInitializer {
         SolverInitializer {
             vertex_num,
             weighted_edges,
@@ -522,13 +527,13 @@ pub struct BenchmarkProfiler {
     /// syndrome count
     pub sum_syndrome: usize,
     /// noisy measurement round
-    pub noisy_measurements: usize,
+    pub noisy_measurements: VertexNum,
     /// the file to output the profiler results
     pub benchmark_profiler_output: Option<File>,
 }
 
 impl BenchmarkProfiler {
-    pub fn new(noisy_measurements: usize, detail_log_file: Option<(String, &PartitionInfo)>) -> Self {
+    pub fn new(noisy_measurements: VertexNum, detail_log_file: Option<(String, &PartitionInfo)>) -> Self {
         let benchmark_profiler_output = detail_log_file.map(|(filename, partition_info)| {
             let mut file = File::create(filename).unwrap();
             file.write_all(serde_json::to_string(&partition_info.config).unwrap().as_bytes()).unwrap();
