@@ -34,15 +34,15 @@ Click the demo image below to view the corresponding demo
 
 #### Serial Execution
 
-<span style="width: 5%"></span>
-[<img src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
-<span style="width: 10%"></span>
-<div style="margin-left: 10%;">[<img  src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)</div>
-
+[<img src="./visualize/img/serial_simple.png" width="30%"/>](http://localhost:8066/?filename=primal_module_serial_basic_1.json)
+[<img src="./visualize/img/serial_example.png" width="30%"/>](http://localhost:8066/?filename=primal_module_serial_basic_10.json)
+[<img src="./visualize/img/serial_random.png" width="30%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
 
 #### Parallel Execution (Shown in Serial For Better Visual)
 
-
+[<img src="./visualize/img/parallel_simple.png" width="30%"/>](http://localhost:8066/?filename=primal_module_parallel_basic_3.json)
+[<img src="./visualize/img/parallel_phenomenological.png" width="30%"/>](http://localhost:8066/?filename=example_partition_demo_1.json)
+[<img src="./visualize/img/parallel_circuit_level.png" width="30%"/>](http://localhost:8066/?filename=example_partition_demo_2.json)
 
 ## Evaluation
 
