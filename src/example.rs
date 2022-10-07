@@ -444,6 +444,7 @@ bind_trait_example_code!{CodeCapacityRepetitionCode}
 impl CodeCapacityRepetitionCode {
 
     #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
     pub fn new(d: usize, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -509,6 +510,7 @@ bind_trait_example_code!{CodeCapacityPlanarCode}
 impl CodeCapacityPlanarCode {
 
     #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
     pub fn new(d: usize, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -589,6 +591,7 @@ bind_trait_example_code!{PhenomenologicalPlanarCode}
 impl PhenomenologicalPlanarCode {
 
     #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
     pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
@@ -690,6 +693,7 @@ impl CircuitLevelPlanarCode {
 
     /// by default diagonal edge has error rate p/3 to mimic the behavior of unequal weights
     #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
     pub fn new(d: usize, noisy_measurements: usize, p: f64, max_half_weight: Weight) -> Self {
         Self::new_diagonal(d, noisy_measurements, p, max_half_weight, p/3.)
     }

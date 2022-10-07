@@ -126,6 +126,9 @@ impl FusionVisualizer for SolverSerial {
 pub trait PrimalDualSolver {
     fn clear(&mut self);
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
+    fn solve(&mut self, syndrome_pattern: &SyndromePattern) {
+        self.solve_visualizer(syndrome_pattern, None)
+    }
     fn perfect_matching(&mut self) -> PerfectMatching;
     fn sum_dual_variables(&self) -> Weight;
     fn generate_profiler_report(&self) -> serde_json::Value;
@@ -141,6 +144,10 @@ macro_rules! bind_trait_primal_dual_solver {
             #[pyo3(name = "solve_visualizer")]
             fn trait_solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
                 self.solve_visualizer(syndrome_pattern, visualizer)
+            }
+            #[pyo3(name = "solve")]
+            fn trait_solve(&mut self, syndrome_pattern: &SyndromePattern) {
+                self.solve(syndrome_pattern)
             }
             #[pyo3(name = "perfect_matching")]
             fn trait_perfect_matching(&mut self) -> PerfectMatching { self.perfect_matching() }

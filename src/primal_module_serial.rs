@@ -1083,6 +1083,7 @@ impl PrimalModuleSerialPtr {
             let primal_node_internal_ptr = &module.nodes[node_index];
             if let Some(primal_node_internal_ptr) = primal_node_internal_ptr {
                 primal_node_internal_ptr.update();
+                primal_node_internal_ptr.read_recursive().origin.upgrade_force().update();
             }
             flattened_nodes.push(primal_node_internal_ptr.clone());
         }

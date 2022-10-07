@@ -235,12 +235,12 @@ impl Visualizer {
 
     /// create a new visualizer with target filename and node layout
     #[cfg_attr(feature = "python_binding", new)]
-    pub fn new(mut filename: Option<String>) -> std::io::Result<Self> {
+    pub fn new(mut filepath: Option<String>) -> std::io::Result<Self> {
         if cfg!(feature = "disable_visualizer") {
-            filename = None;  // do not open file
+            filepath = None;  // do not open file
         }
-        let file = match filename {
-            Some(filename) => Some(File::create(filename)?),
+        let file = match filepath {
+            Some(filepath) => Some(File::create(filepath)?),
             None => None,
         };
         Ok(Self {
