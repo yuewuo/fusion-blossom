@@ -30,6 +30,17 @@ We highly suggest you watch through several demos here to get a sense of how the
 
 For more details of why it finds an exact MWPM, please read our paper [coming soon 💪].
 
+Click the demo image below to view the corresponding demo
+
+#### Serial Execution
+
+[<img src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
+[<img style="margin-left: 10%;" src="./visualize/img/serial_random.png" width="40%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
+
+#### Parallel Execution (Shown in Serial For Better Visual)
+
+
+
 ## Evaluation
 
 We use Intel(R) Xeon(R) Platinum 8375C CPU for evaluation, with 64 physical cores and 128 threads. Note that Apple m1max CPU has roughly 2x single-core decoding speed, but it has limited number of cores so we do not use data from m1max. By default, we test phenomenological noise model with **$p$ = 0.005**, code distance **$d$ = 21**, planar code with $d(d-1)$ = 420 $Z$ stabilizers, 100000 measurement rounds.
