@@ -34,15 +34,55 @@ Click the demo image below to view the corresponding demo
 
 #### Serial Execution
 
-[<img src="./visualize/img/serial_simple.png" width="30%"/>](http://localhost:8066/?filename=primal_module_serial_basic_1.json)
-[<img src="./visualize/img/serial_example.png" width="30%"/>](http://localhost:8066/?filename=primal_module_serial_basic_10.json)
-[<img src="./visualize/img/serial_random.png" width="30%"/>](http://localhost:8066/?filename=primal_module_serial_basic_11.json)
+[<img src="./visualize/img/serial_simple.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_1.json)
+[<img src="./visualize/img/serial_example.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_10.json)
+[<img src="./visualize/img/serial_random.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_11.json)
 
 #### Parallel Execution (Shown in Serial For Better Visual)
 
-[<img src="./visualize/img/parallel_simple.png" width="30%"/>](http://localhost:8066/?filename=primal_module_parallel_basic_3.json)
-[<img src="./visualize/img/parallel_phenomenological.png" width="30%"/>](http://localhost:8066/?filename=example_partition_demo_1.json)
-[<img src="./visualize/img/parallel_circuit_level.png" width="30%"/>](http://localhost:8066/?filename=example_partition_demo_2.json)
+[<img src="./visualize/img/parallel_simple.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_parallel_basic_3.json)
+[<img src="./visualize/img/parallel_phenomenological.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=example_partition_demo_1.json)
+[<img src="./visualize/img/parallel_circuit_level.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=example_partition_demo_2.json)
+
+## Usage
+
+Our code is written in [Rust](https://www.rust-lang.org/) programming language for speed and memory safety, but it's hardly a easy language to learn. To make the decoder more accessible, we bind the library to Python and user can simply install the library using `pip3 install fusion_blossom`.
+
+Here is an example for decode (you can run it by cloning the project and run `python3 scripts/demo.py`)
+
+```python
+import fusion_blossom as fb
+
+# create an example code
+code = fb.CodeCapacityPlanarCode(d=11, p=0.05, max_half_weight=500)
+initializer = code.get_initializer()  # the decoding graph structure (you can easily construct your own)
+positions = code.get_positions()  # the positions of vertices in the 3D visualizer, optional
+
+# randomly generate a syndrome according to the error model
+syndrome = code.generate_random_errors(seed=1000)
+with fb.PyMut(syndrome, "syndrome_vertices") as syndrome_vertices:
+    syndrome_vertices.append(0)  # you can modify the syndrome vertices
+print(syndrome)
+
+# visualizer (optional for debugging)
+visualizer = None
+if True:  # change to False to disable visualizer for much faster decoding
+    visualize_filename = fb.static_visualize_data_filename()
+    fb.print_visualize_link(filename=visualize_filename)
+    visualizer = fb.Visualizer(filepath=fb.visualize_data_folder() + visualize_filename)
+    visualizer.load_positions(positions)  # so that visualizer can display vertices in user-defined view
+
+solver = fb.SolverSerial(initializer)
+solver.solve_visualizer(syndrome, visualizer)  # enable visualizer for debugging
+perfect_matching = solver.perfect_matching()
+perfect_matching = solver.perfect_matching()
+print(f"perfect_matching: {perfect_matching}")
+print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
+print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
+solver.clear()  # clear is very fast (O(1) complexity), recommended for repetitive simulation
+```
+
+For parallel solver, it needs user to provide a partition strategy. Please wait for our paper for a thorough description of how partition works.
 
 ## Evaluation
 
@@ -56,14 +96,17 @@ Given the optimal partition number of a single thread, we keep the partition num
 
 ![](./visualize/img/thread_pool_size_partition_1k.svg)
 
+In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Blue blocks is the base partition and green blocks is the fusion operation. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We'll study different partition and fusion strategies in our paper. Below shows the parallel execution on 24 threads. You can click the image and it will jump to this interactive visualization tool.
+
+[<img src="./visualize/img/thread_24.png"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_1k/tmp/24.profile)
+
 ## Interface
 
 #### Sparse Decoding Graph and Integer Weights
 
 The weights in QEC decoding graph are computed by taking the log of error probability, e.g. $w_e = \log\{(1-p)/p\}$ or roughly $w_e = -\log{p}$, we can safely use integers to save weights by e.g. multiplying the weights by 1e6 and truncate to nearest integer. In this way, the truncation error $\Delta w_e = 1$ of integer weights corresponds to relative error $\Delta p /{p}=10^{-6}$ which is small enough. Suppose physical error rate $p$ is in the range of a positive `f64` variable (2.2e-308 to 1), the maximum weight is 7e7,which is well below the maximum value of a `u32` variable (4.3e9). Since weights only sum up in our algorithm (no multiplication), `u32` is large enough and accurate enough. By default we use `usize` which is platform dependent (usually 64 bits), but you can 
 
-We use integer also for ease of migrating to FPGA implementation. In order to fit more vertices into a single FPGA, it's necessary to reduce the
-resource usage for each vertex. Integers are much cheaper than floating-point numbers, and also it allows flexible trade-off between resource usage and accuracy, e.g. if all weights are equal, we can simply use a 2 bit integer.
+We use integer also for ease of migrating to FPGA implementation. In order to fit more vertices into a single FPGA, it's necessary to reduce the resource usage for each vertex. Integers are much cheaper than floating-point numbers, and also it allows flexible trade-off between resource usage and accuracy, e.g. if all weights are equal, we can simply use a 2 bit integer.
 
 Note that other libraries of MWPM solver like [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) also default to integer weights as well. Although one can change the macro to use floating-point weights, it's not recommended because "the code may even get stuck due to rounding errors".
 
@@ -80,10 +123,7 @@ sudo apt install build-essential
 
 ## Tests
 
-In order to test the correctness of our MWPM solver, we need a ground truth MWPM solver.
-[Blossom V](https://doi.org/10.1007/s12532-009-0002-8) is widely-used in existing MWPM decoders, but according to the license we cannot embed it in this library.
-To run the test cases with ground truth comparison or enable the functions like `blossom_v_mwpm`, you need to download this library
-[at this website](https://pub.ist.ac.at/~vnk/software.html) to a folder named `blossomV` at the root directory of this git repo.
+In order to test the correctness of our MWPM solver, we need a ground-truth MWPM solver. [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) is widely-used in existing MWPM decoders, but according to the license we cannot embed it in this library. To run the test cases with ground truth comparison or enable the functions like `blossom_v_mwpm`, you need to download this library [at this website](https://pub.ist.ac.at/~vnk/software.html) to a folder named `blossomV` at the root directory of this git repo.
 
 ```shell
 wget -c https://pub.ist.ac.at/~vnk/software/blossom5-v2.05.src.tar.gz -O - | tar -xz

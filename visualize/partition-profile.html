@@ -452,7 +452,7 @@ const App = {
         for (let [idx, value] of this.round_profiles.entries()) {
             this.round_labels.push(`[${idx}] decoding time: ${Number.parseFloat(value.round_time).toExponential(3)}`)
         }
-        this.round_select_label = this.round_labels[0]
+        this.round_select_label = this.round_labels[this.round_profiles.length < 21 ? this.round_profiles.length - 1 : 20]
         // add keyboard shortcuts
         document.onkeydown = (event) => {
             if (!event.metaKey) {
