@@ -98,7 +98,7 @@ Given the optimal partition number of a single thread, we keep the partition num
 
 In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Blue blocks is the base partition and green blocks is the fusion operation. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We'll study different partition and fusion strategies in our paper. Below shows the parallel execution on 24 threads. You can click the image and it will jump to this interactive visualization tool.
 
-[<img src="./visualize/img/thread_24.png"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_1k/tmp/24.profile)
+[<img src="./visualize/img/thread_24.jpeg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_1k/tmp/24.profile)
 
 ## Interface
 
