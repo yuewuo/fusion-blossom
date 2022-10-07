@@ -14,5 +14,5 @@ cargo build --features i32_weight || exit 1
 cargo build --features i32_weight --release || exit 1
 cargo build --features disable_visualizer || exit 1
 cargo build --features disable_visualizer --release || exit 1
-cargo build --features python_binding || exit 1
-cargo build --features python_binding --release || exit 1
+# cargo build --features python_binding || exit 1
+# cargo build --features python_binding --release || exit 1
