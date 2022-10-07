@@ -52,7 +52,7 @@ impl NoPartition {
 
 impl ExamplePartition for NoPartition {
     fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
-        PartitionConfig::default(code.vertex_num())
+        PartitionConfig::new(code.vertex_num())
     }
 }
 
@@ -74,7 +74,7 @@ impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionHalf {
     fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
         let (d, partition_row) = (self.d, self.partition_row);
         assert_eq!(code.vertex_num(), d * (d + 1), "code size incompatible");
-        let mut config = PartitionConfig::default(code.vertex_num());
+        let mut config = PartitionConfig::new(code.vertex_num());
         assert!(partition_row > 1 && partition_row < d);
         config.partitions = vec![
             VertexRange::new(0, (partition_row - 1) * (d + 1)),
@@ -148,7 +148,7 @@ impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionFour {
     }
     fn build_partition(&mut self, _code: &dyn ExampleCode) -> PartitionConfig {
         let (d, partition_row, partition_column) = (self.d, self.partition_row, self.partition_column);
-        let mut config = PartitionConfig::default(d * (d + 1));
+        let mut config = PartitionConfig::new(d * (d + 1));
         let b0_count = (partition_row - 1) * partition_column;
         let b1_count = (partition_row - 1) * (d - partition_column);
         let b2_count = (d - partition_row) * partition_column;
@@ -200,7 +200,7 @@ impl ExamplePartition for CodeCapacityRepetitionCodePartitionHalf {
     }
     fn build_partition(&mut self, _code: &dyn ExampleCode) -> PartitionConfig {
         let (d, partition_index) = (self.d, self.partition_index);
-        let mut config = PartitionConfig::default(d + 1);
+        let mut config = PartitionConfig::new(d + 1);
         config.partitions = vec![
             VertexRange::new(0, partition_index),
             VertexRange::new(partition_index + 1, d + 1),
@@ -242,7 +242,7 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
         assert_eq!(code.vertex_num(), vertex_num, "code size incompatible");
         assert!(partition_num >= 1 && partition_num <= noisy_measurements + 1);
         let partition_length = (noisy_measurements + 1) / partition_num;
-        let mut config = PartitionConfig::default(vertex_num);
+        let mut config = PartitionConfig::new(vertex_num);
         config.partitions.clear();
         for partition_index in 0..partition_num {
             if partition_index < partition_num - 1 {
@@ -333,7 +333,6 @@ pub mod tests {
     use super::super::primal_module_parallel::*;
     use super::super::dual_module_parallel::*;
     use super::super::dual_module_serial::*;
-    use std::sync::Arc;
 
     pub fn example_partition_basic_standard_syndrome_optional_viz(code: &mut dyn ExampleCode, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)
@@ -346,17 +345,17 @@ pub mod tests {
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
                 let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-                print_visualize_link(&visualize_filename);
+                visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(visualize_filename.clone());
                 Some(visualizer)
             }, None => None
         };
         let initializer = code.get_initializer();
-        let partition_info = partition_config.into_info();
-        let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
+        let partition_info = partition_config.info();
+        let mut dual_module = DualModuleParallel::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;
-        let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
+        let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
         code.set_syndrome_vertices(&syndrome_vertices);
         primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(primal_module.units.last().unwrap().read_recursive().interface_ptr.sum_dual_variables(), final_dual * 2, "unexpected final dual variable sum");

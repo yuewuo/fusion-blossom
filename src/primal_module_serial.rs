@@ -94,6 +94,7 @@ pub type PrimalNodeInternalWeak = WeakManualSafeLock<PrimalNodeInternal>;
 
 impl std::fmt::Debug for PrimalNodeInternalPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.update();  // to make sure index is up-to-date
         let primal_node_internal = self.read_recursive();
         write!(f, "{}", primal_node_internal.index)
     }
@@ -1290,8 +1291,8 @@ pub mod tests {
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
                 let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-                print_visualize_link(&visualize_filename);
+                visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(visualize_filename.clone());
                 Some(visualizer)
             }, None => None
         };
@@ -1411,8 +1412,8 @@ pub mod tests {
         let max_half_weight = 500;
         let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
         let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
@@ -1433,7 +1434,7 @@ pub mod tests {
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1457,8 +1458,8 @@ pub mod tests {
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(15, 0.3, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
         let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
@@ -1478,7 +1479,7 @@ pub mod tests {
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1502,8 +1503,8 @@ pub mod tests {
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(19, 0.499, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
         let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
@@ -1523,7 +1524,7 @@ pub mod tests {
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1547,8 +1548,8 @@ pub mod tests {
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(15, 0.499, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
         let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
@@ -1568,7 +1569,7 @@ pub mod tests {
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1592,8 +1593,8 @@ pub mod tests {
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(11, 0.03, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
         let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
@@ -1612,7 +1613,7 @@ pub mod tests {
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
@@ -1648,8 +1649,8 @@ pub mod tests {
         let mut code = CodeCapacityPlanarCode::new(19, 0., max_half_weight);
         code.set_erasure_probability(0.003);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         let mut initializer = code.get_initializer();
         for edge_index in erasures.iter() {
             let (vertex_idx_1, vertex_idx_2, _) = &initializer.weighted_edges[*edge_index];
@@ -1672,7 +1673,7 @@ pub mod tests {
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
         let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {

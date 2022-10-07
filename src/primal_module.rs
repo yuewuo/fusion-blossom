@@ -10,10 +10,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use super::complete_graph::*;
 use super::visualize::*;
 use super::pointers::*;
+#[cfg(feature="python_binding")]
+use pyo3::prelude::*;
 
 
 #[derive(Derivative)]
 #[derivative(Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct IntermediateMatching {
     /// matched pairs; note that each pair will only appear once. (node_1, touching_1), (node_2, touching_2)
     pub peer_matchings: Vec<((DualNodePtr, DualNodeWeak), (DualNodePtr, DualNodeWeak))>,
@@ -23,6 +27,8 @@ pub struct IntermediateMatching {
 
 #[derive(Derivative)]
 #[derivative(Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct PerfectMatching {
     /// matched pairs; note that each pair will only appear once. (syndrome_node_1, syndrome_node_2)
     pub peer_matchings: Vec<(DualNodePtr, DualNodePtr)>,
@@ -134,8 +140,11 @@ impl Default for IntermediateMatching {
     }
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl IntermediateMatching {
 
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new() -> Self {
         Self {
             peer_matchings: vec![],
@@ -165,6 +174,27 @@ impl IntermediateMatching {
         }
         perfect_matching
     }
+
+    #[cfg(feature = "python_binding")]
+    fn __repr__(&self) -> String { format!("{:?}", self) }
+
+    #[cfg(feature = "python_binding")]
+    #[getter]
+    pub fn get_peer_matchings(&self) -> Vec<((NodeIndex, NodeIndex), (NodeIndex, NodeIndex))> {
+        self.peer_matchings.iter().map(|((a, b), (c, d))|
+            ((a.updated_index(), b.upgrade_force().updated_index()), (c.updated_index(), d.upgrade_force().updated_index()))).collect()
+    }
+
+    #[cfg(feature = "python_binding")]
+    #[getter]
+    pub fn get_virtual_matchings(&self) -> Vec<((NodeIndex, NodeIndex), VertexIndex)> {
+        self.virtual_matchings.iter().map(|((a, b), c)|
+            ((a.updated_index(), b.upgrade_force().updated_index()), *c)).collect()
+    }
+
+}
+
+impl IntermediateMatching {
 
     /// break down a single matched pair to find the perfect matching
     pub fn expand_peer_matching(dual_node_ptr_1: &DualNodePtr, touching_ptr_1: &DualNodePtr, dual_node_ptr_2: &DualNodePtr
@@ -220,8 +250,11 @@ impl Default for PerfectMatching {
     }
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl PerfectMatching {
 
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new() -> Self {
         Self {
             peer_matchings: vec![],
@@ -230,7 +263,7 @@ impl PerfectMatching {
     }
 
     /// this interface is not very optimized, but is compatible with blossom V algorithm's result
-    pub fn legacy_get_mwpm_result(&self, syndrome_vertices: &Vec<usize>) -> Vec<usize> {
+    pub fn legacy_get_mwpm_result(&self, syndrome_vertices: Vec<usize>) -> Vec<usize> {
         let mut peer_matching_maps = BTreeMap::<usize, usize>::new();
         for (ptr_1, ptr_2) in self.peer_matchings.iter() {
             let a_vid = {
@@ -261,6 +294,23 @@ impl PerfectMatching {
             } else { panic!("cannot find syndrome vertex {}", syndrome_vertex) }
         }
         mwpm_result
+    }
+
+    #[cfg(feature = "python_binding")]
+    fn __repr__(&self) -> String { format!("{:?}", self) }
+
+    #[cfg(feature = "python_binding")]
+    #[getter]
+    pub fn get_peer_matchings(&self) -> Vec<(NodeIndex, NodeIndex)> {
+        self.peer_matchings.iter().map(|(a, b)|
+            (a.updated_index(), b.updated_index())).collect()
+    }
+
+    #[cfg(feature = "python_binding")]
+    #[getter]
+    pub fn get_virtual_matchings(&self) -> Vec<(NodeIndex, VertexIndex)> {
+        self.virtual_matchings.iter().map(|(a, b)|
+            (a.updated_index(), *b)).collect()
     }
 
 }
@@ -357,4 +407,12 @@ impl SubGraphBuilder {
         self.subgraph.iter().copied().collect()
     }
 
+}
+
+#[cfg(feature="python_binding")]
+#[pyfunction]
+pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<IntermediateMatching>()?;
+    m.add_class::<PerfectMatching>()?;
+    Ok(())
 }

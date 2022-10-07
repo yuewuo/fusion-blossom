@@ -119,7 +119,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> std::fmt::Debug for DualModuleP
 impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule> {
 
     /// recommended way to create a new instance, given a customized configuration
-    pub fn new_config(initializer: &SolverInitializer, partition_info: Arc<PartitionInfo>, config: DualModuleParallelConfig) -> Self {
+    pub fn new_config(initializer: &SolverInitializer, partition_info: &PartitionInfo, config: DualModuleParallelConfig) -> Self {
+        let partition_info = Arc::new(partition_info.clone());
         let mut thread_pool_builder = rayon::ThreadPoolBuilder::new();
         if config.thread_pool_size != 0 {
             thread_pool_builder = thread_pool_builder.num_threads(config.thread_pool_size);
@@ -151,7 +152,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                     for vertex_index in partition_info.units[*parent_index].owning_range.iter() {
                         let mut is_incident = false;
                         for (peer_index, _) in complete_graph.vertices[vertex_index].edges.iter() {
-                            if owning_range.contains(peer_index) {
+                            if owning_range.contains(*peer_index) {
                                 is_incident = true;
                                 break
                             }
@@ -281,7 +282,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
             let partitioned_initializer = &partitioned_initializers[unit_index];
             for (_, interface_vertices) in partitioned_initializer.interfaces.iter() {
                 for (vertex_index, _) in interface_vertices.iter() {
-                    if !whole_range.contains(vertex_index) {
+                    if !whole_range.contains(*vertex_index) {
                         unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
                     }
                 }
@@ -290,7 +291,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
                 for child_weak in [left_children_weak, right_children_weak] {
                     // note: although iterating over HashSet is not performance optimal, this only happens at initialization and thus it's fine
                     for vertex_index in child_weak.upgrade_force().read_recursive().extra_descendant_mirrored_vertices.iter() {
-                        if !whole_range.contains(vertex_index) {
+                        if !whole_range.contains(*vertex_index) {
                             unit.extra_descendant_mirrored_vertices.insert(*vertex_index);
                         }
                     }
@@ -360,7 +361,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
     fn new_empty(initializer: &SolverInitializer) -> Self {
-        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), DualModuleParallelConfig::default())
+        Self::new_config(initializer, &PartitionConfig::new(initializer.vertex_num).info(), DualModuleParallelConfig::default())
     }
 
     /// clear all growth and existing dual nodes
@@ -556,7 +557,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
 
     /// if any descendant unit mirror or own the vertex
     pub fn is_vertex_in_descendant(&self, vertex_index: VertexIndex) -> bool {
-        self.whole_range.contains(&vertex_index) || self.extra_descendant_mirrored_vertices.contains(&vertex_index)
+        self.whole_range.contains(vertex_index) || self.extra_descendant_mirrored_vertices.contains(&vertex_index)
     }
 
     /// no need to deduplicate the events: the result will always be consistent with the last one
@@ -595,7 +596,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
 
     /// iteratively set grow state
     fn iterative_set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
+        if !self.whole_range.contains(representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
             return  // no descendant related to this dual node
         }
         if grow_state != DualNodeGrowState::Stay {
@@ -606,7 +607,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
             left_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
             right_child_weak.upgrade_force().write().iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
+        if self.owning_range.contains(representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
             self.serial_module.set_grow_state(dual_node_ptr, grow_state);
         }
     }
@@ -671,7 +672,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
-        if !self.whole_range.contains(&representative_vertex) {
+        if !self.whole_range.contains(representative_vertex) {
             self.elevated_dual_nodes.insert(blossom_ptr.clone());
         }
     }
@@ -702,7 +703,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
-        if !self.whole_range.contains(&vertex_index) {
+        if !self.whole_range.contains(vertex_index) {
             self.elevated_dual_nodes.insert(dual_node_ptr.clone());
         }
     }
@@ -739,7 +740,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     fn iterative_grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
+        if !self.whole_range.contains(representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
             return  // no descendant related to this dual node
         }
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
@@ -754,7 +755,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
             }
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
+        if self.owning_range.contains(representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
             self.serial_module.grow_dual_node(dual_node_ptr, length);
         }
     }
@@ -780,7 +781,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     fn iterative_remove_blossom(&mut self, dual_node_ptr: &DualNodePtr, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(&representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
+        if !self.whole_range.contains(representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
             return  // no descendant related to this dual node
         }
         self.has_active_node = true;
@@ -796,7 +797,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
                 right_child_weak.upgrade_force().write().iterative_remove_blossom(dual_node_ptr, representative_vertex);
             }
         }
-        if self.owning_range.contains(&representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
+        if self.owning_range.contains(representative_vertex) || self.serial_module.contains_dual_node(dual_node_ptr) {
             self.serial_module.remove_blossom(dual_node_ptr.clone());
         }
     }
@@ -850,7 +851,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         match &dual_node_ptr.read_recursive().class {
             // fast path: if dual node is a single vertex, then only add to the owning node; single vertex dual node can only add when dual variable = 0
             DualNodeClass::SyndromeVertex { syndrome_index } => {
-                if self.owning_range.contains(&representative_vertex) {  // fast path: the most common one
+                if self.owning_range.contains(representative_vertex) {  // fast path: the most common one
                     self.iterative_add_syndrome_node(dual_node_ptr, *syndrome_index);
                 } else {
                     // find the one that owns it and add the dual node, and then add the serial_module
@@ -860,8 +861,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                         while !is_owning_dual_node {
                             let mut child = child_ptr.write();
                             child.has_active_node = true;
-                            debug_assert!(child.whole_range.contains(&representative_vertex), "selected child must contains the vertex");
-                            is_owning_dual_node = child.owning_range.contains(&representative_vertex);
+                            debug_assert!(child.whole_range.contains(representative_vertex), "selected child must contains the vertex");
+                            is_owning_dual_node = child.owning_range.contains(representative_vertex);
                             if !is_owning_dual_node {  // search for the grandsons
                                 let grandson_ptr = if let Some((left_child_weak, right_child_weak)) = child.children.as_ref() {
                                     if representative_vertex < child.owning_range.start() { left_child_weak.upgrade_force() } else { right_child_weak.upgrade_force() }
@@ -896,7 +897,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         // println!("unit {} set_grow_state {:?} {:?}", self.unit_index, dual_node_ptr, grow_state);
         // find the path towards the owning unit of this dual node, and also try paths towards the elevated
         let representative_vertex = dual_node_ptr.get_representative_vertex();
-        debug_assert!(self.whole_range.contains(&representative_vertex), "cannot set growth state of dual node outside of the scope");
+        debug_assert!(self.whole_range.contains(representative_vertex), "cannot set growth state of dual node outside of the scope");
         self.iterative_set_grow_state(dual_node_ptr, grow_state, representative_vertex);
     }
 
@@ -923,7 +924,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
 
     fn grow_dual_node(&mut self, dual_node_ptr: &DualNodePtr, length: Weight) {
         let representative_vertex = dual_node_ptr.get_representative_vertex();
-        debug_assert!(self.whole_range.contains(&representative_vertex), "cannot grow dual node outside of the scope");
+        debug_assert!(self.whole_range.contains(representative_vertex), "cannot grow dual node outside of the scope");
         self.iterative_grow_dual_node(dual_node_ptr, length, representative_vertex);
     }
 
@@ -989,7 +990,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
-        if !self.whole_range.contains(&sync_event.vertex_index) {
+        if !self.whole_range.contains(sync_event.vertex_index) {
             if let Some((propagated_dual_node_weak, _)) = sync_event.propagated_dual_node.as_ref() {
                 self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
             }
@@ -1034,18 +1035,18 @@ pub mod tests {
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
                 let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-                print_visualize_link(&visualize_filename);
+                visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(visualize_filename.clone());
                 Some(visualizer)
             }, None => None
         };
         let initializer = code.get_initializer();
-        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
+        let mut partition_config = PartitionConfig::new(initializer.vertex_num);
         partition_func(&initializer, &mut partition_config);
         println!("partition_config: {partition_config:?}");
-        let partition_info = partition_config.into_info();
+        let partition_info = partition_config.info();
         // create dual module
-        let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
+        let mut dual_module = DualModuleParallel::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
         dual_module.static_fuse_all();
         // create primal module
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);

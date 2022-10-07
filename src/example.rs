@@ -45,6 +45,7 @@ pub struct CodeVertex {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl CodeVertex {
+    #[cfg(feature = "python_binding")]
     fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
@@ -84,6 +85,7 @@ impl CodeEdge {
             is_erasure: false,
         }
     }
+    #[cfg(feature = "python_binding")]
     fn __repr__(&self) -> String { format!("{:?}", self) }
 }
 
@@ -384,6 +386,7 @@ macro_rules! bind_trait_example_code {
             #[pyo3(name = "reorder_vertices")]
             fn trait_reorder_vertices(&mut self, sequential_vertices: Vec<VertexIndex>) { self.reorder_vertices(&sequential_vertices) }
             #[pyo3(name = "snapshot")]
+            #[args(abbrev = "true")]
             fn trait_snapshot(&mut self, abbrev: bool) -> PyObject { json_to_pyobject(self.snapshot(abbrev)) }
         }
     };
@@ -944,9 +947,9 @@ mod tests {
     use super::*;
 
     fn visualize_code(code: &mut impl ExampleCode, visualize_filename: String) {
-        print_visualize_link(&visualize_filename);
+        print_visualize_link(visualize_filename.clone());
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
         visualizer.snapshot(format!("code"), code).unwrap();
         for round in 0..3 {
             code.generate_random_errors(round);

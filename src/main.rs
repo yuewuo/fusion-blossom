@@ -11,7 +11,6 @@ use fusion_blossom::mwpm_solver::*;
 use pbr::ProgressBar;
 use rand::{Rng, thread_rng};
 
-use std::sync::Arc;
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
 use serde_json::json;
@@ -233,14 +232,14 @@ impl Cli {
                 let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight, code_config);
                 if pe != 0. { code.set_erasure_probability(pe); }
                 if enable_visualizer {  // print visualizer file path only once
-                    print_visualize_link(&static_visualize_data_filename());
+                    print_visualize_link(static_visualize_data_filename());
                 }
                 // create initializer and solver
                 let (initializer, partition_config) = partition_strategy.build(&mut *code, d, noisy_measurements, partition_config);
-                let partition_info = partition_config.into_info();
+                let partition_info = partition_config.info();
                 let mut primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &*code, primal_dual_config);
                 let mut result_verifier = verifier.build(&initializer);
-                let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, partition_info.as_ref())));
+                let mut benchmark_profiler = BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, &partition_info)));
                 // prepare progress bar display
                 let mut pb = if !disable_progress_bar {
                     let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
@@ -264,7 +263,7 @@ impl Cli {
                     let mut visualizer = None;
                     if enable_visualizer {
                         let mut new_visualizer = Visualizer::new(Some(visualize_data_folder() + static_visualize_data_filename().as_str())).unwrap();
-                        new_visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
+                        new_visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
                         visualizer = Some(new_visualizer);
                     }
                     benchmark_profiler.begin(&syndrome_pattern);
@@ -565,7 +564,7 @@ impl PartitionStrategy {
 }
 
 impl PrimalDualType {
-    fn build(&self, initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, code: &dyn ExampleCode
+    fn build(&self, initializer: &SolverInitializer, partition_info: &PartitionInfo, code: &dyn ExampleCode
             , primal_dual_config: serde_json::Value) -> Box<dyn PrimalDualSolver> {
         match self {
             Self::Serial => {
@@ -634,7 +633,7 @@ impl ResultVerifier for VerifierBlossomV {
         assert_eq!(primal_dual_solver.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
         // also construct the perfect matching from fusion blossom to compare them
         let fusion_mwpm = primal_dual_solver.perfect_matching();
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(&syndrome_pattern.syndrome_vertices);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_pattern.syndrome_vertices.clone());
         let fusion_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.syndrome_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {

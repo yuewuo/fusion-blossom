@@ -809,18 +809,18 @@ impl DualModuleImpl for DualModuleSerial {
         let mut edges = Vec::<EdgePtr>::new();
         for &(i, j, weight, edge_index) in partitioned_initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
-            debug_assert!(partitioned_initializer.owning_range.contains(&i) || mirrored_vertices.contains_key(&i)
+            debug_assert!(partitioned_initializer.owning_range.contains(i) || mirrored_vertices.contains_key(&i)
                 , "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
-            debug_assert!(partitioned_initializer.owning_range.contains(&j) || mirrored_vertices.contains_key(&j)
+            debug_assert!(partitioned_initializer.owning_range.contains(j) || mirrored_vertices.contains_key(&j)
                 , "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
             let left = usize::min(i, j);
             let right = usize::max(i, j);
-            let left_index = if partitioned_initializer.owning_range.contains(&left) {
+            let left_index = if partitioned_initializer.owning_range.contains(left) {
                 left - partitioned_initializer.owning_range.start()
             } else {
                 mirrored_vertices[&left]
             };
-            let right_index = if partitioned_initializer.owning_range.contains(&right) {
+            let right_index = if partitioned_initializer.owning_range.contains(right) {
                 right - partitioned_initializer.owning_range.start()
             } else {
                 mirrored_vertices[&right]
@@ -1233,7 +1233,7 @@ impl FusionVisualizer for DualModuleSerial {
             vertices[vertex.vertex_index] = json!({
                 if abbrev { "v" } else { "is_virtual" }: i32::from(vertex.is_virtual),
             });
-            if self.owning_range.contains(&vertex.vertex_index) {  // otherwise I don't know whether it's syndrome or not
+            if self.owning_range.contains(vertex.vertex_index) {  // otherwise I don't know whether it's syndrome or not
                 vertices[vertex.vertex_index].as_object_mut().unwrap().insert((if abbrev { "s" } else { "is_syndrome" }).to_string(),
                     json!(i32::from(vertex.is_syndrome)));
             }
@@ -1334,7 +1334,7 @@ impl DualModuleSerial {
     pub fn get_dual_node_index(&self, dual_node_ptr: &DualNodePtr) -> Option<usize> {
         let dual_node = dual_node_ptr.read_recursive();
         if let Some(unit_module_info) = self.unit_module_info.as_ref() {
-            if unit_module_info.owning_dual_range.contains(&dual_node.index) {
+            if unit_module_info.owning_dual_range.contains(dual_node.index) {
                 debug_assert!(dual_node.belonging.upgrade_force().read_recursive().parent.is_none(), "dual node is not updated");
                 Some(dual_node.index - unit_module_info.owning_dual_range.start())
             } else {
@@ -1347,7 +1347,7 @@ impl DualModuleSerial {
     }
 
     pub fn get_vertex_index(&self, vertex_index: VertexIndex) -> Option<usize> {
-        if self.owning_range.contains(&vertex_index) {
+        if self.owning_range.contains(vertex_index) {
             return Some(vertex_index - self.owning_range.start())
         }
         if let Some(unit_module_info) = self.unit_module_info.as_ref() {
@@ -1726,8 +1726,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -1765,8 +1765,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -1817,8 +1817,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -1853,8 +1853,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -2046,8 +2046,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -2092,8 +2092,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);

@@ -17,7 +17,6 @@ use crate::derivative::Derivative;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
-use std::sync::Arc;
 use super::pointers::*;
 #[cfg(feature="python_binding")]
 use pyo3::prelude::*;
@@ -97,7 +96,7 @@ impl LegacySolverSerial {
         self.interface_ptr.clear();
         self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
         let perfect_matching = self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module);
-        perfect_matching.legacy_get_mwpm_result(&syndrome_pattern.syndrome_vertices)
+        perfect_matching.legacy_get_mwpm_result(syndrome_pattern.syndrome_vertices.clone())
     }
 
 }
@@ -132,13 +131,42 @@ pub trait PrimalDualSolver {
     fn generate_profiler_report(&self) -> serde_json::Value;
 }
 
+#[cfg(feature="python_binding")]
+macro_rules! bind_trait_primal_dual_solver {
+    ($struct_name:ident) => {
+        #[pymethods]
+        impl $struct_name {
+            #[pyo3(name = "clear")]
+            fn trait_clear(&mut self) { self.clear() }
+            #[pyo3(name = "solve_visualizer")]
+            fn trait_solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+                self.solve_visualizer(syndrome_pattern, visualizer)
+            }
+            #[pyo3(name = "perfect_matching")]
+            fn trait_perfect_matching(&mut self) -> PerfectMatching { self.perfect_matching() }
+            #[pyo3(name = "sum_dual_variables")]
+            fn trait_sum_dual_variables(&self) -> Weight { self.sum_dual_variables() }
+            #[pyo3(name = "generate_profiler_report")]
+            fn trait_generate_profiler_report(&self) -> PyObject { json_to_pyobject(self.generate_profiler_report()) }
+        }
+    };
+}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverSerial {
     dual_module: DualModuleSerial,
     primal_module: PrimalModuleSerialPtr,
     interface_ptr: DualModuleInterfacePtr,
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_primal_dual_solver!{SolverSerial}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl SolverSerial {
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
             dual_module: DualModuleSerial::new_empty(initializer),
@@ -167,17 +195,37 @@ impl PrimalDualSolver for SolverSerial {
     }
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverDualParallel {
     dual_module: DualModuleParallel<DualModuleSerial>,
     primal_module: PrimalModuleSerialPtr,
     interface_ptr: DualModuleInterfacePtr,
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_primal_dual_solver!{SolverDualParallel}
+
+#[cfg(feature = "python_binding")]
+#[pymethods]
 impl SolverDualParallel {
-    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, primal_dual_config: serde_json::Value) -> Self {
+    #[new]
+    pub fn new_python(initializer: &SolverInitializer, partition_info: &PartitionInfo, primal_dual_config: PyObject) -> Self {
+        let primal_dual_config = pyobject_to_json(primal_dual_config);
         let config: DualModuleParallelConfig = serde_json::from_value(primal_dual_config).unwrap();
         Self {
-            dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), config),
+            dual_module: DualModuleParallel::new_config(initializer, partition_info, config),
+            primal_module: PrimalModuleSerialPtr::new_empty(initializer),
+            interface_ptr: DualModuleInterfacePtr::new_empty(),
+        }
+    }
+}
+
+impl SolverDualParallel {
+    pub fn new(initializer: &SolverInitializer, partition_info: &PartitionInfo, primal_dual_config: serde_json::Value) -> Self {
+        let config: DualModuleParallelConfig = serde_json::from_value(primal_dual_config).unwrap();
+        Self {
+            dual_module: DualModuleParallel::new_config(initializer, partition_info, config),
             primal_module: PrimalModuleSerialPtr::new_empty(initializer),
             interface_ptr: DualModuleInterfacePtr::new_empty(),
         }
@@ -204,13 +252,18 @@ impl PrimalDualSolver for SolverDualParallel {
     }
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverParallel {
     dual_module: DualModuleParallel<DualModuleSerial>,
     primal_module: PrimalModuleParallel,
 }
 
+#[cfg(feature="python_binding")]
+bind_trait_primal_dual_solver!{SolverParallel}
+
 impl SolverParallel {
-    pub fn new(initializer: &SolverInitializer, partition_info: &Arc<PartitionInfo>, mut primal_dual_config: serde_json::Value) -> Self {
+    pub fn new(initializer: &SolverInitializer, partition_info: &PartitionInfo, mut primal_dual_config: serde_json::Value) -> Self {
         let primal_dual_config = primal_dual_config.as_object_mut().expect("config must be JSON object");
         let mut dual_config = DualModuleParallelConfig::default();
         let mut primal_config = PrimalModuleParallelConfig::default();
@@ -222,8 +275,8 @@ impl SolverParallel {
         }
         if !primal_dual_config.is_empty() { panic!("unknown primal_dual_config keys: {:?}", primal_dual_config.keys().collect::<Vec<&String>>()); }
         Self {
-            dual_module: DualModuleParallel::new_config(initializer, Arc::clone(partition_info), dual_config),
-            primal_module: PrimalModuleParallel::new_config(initializer, Arc::clone(partition_info), primal_config),
+            dual_module: DualModuleParallel::new_config(initializer, partition_info, dual_config),
+            primal_module: PrimalModuleParallel::new_config(initializer, partition_info, primal_config),
         }
     }
 }
@@ -253,9 +306,14 @@ impl PrimalDualSolver for SolverParallel {
     }
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverErrorPatternLogger {
     file: BufWriter<File>,
 }
+
+#[cfg(feature="python_binding")]
+bind_trait_primal_dual_solver!{SolverErrorPatternLogger}
 
 impl SolverErrorPatternLogger {
     pub fn new(initializer: &SolverInitializer, code: &dyn ExampleCode, mut config: serde_json::Value) -> Self {
@@ -297,5 +355,9 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
 #[pyfunction]
 pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<LegacySolverSerial>()?;
+    m.add_class::<SolverSerial>()?;
+    m.add_class::<SolverDualParallel>()?;
+    m.add_class::<SolverParallel>()?;
+    m.add_class::<SolverErrorPatternLogger>()?;
     Ok(())
 }

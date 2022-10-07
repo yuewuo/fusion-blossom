@@ -331,6 +331,7 @@ impl PartialOrd for DualNodePtr {
 
 impl std::fmt::Debug for DualNodePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        self.update();  // to make sure index is up-to-date
         let dual_node = self.read_recursive();  // reading index is consistent
         write!(f, "{}", dual_node.index)
     }
@@ -361,6 +362,11 @@ impl DualNodePtr {
         node.belonging = current_belonging.downgrade();
         node.index += bias;
         self
+    }
+
+    pub fn updated_index(&self) -> NodeIndex {
+        self.update();
+        self.read_recursive().index
     }
 
     /// helper function to set grow state with sanity check

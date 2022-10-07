@@ -48,14 +48,19 @@ impl VisualizePosition {
 }
 
 #[derive(Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
 pub struct Visualizer {
     /// save to file if applicable
     file: Option<File>,
     /// basic snapshot
+    // #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     base: serde_json::Value,
     /// positions of the vertices
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     positions: Vec<VisualizePosition>,
     /// all snapshots
+    // #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     snapshots: Vec<(String, serde_json::Value)>,
 }
 
@@ -224,8 +229,12 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
     snapshot_copy_remaining_fields(value, value_2);
 }
 
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
 impl Visualizer {
+
     /// create a new visualizer with target filename and node layout
+    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(mut filename: Option<String>) -> std::io::Result<Self> {
         if cfg!(feature = "disable_visualizer") {
             filename = None;  // do not open file
@@ -241,6 +250,47 @@ impl Visualizer {
             snapshots: Vec::new(),
         })
     }
+
+    /// save to file
+    pub fn save(&mut self) -> std::io::Result<()> {
+        if let Some(file) = self.file.as_mut() {
+            file.set_len(0)?;  // truncate the file
+            file.seek(SeekFrom::Start(0))?;  // move the cursor to the front
+            file.write_all(json!({
+                "base": &self.base,
+                "snapshots": &self.snapshots,
+                "positions": &self.positions,
+            }).to_string().as_bytes())?;
+            file.sync_all()?;
+        }
+        Ok(())
+    }
+
+    /// set positions of the node and optionally center all positions
+    #[cfg_attr(feature = "python_binding", args(center = "true"))]
+    pub fn load_positions(&mut self, mut positions: Vec<VisualizePosition>, center: bool) {
+        if center {
+            let (mut ci, mut cj, mut ct) = (0., 0., 0.);
+            for position in positions.iter() {
+                ci += position.i;
+                cj += position.j;
+                ct += position.t;
+            }
+            ci /= positions.len() as f64;
+            cj /= positions.len() as f64;
+            ct /= positions.len() as f64;
+            for position in positions.iter_mut() {
+                position.i -= ci;
+                position.j -= cj;
+                position.t -= ct;
+            }
+        }
+        self.positions = positions;
+    }
+
+}
+
+impl Visualizer {
 
     /// append another snapshot of the fusion type, and also update the file in case 
     pub fn snapshot_combined(&mut self, name: String, fusion_algorithms: Vec<&dyn FusionVisualizer>) -> std::io::Result<()> {
@@ -272,59 +322,27 @@ impl Visualizer {
         Ok(())
     }
 
-    /// save to file
-    pub fn save(&mut self) -> std::io::Result<()> {
-        if let Some(file) = self.file.as_mut() {
-            file.set_len(0)?;  // truncate the file
-            file.seek(SeekFrom::Start(0))?;  // move the cursor to the front
-            file.write_all(json!({
-                "base": &self.base,
-                "snapshots": &self.snapshots,
-                "positions": &self.positions,
-            }).to_string().as_bytes())?;
-            file.sync_all()?;
-        }
-        Ok(())
-    }
-
-    /// set positions of the node and optionally center all positions
-    pub fn set_positions(&mut self, mut positions: Vec<VisualizePosition>, center: bool) {
-        if center {
-            let (mut ci, mut cj, mut ct) = (0., 0., 0.);
-            for position in positions.iter() {
-                ci += position.i;
-                cj += position.j;
-                ct += position.t;
-            }
-            ci /= positions.len() as f64;
-            cj /= positions.len() as f64;
-            ct /= positions.len() as f64;
-            for position in positions.iter_mut() {
-                position.i -= ci;
-                position.j -= cj;
-                position.t -= ct;
-            }
-        }
-        self.positions = positions;
-    }
-
 }
 
 const DEFAULT_VISUALIZE_DATA_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/data/");
 
+#[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn visualize_data_folder() -> String {
     DEFAULT_VISUALIZE_DATA_FOLDER.to_string()
 }
 
+#[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn static_visualize_data_filename() -> String {
     "static.json".to_string()
 }
 
+#[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn auto_visualize_data_filename() -> String {
     format!("{}.json", Local::now().format("%Y%m%d-%H-%M-%S%.3f"))
 }
 
-pub fn print_visualize_link_with_parameters(filename: &String, parameters: Vec<(String, String)>) {
+#[cfg_attr(feature = "python_binding", pyfunction)]
+pub fn print_visualize_link_with_parameters(filename: String, parameters: Vec<(String, String)>) {
     let mut link = format!("http://localhost:8066?filename={}", filename);
     for (key, value) in parameters.iter() {
         link.push('&');
@@ -335,10 +353,24 @@ pub fn print_visualize_link_with_parameters(filename: &String, parameters: Vec<(
     println!("opening link {} (start local server by running ./visualize/server.sh) or call `node index.js <link>` to render locally", link)
 }
 
-pub fn print_visualize_link(filename: &String) {
+#[cfg_attr(feature = "python_binding", pyfunction)]
+pub fn print_visualize_link(filename: String) {
     print_visualize_link_with_parameters(filename, Vec::new())
 }
 
+
+#[cfg(feature="python_binding")]
+#[pyfunction]
+pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_class::<VisualizePosition>()?;
+    m.add_class::<Visualizer>()?;
+    m.add_function(wrap_pyfunction!(visualize_data_folder, m)?)?;
+    m.add_function(wrap_pyfunction!(static_visualize_data_filename, m)?)?;
+    m.add_function(wrap_pyfunction!(auto_visualize_data_filename, m)?)?;
+    m.add_function(wrap_pyfunction!(print_visualize_link_with_parameters, m)?)?;
+    m.add_function(wrap_pyfunction!(print_visualize_link, m)?)?;
+    Ok(())
+}
 
 
 #[cfg(test)]
@@ -357,8 +389,8 @@ mod tests {
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.2, half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.set_positions(code.get_positions(), true);  // automatic center all vertices
-        print_visualize_link(&visualize_filename);
+        visualizer.load_positions(code.get_positions(), true);  // automatic center all vertices
+        print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -465,7 +497,7 @@ mod tests {
         let syndrome_vertices = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
         let grow_edges = vec![48, 156, 169, 81, 38, 135];
         // run single-thread fusion blossom algorithm
-        print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))]);
+        print_visualize_link_with_parameters(visualize_filename.clone(), vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))]);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         let mut positions = Vec::new();
         let scale = 2f64;
@@ -489,7 +521,7 @@ mod tests {
                 }
             }
         }
-        visualizer.set_positions(positions, true);  // automatic center all vertices
+        visualizer.load_positions(positions, true);  // automatic center all vertices
         let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(syndrome_vertices), &mut dual_module);
@@ -518,8 +550,8 @@ mod tests {
                 Box::new(PhenomenologicalPlanarCode::new(7, 7, 0.2, half_weight))
             };
             let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-            visualizer.set_positions(code.get_positions(), true);  // automatic center all vertices
-            print_visualize_link_with_parameters(&visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
+            visualizer.load_positions(code.get_positions(), true);  // automatic center all vertices
+            print_visualize_link_with_parameters(visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
             // create dual module
             let initializer = code.get_initializer();
             let mut dual_module = DualModuleSerial::new_empty(&initializer);

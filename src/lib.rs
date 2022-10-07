@@ -56,6 +56,8 @@ fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     util::register(py, m)?;
     mwpm_solver::register(py, m)?;
     example::register(py, m)?;
+    visualize::register(py, m)?;
+    primal_module::register(py, m)?;
     Ok(())
 }
 

@@ -124,7 +124,8 @@ pub mod primal_module_parallel_default_configs {
 impl PrimalModuleParallel {
 
     /// recommended way to create a new instance, given a customized configuration
-    pub fn new_config(initializer: &SolverInitializer, partition_info: Arc<PartitionInfo>, config: PrimalModuleParallelConfig) -> Self {
+    pub fn new_config(initializer: &SolverInitializer, partition_info: &PartitionInfo, config: PrimalModuleParallelConfig) -> Self {
+        let partition_info = Arc::new(partition_info.clone());
         let mut thread_pool_builder = rayon::ThreadPoolBuilder::new();
         if config.thread_pool_size != 0 {
             thread_pool_builder = thread_pool_builder.num_threads(config.thread_pool_size);
@@ -173,7 +174,7 @@ impl PrimalModuleParallel {
 impl PrimalModuleImpl for PrimalModuleParallel {
 
     fn new_empty(initializer: &SolverInitializer) -> Self {
-        Self::new_config(initializer, PartitionConfig::default(initializer.vertex_num).into_info(), PrimalModuleParallelConfig::default())
+        Self::new_config(initializer, &PartitionConfig::new(initializer.vertex_num).info(), PrimalModuleParallelConfig::default())
     }
 
     #[inline(never)]
@@ -507,7 +508,6 @@ pub mod tests {
     use super::*;
     use super::super::example::*;
     use super::super::dual_module_serial::*;
-    use std::sync::Arc;
 
     pub fn primal_module_parallel_basic_standard_syndrome_optional_viz<F>(mut code: impl ExampleCode, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
@@ -520,19 +520,19 @@ pub mod tests {
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
                 let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-                visualizer.set_positions(code.get_positions(), true);  // automatic center all nodes
-                print_visualize_link(&visualize_filename);
+                visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                print_visualize_link(visualize_filename.clone());
                 Some(visualizer)
             }, None => None
         };
         let initializer = code.get_initializer();
-        let mut partition_config = PartitionConfig::default(initializer.vertex_num);
+        let mut partition_config = PartitionConfig::new(initializer.vertex_num);
         partition_func(&initializer, &mut partition_config);
-        let partition_info = partition_config.into_info();
-        let mut dual_module = DualModuleParallel::new_config(&initializer, Arc::clone(&partition_info), DualModuleParallelConfig::default());
+        let partition_info = partition_config.info();
+        let mut dual_module = DualModuleParallel::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;
-        let mut primal_module = PrimalModuleParallel::new_config(&initializer, Arc::clone(&partition_info), primal_config);
+        let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
         code.set_syndrome_vertices(&syndrome_vertices);
         primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         assert_eq!(primal_module.units.last().unwrap().read_recursive().interface_ptr.sum_dual_variables(), final_dual * 2, "unexpected final dual variable sum");
