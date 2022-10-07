@@ -4,7 +4,13 @@ use std::path::Path;
 
 fn main() {
 
-    if Path::new("./blossomV/PerfectMatching.h").exists() {
+    // even if the blossom V library exists, sometimes we don't want to compile it
+    let mut try_include_blossom_v = true;
+    if cfg!(feature = "remove_blossom_v") {
+        try_include_blossom_v = false;
+    }
+
+    if try_include_blossom_v && Path::new("./blossomV/PerfectMatching.h").exists() {
 
         println!("cargo:rustc-cfg=feature=\"blossom_v\"");
 

@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.0.2"
+version = "0.0.4"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -44,6 +44,7 @@ debug = true
 # to enable a feature, use `--features xxx`
 default = []
 blossom_v = []  # automatically enabled when file `blossomV/PerfectMatching.h` exists
+remove_blossom_v = []  # disable blossom V library even if required files exist
 i32_weight = []  # use i32 instead of i64 as weight type, to be the same as blossom V library
 u32_index = []  # use u32 instead of usize as index type, to save memory by at most half
 ordered_conflicts = []  # sort conflict events, by default do not sort for better performance

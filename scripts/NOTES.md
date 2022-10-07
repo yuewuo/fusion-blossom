@@ -3,6 +3,9 @@
 ## Python Binding Development
 
 ```
-maturin develop --features python_binding
+maturin develop
 python3 scripts/demo.py
+
+maturin build
+maturin publish
 ```
