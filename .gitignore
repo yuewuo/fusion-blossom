@@ -27,3 +27,5 @@ node_modules/
 visualize/rendered.png
 
 __pycache__
+
+wheelhouse/

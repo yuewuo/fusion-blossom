@@ -1,6 +1,12 @@
 name: Build Python Binding
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '**'
+  pull_request: {}
 
 jobs:
   build_wheels:
@@ -19,11 +25,23 @@ jobs:
       - name: Install cibuildwheel
         run: python -m pip install cibuildwheel==2.10.2
 
+      - name: set up rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+            components: rustfmt, clippy
+
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+
       - name: Build wheels
         run: python -m cibuildwheel --output-dir wheelhouse
         # to supply options, put them in 'env', like:
         # env:
-        #   CIBW_SOME_OPTION: value
+        #   CIBW_BEFORE_BUILD_LINUX: ./install_environment.sh
 
       - uses: actions/upload-artifact@v3
         with:
