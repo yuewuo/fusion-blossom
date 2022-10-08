@@ -53,15 +53,8 @@ impl VisualizePosition {
 pub struct Visualizer {
     /// save to file if applicable
     file: Option<File>,
-    /// basic snapshot
-    // #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    base: serde_json::Value,
-    /// positions of the vertices
-    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    positions: Vec<VisualizePosition>,
-    /// all snapshots
-    // #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    snapshots: Vec<(String, serde_json::Value)>,
+    /// if waiting for the first snapshot
+    empty_snapshot: bool,
 }
 
 pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) {
@@ -235,40 +228,11 @@ impl Visualizer {
 
     /// create a new visualizer with target filename and node layout
     #[cfg_attr(feature = "python_binding", new)]
-    pub fn new(mut filepath: Option<String>) -> std::io::Result<Self> {
+    #[cfg_attr(feature = "python_binding", args(positions = "vec![]", center = "true"))]
+    pub fn new(mut filepath: Option<String>, mut positions: Vec<VisualizePosition>, center: bool) -> std::io::Result<Self> {
         if cfg!(feature = "disable_visualizer") {
             filepath = None;  // do not open file
         }
-        let file = match filepath {
-            Some(filepath) => Some(File::create(filepath)?),
-            None => None,
-        };
-        Ok(Self {
-            file,
-            base: json!({}),
-            positions: Vec::new(),
-            snapshots: Vec::new(),
-        })
-    }
-
-    /// save to file
-    pub fn save(&mut self) -> std::io::Result<()> {
-        if let Some(file) = self.file.as_mut() {
-            file.set_len(0)?;  // truncate the file
-            file.seek(SeekFrom::Start(0))?;  // move the cursor to the front
-            file.write_all(json!({
-                "base": &self.base,
-                "snapshots": &self.snapshots,
-                "positions": &self.positions,
-            }).to_string().as_bytes())?;
-            file.sync_all()?;
-        }
-        Ok(())
-    }
-
-    /// set positions of the node and optionally center all positions
-    #[cfg_attr(feature = "python_binding", args(center = "true"))]
-    pub fn load_positions(&mut self, mut positions: Vec<VisualizePosition>, center: bool) {
         if center {
             let (mut ci, mut cj, mut ct) = (0., 0., 0.);
             for position in positions.iter() {
@@ -285,7 +249,36 @@ impl Visualizer {
                 position.t -= ct;
             }
         }
-        self.positions = positions;
+        let mut file = match filepath {
+            Some(filepath) => Some(File::create(filepath)?),
+            None => None,
+        };
+        if let Some(file) = file.as_mut() {
+            file.set_len(0)?;  // truncate the file
+            file.seek(SeekFrom::Start(0))?;  // move the cursor to the front
+            file.write_all(b"{\"positions\":")?;
+            file.write_all(json!(positions).to_string().as_bytes())?;
+            file.write_all(b",\"snapshots\":[]}")?;
+            file.sync_all()?;
+        }
+        Ok(Self {
+            file,
+            empty_snapshot: true,
+        })
+    }
+
+    pub fn incremental_save(&mut self, name: String, value: serde_json::Value) -> std::io::Result<()> {
+        if let Some(file) = self.file.as_mut() {
+            file.seek(SeekFrom::End(-2))?;  // move the cursor before the ending ]}
+            if !self.empty_snapshot {
+                file.write_all(b",")?;
+            }
+            self.empty_snapshot = false;
+            file.write_all(json!((name, value)).to_string().as_bytes())?;
+            file.write_all(b"]}")?;
+            file.sync_all()?;
+        }
+        Ok(())
     }
 
 }
@@ -304,8 +297,7 @@ impl Visualizer {
             snapshot_combine_values(&mut value, value_2, abbrev);
         }
         snapshot_fix_missing_fields(&mut value, abbrev);
-        self.snapshots.push((name, value));
-        self.save()?;
+        self.incremental_save(name, value)?;
         Ok(())
     }
 
@@ -317,8 +309,7 @@ impl Visualizer {
         let abbrev = true;
         let mut value = fusion_algorithm.snapshot(abbrev);
         snapshot_fix_missing_fields(&mut value, abbrev);
-        self.snapshots.push((name, value));
-        self.save()?;
+        self.incremental_save(name, value)?;
         Ok(())
     }
 
@@ -388,8 +379,7 @@ mod tests {
         let visualize_filename = format!("visualize_test_1.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.2, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all vertices
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
@@ -498,7 +488,6 @@ mod tests {
         let grow_edges = vec![48, 156, 169, 81, 38, 135];
         // run single-thread fusion blossom algorithm
         print_visualize_link_with_parameters(visualize_filename.clone(), vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))]);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
         let mut positions = Vec::new();
         let scale = 2f64;
         for is_z in [true, false] {
@@ -521,7 +510,7 @@ mod tests {
                 }
             }
         }
-        visualizer.load_positions(positions, true);  // automatic center all vertices
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
         let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(syndrome_vertices), &mut dual_module);
@@ -549,8 +538,7 @@ mod tests {
             } else {
                 Box::new(PhenomenologicalPlanarCode::new(7, 7, 0.2, half_weight))
             };
-            let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-            visualizer.load_positions(code.get_positions(), true);  // automatic center all vertices
+            let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
             print_visualize_link_with_parameters(visualize_filename, vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))]);
             // create dual module
             let initializer = code.get_initializer();

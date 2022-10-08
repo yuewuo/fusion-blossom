@@ -344,8 +344,7 @@ pub mod tests {
         let partition_config = partition.build_apply(code);
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
-                let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-                visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                let visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
                 print_visualize_link(visualize_filename.clone());
                 Some(visualizer)
             }, None => None

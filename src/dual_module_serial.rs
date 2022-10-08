@@ -1733,8 +1733,7 @@ mod tests {
         let visualize_filename = format!("dual_module_serial_basics.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
@@ -1772,8 +1771,7 @@ mod tests {
         let visualize_filename = format!("dual_module_serial_blossom_basics.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
@@ -1824,8 +1822,7 @@ mod tests {
         let visualize_filename = format!("dual_module_serial_stop_reason_1.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
@@ -1860,8 +1857,7 @@ mod tests {
         let visualize_filename = format!("dual_module_serial_stop_reason_2.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
@@ -2053,8 +2049,7 @@ mod tests {
         let visualize_filename = format!("dual_module_grow_iterative_1.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();
@@ -2099,8 +2094,7 @@ mod tests {
         let visualize_filename = format!("dual_module_erasure_1.json");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         // create dual module
         let initializer = code.get_initializer();

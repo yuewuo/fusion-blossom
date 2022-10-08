@@ -262,8 +262,8 @@ impl Cli {
                     // create a new visualizer each round
                     let mut visualizer = None;
                     if enable_visualizer {
-                        let mut new_visualizer = Visualizer::new(Some(visualize_data_folder() + static_visualize_data_filename().as_str())).unwrap();
-                        new_visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                        let new_visualizer = Visualizer::new(Some(visualize_data_folder() + static_visualize_data_filename().as_str())
+                            , code.get_positions(), true).unwrap();
                         visualizer = Some(new_visualizer);
                     }
                     benchmark_profiler.begin(&syndrome_pattern);

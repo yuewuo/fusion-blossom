@@ -1291,8 +1291,7 @@ pub mod tests {
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
-                let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-                visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+                let visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
                 print_visualize_link(visualize_filename.clone());
                 Some(visualizer)
             }, None => None
@@ -1412,8 +1411,7 @@ pub mod tests {
         let syndrome_vertices = vec![34, 35, 84, 89, 92, 100, 141, 145, 149, 164, 193, 201, 205, 220, 235, 242, 243, 260, 261, 290, 300, 308, 309, 315, 317];
         let max_half_weight = 500;
         let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, max_half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
@@ -1458,8 +1456,7 @@ pub mod tests {
         let syndrome_vertices = vec![7, 8, 10, 22, 23, 24, 25, 37, 38, 39, 40, 42, 43, 69, 57, 59, 60, 72, 76, 93, 109, 121, 123, 125, 135, 136, 137, 138, 139, 140, 141, 150, 151, 153, 154, 155, 166, 171, 172, 181, 183, 184, 188, 200, 204, 219, 233];
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(15, 0.3, max_half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
@@ -1503,8 +1500,7 @@ pub mod tests {
         let syndrome_vertices = vec![17, 34, 36, 54, 55, 74, 95, 96, 112, 113, 114, 115, 116, 130, 131, 132, 134, 150, 151, 154, 156, 171, 172, 173, 190];
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(19, 0.499, max_half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
@@ -1548,8 +1544,7 @@ pub mod tests {
         let syndrome_vertices = vec![1, 3, 6, 8, 9, 11, 13];
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(15, 0.499, max_half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
@@ -1593,8 +1588,7 @@ pub mod tests {
         let syndrome_vertices = vec![0, 1, 3, 8, 9];
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(11, 0.03, max_half_weight);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
@@ -1649,8 +1643,7 @@ pub mod tests {
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(19, 0., max_half_weight);
         code.set_erasure_probability(0.003);
-        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str())).unwrap();
-        visualizer.load_positions(code.get_positions(), true);  // automatic center all nodes
+        let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let mut initializer = code.get_initializer();
         for edge_index in erasures.iter() {
