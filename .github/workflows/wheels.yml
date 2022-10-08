@@ -8,13 +8,27 @@ on:
       - '**'
   pull_request: {}
 
-jobs:
+jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.github/workflows/ci.yml
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: build py3.${{ matrix.python-version }} on ${{ matrix.platform || matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04, windows-2019, macOS-11]
+        os:
+        - ubuntu
+        - macos
+        - windows
+        python-version:
+        - '7'
+        - '8'
+        - '9'
+        include:
+        - os: ubuntu
+          platform: linux
+        - os: windows
+          ls: dir
+
+    runs-on: ${{ format('{0}-latest', matrix.os) }}
 
     steps:
       - uses: actions/checkout@v3
@@ -37,13 +51,40 @@ jobs:
         with:
           command: check
 
-      - name: Build wheels
-        run: python -m cibuildwheel --output-dir wheelhouse
-        # to supply options, put them in 'env', like:
+      - name: Build ${{ matrix.platform || matrix.os }} wheels
+        run: cibuildwheel --output-dir wheelhouse
         env:
+          CIBW_BUILD: 'cp3${{ matrix.python-version }}-*'
+          CIBW_SKIP: '*-win32'
+          CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}
+          CIBW_TEST_REQUIRES: 'pytest'
+          CIBW_TEST_COMMAND: 'pytest {project}/tests -s'
           CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
           CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
-          # CIBW_BEFORE_BUILD_LINUX: ./install_environment.sh
+          CIBW_MANYLINUX_X86_64_IMAGE: 'manylinux2014'
+          CIBW_MANYLINUX_I686_IMAGE: 'manylinux2014'
+
+      - name: Build windows 32bit wheels
+        if: matrix.os == 'windows'
+        run: cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_BUILD: 'cp3${{ matrix.python-version }}-win32'
+          CIBW_PLATFORM: windows
+          CIBW_TEST_REQUIRES: 'pytest'
+          CIBW_TEST_COMMAND: 'pytest {project}/tests -s'
+          CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
+          CIBW_BEFORE_BUILD: >
+            pip install -U setuptools-rust &&
+            rustup toolchain install nightly-i686-pc-windows-msvc &&
+            rustup default nightly-i686-pc-windows-msvc &&
+            rustup override set nightly-i686-pc-windows-msvc &&
+            rustup show
+
+      - name: list wheelhouse files
+        run: ${{ matrix.ls || 'ls -lh' }} wheelhouse/
+
+      - name: twine check
+        run: twine check wheelhouse/*
 
       - uses: actions/upload-artifact@v3
         with:
