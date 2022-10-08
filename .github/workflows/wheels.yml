@@ -47,6 +47,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
       - name: Install Python dependencies
         run: python -m pip install -U setuptools wheel twine cibuildwheel cffi
 
+      # TODO: use maturin to build source distribution
       # - name: build sdist
       #   if: matrix.os == 'ubuntu' && matrix.python-version == '8'
       #   run: |

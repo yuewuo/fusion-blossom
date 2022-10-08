@@ -70,6 +70,7 @@ weak-table = "0.3.2"
 rand = "0.8.5"
 core_affinity = "0.5.10"
 pyo3 = { version =  "0.17.2", features = ["extension-module", "multiple-pymethods"], optional = true }
+cffi = "0.1.7"
 
 [build-dependencies]
 cc = "1.0.66"
