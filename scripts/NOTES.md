@@ -11,3 +11,12 @@ docker run --rm -v $(pwd):/io ghcr.io/pyo3/maturin build --release  # or other m
 maturin build
 maturin publish
 ```
+
+## GitHub Build Wheels
+
+To test GitHub CI locally:
+
+```sh
+# https://github.com/nektos/act
+
+```
