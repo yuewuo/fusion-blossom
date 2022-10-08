@@ -5,6 +5,7 @@ build-backend = "maturin"
 [project]
 name = "fusion_blossom"
 requires-python = ">=3.6"
+dynamic = ["version", "authors", "license", "readme", "description"]
 classifiers = [
     "Programming Language :: Rust",
     'Programming Language :: Python',

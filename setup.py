@@ -31,7 +31,6 @@ setup(
     license='MIT',
     python_requires='>=3.7',
     rust_extensions=[RustExtension('fusion_blossom.fusion_blossom', binding=Binding.PyO3)],
-    packages=['fusion_blossom'],
     zip_safe=False,
     classifiers=[
         "Programming Language :: Rust",

@@ -28,4 +28,6 @@ visualize/rendered.png
 
 __pycache__
 
-wheelhouse/
+/wheelhouse/
+fusion_blossom.egg-info/
+/dist/
