@@ -267,6 +267,10 @@ impl Visualizer {
         })
     }
 
+}
+
+impl Visualizer {
+
     pub fn incremental_save(&mut self, name: String, value: serde_json::Value) -> std::io::Result<()> {
         if let Some(file) = self.file.as_mut() {
             file.seek(SeekFrom::End(-2))?;  // move the cursor before the ending ]}
@@ -280,10 +284,6 @@ impl Visualizer {
         }
         Ok(())
     }
-
-}
-
-impl Visualizer {
 
     /// append another snapshot of the fusion type, and also update the file in case 
     pub fn snapshot_combined(&mut self, name: String, fusion_algorithms: Vec<&dyn FusionVisualizer>) -> std::io::Result<()> {
@@ -317,7 +317,7 @@ impl Visualizer {
 
 const DEFAULT_VISUALIZE_DATA_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/data/");
 
-#[cfg_attr(feature = "python_binding", pyfunction)]
+// only used locally, because this is compile time directory
 pub fn visualize_data_folder() -> String {
     DEFAULT_VISUALIZE_DATA_FOLDER.to_string()
 }
@@ -355,7 +355,6 @@ pub fn print_visualize_link(filename: String) {
 pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<VisualizePosition>()?;
     m.add_class::<Visualizer>()?;
-    m.add_function(wrap_pyfunction!(visualize_data_folder, m)?)?;
     m.add_function(wrap_pyfunction!(static_visualize_data_filename, m)?)?;
     m.add_function(wrap_pyfunction!(auto_visualize_data_filename, m)?)?;
     m.add_function(wrap_pyfunction!(print_visualize_link_with_parameters, m)?)?;

@@ -9,6 +9,8 @@ on:
   pull_request: {}
 
 jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.github/workflows/ci.yml
+  # Yue: I use cibuildwheel to start multiple dockers with different targets, and use maturin to actually generate the wheel
+
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     strategy:
@@ -28,7 +30,6 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
     steps:
       - uses: actions/checkout@v3
 
-      # Used to host cibuildwheel
       - uses: actions/setup-python@v3
 
       - name: Install Rust
@@ -46,66 +47,32 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: "cp3*-*"
-          CIBW_SKIP: "*-win32"
+          CIBW_SKIP: "*-win32 *_i686"  # do not build for 32bit machines, rustc seems to complain about it
           CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}  # only build for specific platform
           CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
           CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
           CIBW_MANYLINUX_X86_64_IMAGE: 'manylinux2014'
-          CIBW_MANYLINUX_I686_IMAGE: 'manylinux2014'
           CIBW_BEFORE_BUILD: >
-            pip install -U setuptools-rust cffi &&
             rustup default nightly &&
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
-            pip install -U setuptools-rust cffi &&
             curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly --profile=minimal -y &&
             rustup show
 
-      # TODO: use maturin to build source distribution
-      # - name: build sdist
-      #   if: matrix.os == 'ubuntu' && matrix.python-version == '8'
-      #   run: |
-      #     pip install -U setuptools-rust
-      #     python setup.py sdist
+      - name: Build windows 32bit wheels
+        if: matrix.os == 'windows'
+        run: cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_BUILD: 'cp3*-win32'
+          CIBW_PLATFORM: windows
+          CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
+          CIBW_BEFORE_BUILD: >
+            rustup toolchain install nightly-i686-pc-windows-msvc &&
+            rustup default nightly-i686-pc-windows-msvc &&
+            rustup override set nightly-i686-pc-windows-msvc &&
+            rustup show
 
-      # - name: Build ${{ matrix.platform || matrix.os }} wheels
-      #   run: cibuildwheel --output-dir wheelhouse
-      #   env:
-      #     CIBW_BUILD: 'cp3${{ matrix.python-version }}-*'
-      #     CIBW_SKIP: '*-win32'
-      #     CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}
-      #     CIBW_TEST_REQUIRES: 'pytest'
-      #     CIBW_TEST_COMMAND: 'pytest {project}/tests -s'
-      #     CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
-      #     CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
-      #     CIBW_MANYLINUX_X86_64_IMAGE: 'manylinux2014'
-      #     CIBW_MANYLINUX_I686_IMAGE: 'manylinux2014'
-      #     CIBW_BEFORE_BUILD: >
-      #       pip install -U setuptools-rust cffi &&
-      #       rustup default nightly &&
-      #       rustup show
-      #     CIBW_BEFORE_BUILD_LINUX: >
-      #       pip install -U setuptools-rust cffi &&
-      #       curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly --profile=minimal -y &&
-      #       rustup show
-
-      # - name: Build windows 32bit wheels
-      #   if: matrix.os == 'windows'
-      #   run: cibuildwheel --output-dir wheelhouse
-      #   env:
-      #     CIBW_BUILD: 'cp3${{ matrix.python-version }}-win32'
-      #     CIBW_PLATFORM: windows
-      #     CIBW_TEST_REQUIRES: 'pytest'
-      #     CIBW_TEST_COMMAND: 'pytest {project}/tests -s'
-      #     CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
-      #     CIBW_BEFORE_BUILD: >
-      #       pip install -U setuptools-rust cffi &&
-      #       rustup toolchain install nightly-i686-pc-windows-msvc &&
-      #       rustup default nightly-i686-pc-windows-msvc &&
-      #       rustup override set nightly-i686-pc-windows-msvc &&
-      #       rustup show
-
-      - name: list wheelhouse files
+      - name: list wheel files
         run: ${{ matrix.ls || 'ls -lh' }} wheelhouse/
 
       - name: twine check
@@ -113,4 +80,23 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
 
       - uses: actions/upload-artifact@v3
         with:
-          path: ./wheelhouse/*.whl
+          path: wheelhouse/*.whl
+
+  # build_sdist:
+  #   name: Build source distribution
+  #   runs-on: ubuntu-latest
+
+  #   - uses: actions/checkout@v3
+
+  #   - uses: actions/setup-python@v3
+
+  #   - name: Install Python dependencies
+  #     run: python -m pip install -U maturin cffi
+
+  #   - uses: actions/upload-artifact@v3
+  #     with:
+  #       path: ./wheelhouse/*.tar.gz
+
+
+  # upload_pypi:
+  #   needs: [build_wheels, build_sdist]

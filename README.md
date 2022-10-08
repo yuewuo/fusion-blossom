@@ -1,5 +1,6 @@
 ![Build Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomBuild&subject=build&style=flat-square)
 ![Test Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomCI&subject=test&style=flat-square)
+![Build Python Binding](https://github.com/yuewuo/fusion-blossom/actions/workflows/wheels.yml/badge.svg)
 
 # Fusion Blossom
 A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correction (QEC)

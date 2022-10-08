@@ -31,3 +31,6 @@ __pycache__
 /wheelhouse/
 fusion_blossom.egg-info/
 /dist/
+
+*.DS_Store
+.vscode
