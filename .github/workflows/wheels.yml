@@ -66,11 +66,11 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           CIBW_MANYLINUX_X86_64_IMAGE: 'manylinux2014'
           CIBW_MANYLINUX_I686_IMAGE: 'manylinux2014'
           CIBW_BEFORE_BUILD: >
-            pip install -U setuptools-rust &&
+            pip install -U setuptools-rust cffi &&
             rustup default nightly &&
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
-            pip install -U setuptools-rust &&
+            pip install -U setuptools-rust cffi &&
             curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly --profile=minimal -y &&
             rustup show
 
