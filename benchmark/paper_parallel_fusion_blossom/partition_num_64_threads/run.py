@@ -54,11 +54,15 @@ partition_num_vec = [e for e in repeat_vec]
 partition_num_vec += [e * 2 for e in repeat_vec]
 partition_num_vec += [e * 4 for e in repeat_vec]
 partition_num_vec += [e * 8 for e in repeat_vec]
-partition_num_vec += [1000]  # for direct comparison
 partition_num_vec += [e * 16 for e in repeat_vec]
 partition_num_vec += [e * 32 for e in repeat_vec]
 partition_num_vec += [e * 64 for e in repeat_vec]
-# partition_num_vec += [int(noisy_measurements/e) for e in range(10, 1, -1)]  # how many measurement rounds between two fusion
+# also include previous ones for direct comparison
+repeat_vec = [10, 15, 22, 33, 50, 75]
+partition_num_vec += [75]
+partition_num_vec += [e * 10 for e in repeat_vec]
+partition_num_vec += [e * 100 for e in repeat_vec]
+partition_num_vec.sort()
 print(partition_num_vec)
 benchmark_profile_path_vec = []
 for partition_num in partition_num_vec:
