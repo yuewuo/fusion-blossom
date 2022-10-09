@@ -334,14 +334,19 @@ pub fn auto_visualize_data_filename() -> String {
 
 #[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn print_visualize_link_with_parameters(filename: String, parameters: Vec<(String, String)>) {
-    let mut link = format!("http://localhost:8066?filename={}", filename);
+    let default_port = if cfg!(feature = "python_binding") { 51666 } else { 8066 };
+    let mut link = format!("http://localhost:{}?filename={}", default_port, filename);
     for (key, value) in parameters.iter() {
         link.push('&');
         link.push_str(&urlencoding::encode(key));
         link.push('=');
         link.push_str(&urlencoding::encode(value));
     }
-    println!("opening link {} (start local server by running ./visualize/server.sh) or call `node index.js <link>` to render locally", link)
+    if cfg!(feature = "python_binding") {
+        println!("opening link {} (use `fusion_blossom.open_visualizer(filename)` to start a server and open it in browser)", link)
+    } else {
+        println!("opening link {} (start local server by running ./visualize/server.sh) or call `node index.js <link>` to render locally", link)
+    }
 }
 
 #[cfg_attr(feature = "python_binding", pyfunction)]

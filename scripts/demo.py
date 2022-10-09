@@ -21,7 +21,6 @@ visualizer = None
 if True:  # change to False to disable visualizer for much faster decoding
     import os
     visualize_filename = fb.static_visualize_data_filename()
-    fb.print_visualize_link(filename=visualize_filename)
     visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
 
 solver = fb.SolverSerial(initializer)
@@ -35,4 +34,5 @@ solver.clear()  # clear is very fast (O(1) complexity), recommended for repetiti
 
 # view in browser
 if visualizer is not None:
+    fb.print_visualize_link(filename=visualize_filename)
     fb.helper.open_visualizer(visualize_filename, open_browser=True)
