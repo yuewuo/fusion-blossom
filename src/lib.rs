@@ -58,6 +58,12 @@ fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     example::register(py, m)?;
     visualize::register(py, m)?;
     primal_module::register(py, m)?;
+    let helper_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/helper.py"));
+    let helper_module = PyModule::from_code(py, helper_code, "helper", "helper")?;
+    helper_module.add("visualizer_website", generate_visualizer_website(py))?;
+    m.add_submodule(helper_module)?;
+    let helper_register = helper_module.getattr("register")?;
+    helper_register.call1((m, ))?;
     Ok(())
 }
 
@@ -199,4 +205,24 @@ pub fn detailed_matching(initializer: &SolverInitializer, syndrome_vertices: &Ve
         }
     }
     details
+}
+
+#[cfg(feature="python_binding")]
+macro_rules! include_visualize_file {
+    ($mapping:ident, $filepath:expr) => {
+        $mapping.insert($filepath.to_string(), include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/", $filepath)).to_string());
+    };
+}
+#[cfg(feature="python_binding")]
+fn generate_visualizer_website(py: Python<'_>) -> &pyo3::types::PyDict {
+    use pyo3::types::IntoPyDict;
+    let mut mapping = std::collections::BTreeMap::<String, String>::new();
+    include_visualize_file!(mapping, "gui3d.js");
+    include_visualize_file!(mapping, "index.js");
+    include_visualize_file!(mapping, "patches.js");
+    include_visualize_file!(mapping, "primal.js");
+    include_visualize_file!(mapping, "cmd.js");
+    include_visualize_file!(mapping, "index.html");
+    include_visualize_file!(mapping, "partition-profile.html");
+    mapping.into_py_dict(py)
 }

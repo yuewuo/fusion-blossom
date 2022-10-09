@@ -34,3 +34,6 @@ fusion_blossom.egg-info/
 
 *.DS_Store
 .vscode
+
+# visualizer files
+/*.json

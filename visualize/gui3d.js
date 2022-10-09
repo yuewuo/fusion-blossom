@@ -1,10 +1,15 @@
 // 3d related apis
 
 import * as THREE from 'three'
-import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js'
-import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
-import Stats from './node_modules/three/examples/jsm/libs/stats.module.js'
-import GUI from './node_modules/three/examples/jsm/libs/lil-gui.module.min.js'
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/controls/OrbitControls.js'
+import { ConvexGeometry } from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/geometries/ConvexGeometry.js'
+import Stats from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/libs/stats.module.js'
+import GUI from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/libs/lil-gui.module.min.js'
+// import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js'
+// import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
+// import Stats from './node_modules/three/examples/jsm/libs/stats.module.js'
+// import GUI from './node_modules/three/examples/jsm/libs/lil-gui.module.min.js'
+
 
 if (typeof window === 'undefined' || typeof document === 'undefined') {
     global.mocker = await import('./mocker.js')

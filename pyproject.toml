@@ -26,6 +26,7 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Topic :: Internet',
 ]
+dependencies = ['bottle >= 0.12.23, <1.0.0']
 
 # by default remove blossom V in the build because of license issue;
 # users can enable blossom V by removing `remove_blossom_v` feature, at the responsibility of users
