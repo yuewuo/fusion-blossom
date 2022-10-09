@@ -61,7 +61,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           platforms: all
 
       - name: Build Wheels
-        if: matrix.os != 'ubuntu' && (matrix.os != 'macos' || matrix['python-version'] != '7')  # no python37 for macos
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: 'cp3${{ matrix.python-version }}-*'
