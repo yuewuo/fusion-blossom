@@ -12,7 +12,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
   # Yue: I use cibuildwheel to start multiple dockers with different targets, and use maturin to actually generate the wheel
 
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels py3.${{ matrix.python-version }} on ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -20,6 +20,12 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           - ubuntu
           - macos
           - windows
+        python-version:
+          - '7'
+          - '8'
+          - '9'
+          - '10'
+          - '11'
         include:
           - os: ubuntu
             platform: linux
@@ -41,17 +47,25 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           override: true
 
       - name: Install Python dependencies
-        run: python -m pip install -U setuptools wheel twine cibuildwheel cffi
+        run: python -m pip install -U setuptools wheel twine cibuildwheel
+
+      - name: Set up QEMU for building with emulator
+        if: matrix.os != 'ubuntu'
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
 
       - name: Build Wheels
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
-          CIBW_BUILD: "cp3*-*"
+          CIBW_BUILD: 'cp3${{ matrix.python-version }}-*'
           CIBW_SKIP: "*-win32 *_i686 cp36-*"  # do not build for 32bit machines, rustc seems to complain about it
           CIBW_PLATFORM: ${{ matrix.platform || matrix.os }}  # only build for specific platform
           CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
           CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
           CIBW_MANYLINUX_X86_64_IMAGE: 'manylinux2014'
+          CIBW_ARCHS_LINUX: auto64 aarch64
+          CIBW_ARCHS_MACOS: x86_64 arm64
           CIBW_BEFORE_BUILD: >
             rustup default nightly &&
             rustup show
@@ -63,7 +77,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         if: matrix.os == 'windows'
         run: cibuildwheel --output-dir wheelhouse
         env:
-          CIBW_BUILD: 'cp3*-win32'
+          CIBW_BUILD: 'cp3${{ matrix.python-version }}-win32'
           CIBW_PLATFORM: windows
           CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
           CIBW_BEFORE_BUILD: >
