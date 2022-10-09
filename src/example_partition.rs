@@ -254,9 +254,6 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
                 config.partitions.push(VertexRange::new((start_round_index + 1) * round_vertex_num, end_round_index * round_vertex_num));
             }
         }
-        for (idx, partition) in config.partitions.iter().enumerate() {
-            println!("{idx}: {}", partition.len());
-        }
         config.fusions.clear();
         if !self.enable_tree_fusion || self.maximum_tree_leaf_size == 1 {
             for unit_index in partition_num..(2 * partition_num - 1) {
