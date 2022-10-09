@@ -73,7 +73,7 @@ for partition_num in partition_num_vec:
         command += ["--primal-dual-type", "parallel"]
         command += ["--primal-dual-config", '{"primal":{"thread_pool_size":64},"dual":{"thread_pool_size":64}}']  # keep using single thread
         command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
-        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":false}}']
+        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true,"maximum_tree_leaf_size":64}}']
         command += ["--verifier", "none"]
         command += ["--benchmark-profiler-output", benchmark_profile_path]
         print(command)
