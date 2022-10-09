@@ -68,10 +68,9 @@ print(syndrome)
 # visualizer (optional for debugging)
 visualizer = None
 if True:  # change to False to disable visualizer for much faster decoding
+    import os
     visualize_filename = fb.static_visualize_data_filename()
-    fb.print_visualize_link(filename=visualize_filename)
-    visualizer = fb.Visualizer(filepath=fb.visualize_data_folder() + visualize_filename)
-    visualizer.load_positions(positions)  # so that visualizer can display vertices in user-defined view
+    visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
 
 solver = fb.SolverSerial(initializer)
 solver.solve_visualizer(syndrome, visualizer)  # enable visualizer for debugging
@@ -81,6 +80,11 @@ print(f"perfect_matching: {perfect_matching}")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
 print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
 solver.clear()  # clear is very fast (O(1) complexity), recommended for repetitive simulation
+
+# view in browser
+if visualizer is not None:
+    fb.print_visualize_link(filename=visualize_filename)
+    fb.helper.open_visualizer(visualize_filename, open_browser=True)
 ```
 
 For parallel solver, it needs user to provide a partition strategy. Please wait for our paper for a thorough description of how partition works.
