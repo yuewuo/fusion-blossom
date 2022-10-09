@@ -61,6 +61,8 @@ fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     let helper_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/helper.py"));
     let helper_module = PyModule::from_code(py, helper_code, "helper", "helper")?;
     helper_module.add("visualizer_website", generate_visualizer_website(py))?;
+    let bottle_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bottle.py"));  // embed bottle
+    helper_module.add_submodule(PyModule::from_code(py, bottle_code, "bottle", "bottle")?)?;
     m.add_submodule(helper_module)?;
     let helper_register = helper_module.getattr("register")?;
     helper_register.call1((m, ))?;

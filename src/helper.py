@@ -2,9 +2,8 @@
 Note: this file is compiled as part of the binary, recompile if you change this to take effect
 """
 
-import bottle, webbrowser, threading
-
-print(bottle.__version__)
+import webbrowser, threading
+# import bottle  # embedded 0.13-dev version for WSGIRefServer support
 
 fb = None
 
@@ -13,12 +12,11 @@ def register(module):
     global fb
     fb = module
 
-
 """
 start a server to host the visualizer websites locally
 """
-def serve(host='localhost', port=51666, data_folder=".", return_starter=False):
-    from bottle import route, abort, run, response, static_file
+def serve(host='localhost', port=51666, data_folder=".", return_server=False, quiet=True):
+    from bottle import WSGIRefServer, route, abort, run, response, static_file
     global visualizer_website
     def guess_mime(filename):
         if filename.endswith("html"):
@@ -39,20 +37,24 @@ def serve(host='localhost', port=51666, data_folder=".", return_starter=False):
             guess_mime(filename)
             return visualizer_website[filename]
         abort(404)
-    def starter():
-        run(host=host, port=port, debug=True)
-    if return_starter:
-        return starter
-    starter()
+    server = WSGIRefServer(host=host, port=port)
+    def run_server():
+        run(server=server, quiet=quiet)
+    if return_server:
+        return server, run_server
+    run_server()
 
 
 """
 open the website directly after starting the browser
 """
-def open_visualizer(filename, host='localhost', port=51666, data_folder=".", open_browser=True):
-    starter = serve(host, port, data_folder, return_starter=True)
+def open_visualizer(filename, host='localhost', port=51666, data_folder=".", open_browser=True, quiet=True):
+    server, run_server = serve(host, port, data_folder, return_server=True, quiet=quiet)
+    threading.Thread(target=run_server).start()
     if open_browser:
         def open_browser():
             webbrowser.open(f"http://{host}:{port}/?filename={filename}")
         threading.Timer(0.5, open_browser).start()  # wait 500ms for the server to start
-    starter()
+    print("Hit ENTER to exit server.")
+    input()
+    server.srv.shutdown()
