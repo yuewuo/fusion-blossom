@@ -24,5 +24,7 @@ act --container-architecture linux/amd64
 test cibuildwheel locally on MacOS:
 
 ```sh
+rustup target add x86_64-apple-darwin
+rustup target add aarch64-apple-darwin
 CIBW_BUILD=cp39-* CIBW_PLATFORM=macos CIBW_ARCHS_MACOS=universal2 python -m cibuildwheel --output-dir wheelhouse
 ```

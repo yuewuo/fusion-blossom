@@ -35,11 +35,15 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
 
     steps:
       - uses: actions/checkout@v3
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
 
       - uses: actions/setup-python@v3
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
 
       - name: Install Rust
-        if: matrix.os != 'ubuntu'  # unnecessary for ubuntu because it's installed inside cibuildwheel
+        # unnecessary for ubuntu because it's installed inside cibuildwheel
+        # no python37 for macos
+        if: matrix.os != 'ubuntu' && (matrix.os != 'macos' || matrix['python-version'] != '7')
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -47,6 +51,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           override: true
 
       - name: Install Python dependencies
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: python -m pip install -U setuptools wheel twine cibuildwheel
 
       - name: Set up QEMU for building with emulator
@@ -56,6 +61,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           platforms: all
 
       - name: Build Wheels
+        if: matrix.os != 'ubuntu' && (matrix.os != 'macos' || matrix['python-version'] != '7')  # no python37 for macos
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: 'cp3${{ matrix.python-version }}-*'
@@ -67,6 +73,10 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           CIBW_ARCHS_LINUX: auto64 aarch64
           CIBW_ARCHS_MACOS: universal2
           CIBW_BEFORE_BUILD: >
+            rustup default nightly &&
+            rustup show
+          CIBW_BEFORE_BUILD_MACOS: >
+            rustup target add aarch64-apple-darwin &&
             rustup default nightly &&
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
@@ -87,12 +97,15 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
             rustup show
 
       - name: list wheel files
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: ${{ matrix.ls || 'ls -lh' }} wheelhouse/
 
       - name: twine check
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: twine check wheelhouse/*
 
       - uses: actions/upload-artifact@v3
+        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         with:
           path: wheelhouse/*.whl
 
