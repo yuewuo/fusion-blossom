@@ -58,10 +58,11 @@ partition_num_vec += [e * 16 for e in repeat_vec]
 partition_num_vec += [e * 32 for e in repeat_vec]
 partition_num_vec += [e * 64 for e in repeat_vec]
 # also include previous ones for direct comparison
-repeat_vec = [10, 15, 22, 33, 50, 75]
-partition_num_vec += [75]
-partition_num_vec += [e * 10 for e in repeat_vec]
-partition_num_vec += [e * 100 for e in repeat_vec]
+# repeat_vec = [10, 15, 22, 33, 50, 75]
+# partition_num_vec += [75]
+# partition_num_vec += [e * 10 for e in repeat_vec]
+# partition_num_vec += [e * 100 for e in repeat_vec]
+partition_num_vec += [1000]
 partition_num_vec.sort()
 print(partition_num_vec)
 benchmark_profile_path_vec = []
