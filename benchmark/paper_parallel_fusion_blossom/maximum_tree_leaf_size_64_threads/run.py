@@ -42,32 +42,24 @@ else:
 """
 Run simulations
 
-study the effect of partition_num given 64 threads
+study the effect of maximum_tree_leaf_size given 64 threads
 
-expectation: when partition_num is small, the performance should not be affected; only if partition_num is greater than 1000 where each partition has <100
-    measurement rounds will the performance starts to degrade
+expectation: when maximum_tree_leaf_size is 1, all fusions are executed sequentially, so the performance will be bad;
+    when maximum_tree_leaf_size is too large, the tree is too high and the final fusion will take a lot of time
+    a middle maximum_tree_leaf_size value is expected to reach the best performance, although it could be much larger than the number of threads
 
 """
 
-repeat_vec = [64, 72, 96]
-partition_num_vec = [e for e in repeat_vec]
-partition_num_vec += [e * 2 for e in repeat_vec]
-partition_num_vec += [e * 4 for e in repeat_vec]
-partition_num_vec += [e * 8 for e in repeat_vec]
-partition_num_vec += [e * 16 for e in repeat_vec]
-partition_num_vec += [e * 32 for e in repeat_vec]
-partition_num_vec += [e * 64 for e in repeat_vec]
-# also include previous ones for direct comparison
-# repeat_vec = [10, 15, 22, 33, 50, 75]
-# partition_num_vec += [75]
-# partition_num_vec += [e * 10 for e in repeat_vec]
-# partition_num_vec += [e * 100 for e in repeat_vec]
-partition_num_vec += [1000]
-partition_num_vec.sort()
-print(partition_num_vec)
+repeat_vec = [8, 9, 12]
+maximum_tree_leaf_size_vec = [1, 2, 3, 4, 5, 6, 7]
+for i in range(7):
+    maximum_tree_leaf_size_vec += [e * (2 ** i) for e in repeat_vec]
+maximum_tree_leaf_size_vec += [1000]  # for a full tree
+maximum_tree_leaf_size_vec.sort()
+print(maximum_tree_leaf_size_vec)
 benchmark_profile_path_vec = []
-for partition_num in partition_num_vec:
-    benchmark_profile_path = os.path.join(tmp_dir, f"{partition_num}.profile")
+for maximum_tree_leaf_size in maximum_tree_leaf_size_vec:
+    benchmark_profile_path = os.path.join(tmp_dir, f"{maximum_tree_leaf_size}.profile")
     benchmark_profile_path_vec.append(benchmark_profile_path)
     if os.path.exists(benchmark_profile_path):
         print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
@@ -78,7 +70,7 @@ for partition_num in partition_num_vec:
         command += ["--primal-dual-type", "parallel"]
         command += ["--primal-dual-config", '{"primal":{"thread_pool_size":64},"dual":{"thread_pool_size":64}}']  # keep using single thread
         command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
-        command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true,"maximum_tree_leaf_size":64}}']
+        command += ["--partition-config", f'{{"partition_num":1000,"enable_tree_fusion":true,"maximum_tree_leaf_size":{maximum_tree_leaf_size}}}']
         command += ["--verifier", "none"]
         command += ["--benchmark-profiler-output", benchmark_profile_path]
         print(command)
@@ -93,18 +85,18 @@ Gather useful data
 
 data_file = os.path.join(script_dir, "data.txt")
 with open(data_file, "w", encoding="utf8") as f:
-    f.write("<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>\n")
-    for idx, partition_num in enumerate(partition_num_vec):
+    f.write("<maximum_tree_leaf_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>\n")
+    for idx, maximum_tree_leaf_size in enumerate(maximum_tree_leaf_size_vec):
         benchmark_profile_path = benchmark_profile_path_vec[idx]
         print(benchmark_profile_path)
         profile = Profile(benchmark_profile_path)
-        print("partition_num:", partition_num)
+        print("maximum_tree_leaf_size:", maximum_tree_leaf_size)
         print("    average_decoding_time:", profile.average_decoding_time())
         print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
         print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
         print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
         f.write("%d %.5e %.5e %.5e\n" % (
-            partition_num,
+            maximum_tree_leaf_size,
             profile.average_decoding_time(),
             profile.average_decoding_time() / (noisy_measurements + 1),
             profile.average_decoding_time_per_syndrome(),
