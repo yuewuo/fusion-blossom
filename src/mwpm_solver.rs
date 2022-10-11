@@ -144,11 +144,13 @@ macro_rules! bind_trait_primal_dual_solver {
             fn trait_clear(&mut self) { self.clear() }
             #[pyo3(name = "solve_visualizer")]
             fn trait_solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-                self.solve_visualizer(syndrome_pattern, visualizer)
+                // self.solve_visualizer(syndrome_pattern, visualizer)
+                self.solve_visualizer(syndrome_pattern, visualizer.and(None))  // TODO: temporarily disable visualization of the algorithm itself, remove later
             }
             #[pyo3(name = "solve")]  // in Python, `solve` and `solve_visualizer` is the same because it can take optional parameter
             fn trait_solve(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-                self.solve_visualizer(syndrome_pattern, visualizer)
+                // self.solve_visualizer(syndrome_pattern, visualizer)
+                self.solve_visualizer(syndrome_pattern, visualizer.and(None))  // TODO: temporarily disable visualization of the algorithm itself, remove later
             }
             #[pyo3(name = "perfect_matching_visualizer")]
             fn trait_perfect_matching_visualizer(&mut self, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
