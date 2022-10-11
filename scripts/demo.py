@@ -25,12 +25,15 @@ if True:  # change to False to disable visualizer for much faster decoding
 
 solver = fb.SolverSerial(initializer)
 solver.solve_visualizer(syndrome, visualizer)  # enable visualizer for debugging
-perfect_matching = solver.perfect_matching()
-perfect_matching = solver.perfect_matching()
-print(f"perfect_matching: {perfect_matching}")
-print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
-print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
-solver.clear()  # clear is very fast (O(1) complexity), recommended for repetitive simulation
+perfect_matching = solver.perfect_matching(visualizer)
+print(f"\n\nMinimum Weight Perfect Matching (MWPM):")
+print(f"    - peer_matchings: {perfect_matching.peer_matchings}")  # Vec<(SyndromeIndex, SyndromeIndex)>
+print(f"          = vertices: {[(syndrome_vertices[a], syndrome_vertices[b]) for a, b in perfect_matching.peer_matchings]}")
+print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")  # Vec<(SyndromeIndex, VertexIndex)>
+print(f"             = vertices: {[(syndrome_vertices[a], b) for a, b in perfect_matching.virtual_matchings]}")
+subgraph = solver.subgraph(visualizer)
+print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}\n\n")  # Vec<EdgeIndex>
+solver.clear()  # clear is O(1) complexity, recommended for repetitive simulation
 
 # view in browser
 if visualizer is not None:

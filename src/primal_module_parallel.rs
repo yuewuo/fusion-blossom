@@ -231,7 +231,9 @@ impl PrimalModuleParallel {
             self.parallel_solve_step_callback(syndrome_pattern, parallel_dual_module
                 , |interface_ptr, dual_module, primal_module, group_max_update_length| {
                     if let Some(group_max_update_length) = group_max_update_length {
-                        println!("group_max_update_length: {:?}", group_max_update_length);
+                        if cfg!(build = "debug") {
+                            println!("group_max_update_length: {:?}", group_max_update_length);
+                        }
                         if let Some(length) = group_max_update_length.get_none_zero_growth() {
                             visualizer.snapshot_combined(format!("grow {length}"), vec![interface_ptr, dual_module, primal_module]).unwrap();
                         } else {
