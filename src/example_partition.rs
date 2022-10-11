@@ -241,16 +241,17 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
         let vertex_num = round_vertex_num * (noisy_measurements + 1);
         assert_eq!(code.vertex_num(), vertex_num, "code size incompatible");
         assert!(partition_num >= 1 && partition_num <= noisy_measurements as usize + 1);
-        let partition_length = (noisy_measurements as usize + 1) / partition_num;
+        // do not use fixed partition_length, because it would introduce super long partition; do it on the fly
         let mut config = PartitionConfig::new(vertex_num);
         config.partitions.clear();
-        for partition_index in 0..partition_num {
-            if partition_index < partition_num - 1 {
-                config.partitions.push(VertexRange::new_length(
-                    (partition_index * partition_length) as VertexIndex * round_vertex_num, (partition_length - 1) as VertexIndex * round_vertex_num
-                ));
+        for partition_index in 0..partition_num as VertexIndex {
+            let start_round_index = partition_index * (noisy_measurements + 1) / partition_num as VertexNum;
+            let end_round_index = (partition_index + 1) * (noisy_measurements + 1) / partition_num as VertexNum;
+            assert!(end_round_index > start_round_index, "empty partition occurs");
+            if partition_index == 0 {
+                config.partitions.push(VertexRange::new(start_round_index * round_vertex_num, end_round_index * round_vertex_num));
             } else {
-                config.partitions.push(VertexRange::new((partition_index * partition_length) as VertexIndex * round_vertex_num, vertex_num));
+                config.partitions.push(VertexRange::new((start_round_index + 1) * round_vertex_num, end_round_index * round_vertex_num));
             }
         }
         config.fusions.clear();

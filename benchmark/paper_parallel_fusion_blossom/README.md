@@ -53,3 +53,19 @@ Flags:                           fpu vme de pse tsc msr pae mce cx8 apic sep mtr
                                  _act_window hwp_epp hwp_pkg_req avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg tme avx512_vpopcntdq la57 rdpid fsrm md_clear pconfig flu
                                  sh_l1d arch_capabilities
 ```
+
+
+#### Use dev branch for evaluation
+
+```sh
+git fetch
+git switch dev
+```
+
+#### To set user's default priority
+
+```sh
+sudo vim /etc/security/limits.conf
+# add: ubuntu soft priority -10
+exit  # login again to take effect
+```
