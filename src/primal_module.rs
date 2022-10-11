@@ -315,6 +315,54 @@ impl PerfectMatching {
 
 }
 
+impl FusionVisualizer for PerfectMatching {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        let primal_nodes = if self.peer_matchings.is_empty() && self.virtual_matchings.is_empty() {
+            vec![]
+        } else {
+            let mut maximum_node_index = 0;
+            for (ptr_1, ptr_2) in self.peer_matchings.iter() {
+                maximum_node_index = std::cmp::max(maximum_node_index, ptr_1.get_ancestor_blossom().read_recursive().index);
+                maximum_node_index = std::cmp::max(maximum_node_index, ptr_2.get_ancestor_blossom().read_recursive().index);
+            }
+            for (ptr, _virtual_vertex) in self.virtual_matchings.iter() {
+                maximum_node_index = std::cmp::max(maximum_node_index, ptr.get_ancestor_blossom().read_recursive().index);
+            }
+            let mut primal_nodes = vec![json!(null); maximum_node_index as usize + 1];
+            for (ptr_1, ptr_2) in self.peer_matchings.iter() {
+                for (ptr_a, ptr_b) in [(ptr_1, ptr_2), (ptr_2, ptr_1)] {
+                    primal_nodes[ptr_a.read_recursive().index as usize] = json!({
+                        if abbrev { "m" } else { "temporary_match" }: {
+                            if abbrev { "p" } else { "peer" }: ptr_b.read_recursive().index,
+                            if abbrev { "t" } else { "touching" }: ptr_a.read_recursive().index,
+                        },
+                        if abbrev { "t" } else { "tree_node" }: {
+                            if abbrev { "r" } else { "root" }: ptr_a.read_recursive().index,
+                            if abbrev { "d" } else { "depth" }: 1,
+                        },
+                    });
+                }
+            }
+            for (ptr, virtual_vertex) in self.virtual_matchings.iter() {
+                primal_nodes[ptr.read_recursive().index as usize] = json!({
+                    if abbrev { "m" } else { "temporary_match" }: {
+                        if abbrev { "v" } else { "virtual_vertex" }: virtual_vertex,
+                        if abbrev { "t" } else { "touching" }: ptr.read_recursive().index,
+                    },
+                    if abbrev { "t" } else { "tree_node" }: {
+                        if abbrev { "r" } else { "root" }: ptr.read_recursive().index,
+                        if abbrev { "d" } else { "depth" }: 1,
+                    },
+                });
+            }
+            primal_nodes
+        };
+        json!({
+            "primal_nodes": primal_nodes,
+        })
+    }
+}
+
 /// build a subgraph based on minimum-weight paths between matched pairs
 #[derive(Debug, Clone)]
 pub struct SubGraphBuilder {
@@ -356,6 +404,7 @@ impl SubGraphBuilder {
 
     /// load perfect matching to the subgraph builder
     pub fn load_perfect_matching(&mut self, perfect_matching: &PerfectMatching) {
+        self.subgraph.clear();
         for (ptr_1, ptr_2) in perfect_matching.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
@@ -407,6 +456,27 @@ impl SubGraphBuilder {
         self.subgraph.iter().copied().collect()
     }
 
+}
+
+/// to visualize subgraph
+pub struct VisualizeSubgraph<'a> {
+    pub subgraph: &'a Vec<EdgeIndex>,
+}
+
+impl<'a> VisualizeSubgraph<'a> {
+    pub fn new(subgraph: &'a Vec<EdgeIndex>) -> Self {
+        Self {
+            subgraph
+        }
+    }
+}
+
+impl FusionVisualizer for VisualizeSubgraph<'_> {
+    fn snapshot(&self, _abbrev: bool) -> serde_json::Value {
+        json!({
+            "subgraph": self.subgraph,
+        })
+    }
 }
 
 #[cfg(feature="python_binding")]

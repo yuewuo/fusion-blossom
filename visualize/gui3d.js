@@ -224,6 +224,12 @@ export const grown_edge_material = new THREE.MeshStandardMaterial({
     transparent: true,
     side: THREE.FrontSide,
 })
+export const subgraph_edge_material = new THREE.MeshStandardMaterial({
+    color: 0x0000ff,
+    opacity: 1,
+    transparent: true,
+    side: THREE.FrontSide,
+})
 export const hover_material = new THREE.MeshStandardMaterial({  // when mouse is on this object (vertex or edge)
     color: 0x6FDFDF,
     side: THREE.DoubleSide,
@@ -342,6 +348,12 @@ export async function refresh_snapshot_data() {
             })
         }
         // draw vertices
+        let subgraph_set = {}
+        if (snapshot.subgraph != null) {
+            for (let edge_index of snapshot.subgraph) {
+                subgraph_set[edge_index] = true
+            }
+        }
         for (let [i, vertex] of snapshot.vertices.entries()) {
             if (vertex == null) {
                 if (i < vertex_meshes.length) {  // hide
@@ -428,7 +440,7 @@ export async function refresh_snapshot_data() {
                 while (edge_meshes.length <= i) {
                     let two_edges = [null, null]
                     for (let j of [0, 1]) {
-                        const edge_mesh = new THREE.Mesh( edge_geometry, is_grown_part ? grown_edge_material : edge_material )
+                        const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
                         edge_mesh.userData = {
                             type: "edge",
                             edge_index: edge_meshes.length,
@@ -449,6 +461,10 @@ export async function refresh_snapshot_data() {
                     edge_mesh.visible = true
                     if (start >= end) {
                         edge_mesh.visible = false
+                    }
+                    edge_mesh.material = is_grown_part ? grown_edge_material : edge_material
+                    if (subgraph_set[i]) {
+                        edge_mesh.material = subgraph_edge_material
                     }
                 }
             }
@@ -498,7 +514,8 @@ export async function refresh_snapshot_data() {
         for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
             if (dual_node == null) { continue }
             // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
-            if (dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)) {  // no parent and (positive dual variable or it's a blossom)
+            let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
+            if (display_node) {  // no parent and (positive dual variable or it's a blossom)
                 let points = []
                 if (dual_node.b != null) {
                     for (let [is_left, edge_index] of dual_node.b) {

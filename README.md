@@ -153,8 +153,8 @@ cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
 
 # TODOs
 
-- [ ] bind to Python and publish to pip
 - [ ] support erasures in parallel solver
+- [ ] display the ultimate perfect matching and also display the minimum-weight parity subgraph
 
 # References
 <a id="fowler2012topological">[1]</a> Fowler, Austin G., et al. "Topological code autotune." Physical Review X 2.4 (2012): 041003.

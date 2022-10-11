@@ -269,7 +269,7 @@ impl Cli {
                     benchmark_profiler.begin(&syndrome_pattern);
                     primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
                     benchmark_profiler.event("decoded".to_string());
-                    result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern);
+                    result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern, visualizer.as_mut());
                     benchmark_profiler.event("verified".to_string());
                     primal_dual_solver.clear();  // also count the clear operation
                     benchmark_profiler.end(Some(&*primal_dual_solver));
@@ -599,13 +599,13 @@ impl Verifier {
 }
 
 trait ResultVerifier {
-    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern);
+    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
 }
 
 struct VerifierNone { }
 
 impl ResultVerifier for VerifierNone {
-    fn verify(&mut self, _primal_dual_solver: &mut Box<dyn PrimalDualSolver>, _syndrome_pattern: &SyndromePattern) { }
+    fn verify(&mut self, _primal_dual_solver: &mut Box<dyn PrimalDualSolver>, _syndrome_pattern: &SyndromePattern, _visualizer: Option<&mut Visualizer>) { }
 }
 
 struct VerifierBlossomV {
@@ -614,7 +614,7 @@ struct VerifierBlossomV {
 }
 
 impl ResultVerifier for VerifierBlossomV {
-    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern) {
+    fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
         // prepare modified weighted edges
         let mut edge_modifier = EdgeWeightModifier::new();
         for edge_index in syndrome_pattern.erasures.iter() {
@@ -653,5 +653,8 @@ impl ResultVerifier for VerifierBlossomV {
         self.subgraph_builder.load_perfect_matching(&fusion_mwpm);
         // println!("blossom_total_weight: {blossom_total_weight} = {} = {fusion_total_weight}", self.subgraph_builder.total_weight());
         assert_eq!(self.subgraph_builder.total_weight(), blossom_total_weight, "unexpected final dual variable sum");
+        if visualizer.is_some() {
+            primal_dual_solver.subgraph_visualizer(visualizer);
+        }
     }
 }

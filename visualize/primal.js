@@ -40,7 +40,11 @@ export async function show_snapshot(snapshot_idx, fusion_data) {
         const dual_node = snapshot.dual_nodes[i]
         if (primal_node == null) { continue }  // expanded blossom
         const id = `${i}`
-        if (dual_node.p != null) { continue }  // internal node of a blossom
+        let display_node = dual_node.p == null
+        // however, if primal node explicitly says it has a matching (usually when visualize a perfect matching), then force it to be shown
+        display_node |= snapshot.primal_nodes && i < snapshot.primal_nodes.length && snapshot.primal_nodes[i] && snapshot.primal_nodes[i].m != undefined
+        display_node &= snapshot.primal_nodes == undefined || i >= snapshot.primal_nodes.length || snapshot.primal_nodes[i] != undefined
+        if (!display_node) { continue }  // internal node of a blossom
         const child_count = get_child_count(dual_node)
         if (child_count % 2 == 0) {
             console.error("found even child count, invalid blossom")
