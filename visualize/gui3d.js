@@ -463,6 +463,9 @@ export async function refresh_snapshot_data() {
                         edge_mesh.visible = false
                     }
                     edge_mesh.material = is_grown_part ? grown_edge_material : edge_material
+                    if (snapshot.subgraph != null) {
+                        edge_mesh.material = edge_material  // do not display grown edges
+                    }
                     if (subgraph_set[i]) {
                         edge_mesh.material = subgraph_edge_material
                     }
@@ -513,6 +516,7 @@ export async function refresh_snapshot_data() {
         }
         for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
             if (dual_node == null) { continue }
+            if (snapshot.subgraph != null) { continue }  // do not display convex if subgraph is displayed
             // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
             let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
             if (display_node) {  // no parent and (positive dual variable or it's a blossom)
