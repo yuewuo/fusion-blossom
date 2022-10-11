@@ -231,7 +231,7 @@ impl PrimalModuleParallel {
             self.parallel_solve_step_callback(syndrome_pattern, parallel_dual_module
                 , |interface_ptr, dual_module, primal_module, group_max_update_length| {
                     if let Some(group_max_update_length) = group_max_update_length {
-                        if cfg!(build = "debug") {
+                        if cfg!(debug_assertions) {
                             println!("group_max_update_length: {:?}", group_max_update_length);
                         }
                         if let Some(length) = group_max_update_length.get_none_zero_growth() {

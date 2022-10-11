@@ -94,7 +94,7 @@ pub trait PrimalModuleImpl {
             , visualizer: Option<&mut Visualizer>) where Self: FusionVisualizer + Sized {
         if let Some(visualizer) = visualizer {
             self.solve_step_callback(interface, syndrome_pattern, dual_module, |interface, dual_module, primal_module, group_max_update_length| {
-                if cfg!(build = "debug") {
+                if cfg!(debug_assertions) {
                     println!("group_max_update_length: {:?}", group_max_update_length);
                 }
                 if let Some(length) = group_max_update_length.get_none_zero_growth() {
