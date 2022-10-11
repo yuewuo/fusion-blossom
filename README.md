@@ -73,8 +73,8 @@ if True:  # change to False to disable visualizer for much faster decoding
     visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
 
 solver = fb.SolverSerial(initializer)
-solver.solve_visualizer(syndrome, visualizer)  # enable visualizer for debugging
-perfect_matching = solver.perfect_matching(visualizer)
+solver.solve(syndrome, visualizer)  # enable visualizer for debugging
+perfect_matching = solver.perfect_matching()
 print(f"\n\nMinimum Weight Perfect Matching (MWPM):")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")  # Vec<(SyndromeIndex, SyndromeIndex)>
 print(f"          = vertices: {[(syndrome_vertices[a], syndrome_vertices[b]) for a, b in perfect_matching.peer_matchings]}")
