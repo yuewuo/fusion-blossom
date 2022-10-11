@@ -6,7 +6,7 @@ on:
       - main
     tags:
       - '**'
-  pull_request: {}
+  # pull_request: {}
 
 jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.github/workflows/ci.yml
   # Yue: I use cibuildwheel to start multiple dockers with different targets, and use maturin to actually generate the wheel

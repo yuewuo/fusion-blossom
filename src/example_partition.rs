@@ -334,6 +334,8 @@ pub mod tests {
     use super::super::primal_module_parallel::*;
     use super::super::dual_module_parallel::*;
     use super::super::dual_module_serial::*;
+    use super::super::dual_module::*;
+    use super::super::primal_module::*;
 
     pub fn example_partition_basic_standard_syndrome_optional_viz(code: &mut dyn ExampleCode, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)
@@ -358,7 +360,19 @@ pub mod tests {
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
         code.set_syndrome_vertices(&syndrome_vertices);
         primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
-        assert_eq!(primal_module.units.last().unwrap().read_recursive().interface_ptr.sum_dual_variables(), final_dual * 2, "unexpected final dual variable sum");
+        let useless_interface_ptr = DualModuleInterfacePtr::new_empty();  // don't actually use it
+        let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
+        let mut subgraph_builder = SubGraphBuilder::new(&initializer);
+        subgraph_builder.load_perfect_matching(&perfect_matching);
+        let subgraph = subgraph_builder.get_subgraph();
+        if let Some(visualizer) = visualizer.as_mut() {
+            let last_interface_ptr = &primal_module.units.last().unwrap().read_recursive().interface_ptr;
+            visualizer.snapshot_combined("perfect matching and subgraph".to_string(), vec![last_interface_ptr, &dual_module
+                , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
+        }
+        let sum_dual_variables = primal_module.units.last().unwrap().read_recursive().interface_ptr.sum_dual_variables();
+        assert_eq!(sum_dual_variables, subgraph_builder.total_weight(), "unmatched sum dual variables");
+        assert_eq!(sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (primal_module, dual_module)
     }
 

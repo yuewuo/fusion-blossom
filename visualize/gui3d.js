@@ -623,6 +623,9 @@ const conf = {
     grown_edge_color: grown_edge_material.color,
     grown_edge_opacity: grown_edge_material.opacity,
     grown_edge_side: grown_edge_material.side,
+    subgraph_edge_color: subgraph_edge_material.color,
+    subgraph_edge_opacity: subgraph_edge_material.opacity,
+    subgraph_edge_side: subgraph_edge_material.side,
     outline_ratio: outline_ratio.value,
     vertex_radius_scale: vertex_radius_scale.value,
     edge_radius_scale: edge_radius_scale.value,
@@ -653,6 +656,9 @@ controller.edge_side = edge_folder.add( conf, 'edge_side', side_options ).onChan
 controller.grown_edge_color = edge_folder.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
 controller.grown_edge_opacity = edge_folder.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
 controller.grown_edge_side = edge_folder.add( conf, 'grown_edge_side', side_options ).onChange( function ( value ) { grown_edge_material.side = Number(value) } )
+controller.subgraph_edge_color = edge_folder.addColor( conf, 'subgraph_edge_color' ).onChange( function ( value ) { subgraph_edge_material.color = value } )
+controller.subgraph_edge_opacity = edge_folder.add( conf, 'subgraph_edge_opacity', 0, 1 ).onChange( function ( value ) { subgraph_edge_material.opacity = Number(value) } )
+controller.subgraph_edge_side = edge_folder.add( conf, 'subgraph_edge_side', side_options ).onChange( function ( value ) { subgraph_edge_material.side = Number(value) } )
 const size_folder = gui.addFolder( 'size' )
 controller.outline_ratio = size_folder.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
 controller.vertex_radius_scale = size_folder.add( conf, 'vertex_radius_scale', 0.1, 5 ).onChange( function ( value ) { vertex_radius_scale.value = Number(value) } )
