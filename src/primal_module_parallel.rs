@@ -117,7 +117,7 @@ pub mod primal_module_parallel_default_configs {
     pub fn thread_pool_size() -> usize { 0 }  // by default to the number of CPU cores
     // pub fn thread_pool_size() -> usize { 1 }  // debug: use a single core
     pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
-    pub fn pin_threads_to_cores() -> bool { true }  // be default pin threads to cores to achieve most stable results
+    pub fn pin_threads_to_cores() -> bool { false }  // pin threads to cores to achieve most stable results
     pub fn prioritize_base_partition() -> bool { true }  // by default enable because this is faster by placing time-consuming tasks in the front
 }
 

@@ -14,7 +14,7 @@ A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correctio
 
 - In phenomenological noise model with **$p$ = 0.005**, code distance **$d$ = 21**, planar code with $d(d-1)$ = 420 $Z$ stabilizers, 100000 measurement rounds
   - single-thread: **3.4us per syndrome** or 41us per measurement round
-  - 64-thread: 85ns per sydnrome or **1.0us per measurement round**
+  - 64-threads: 85ns per syndrome or **1.0us per measurement round**
 
 ## Background and Key Ideas
 
@@ -68,7 +68,6 @@ print(syndrome)
 # visualizer (optional for debugging)
 visualizer = None
 if True:  # change to False to disable visualizer for much faster decoding
-    import os
     visualize_filename = fb.static_visualize_data_filename()
     visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
 
