@@ -332,7 +332,7 @@ pub fn visualize_data_folder() -> String {
 
 #[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn static_visualize_data_filename() -> String {
-    "static.json".to_string()
+    "visualizer.json".to_string()
 }
 
 #[cfg_attr(feature = "python_binding", pyfunction)]
@@ -380,7 +380,7 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 mod tests {
     use super::*;
     use super::super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::dual_module_serial::*;
     use super::super::dual_module::*;
     use super::super::pointers::*;

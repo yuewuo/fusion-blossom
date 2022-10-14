@@ -344,6 +344,9 @@ pub trait ExampleCode {
 }
 
 #[cfg(feature="python_binding")]
+use rand::{Rng, thread_rng};
+
+#[cfg(feature="python_binding")]
 macro_rules! bind_trait_example_code {
     ($struct_name:ident) => {
         #[pymethods]
@@ -378,6 +381,7 @@ macro_rules! bind_trait_example_code {
             #[pyo3(name = "get_syndrome")]
             fn trait_get_syndrome(&self) -> SyndromePattern { self.get_syndrome() }
             #[pyo3(name = "generate_random_errors")]
+            #[args(seed = "thread_rng().gen()")]
             fn trait_generate_random_errors(&mut self, seed: u64) -> SyndromePattern { self.generate_random_errors(seed) }
             #[pyo3(name = "is_virtual")]
             fn trait_is_virtual(&mut self, vertex_idx: usize) -> bool { self.is_virtual(vertex_idx) }
@@ -699,6 +703,7 @@ impl CircuitLevelPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
     pub fn new_diagonal(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight, diagonal_p: f64) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);

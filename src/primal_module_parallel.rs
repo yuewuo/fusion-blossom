@@ -508,7 +508,7 @@ impl PrimalModuleImpl for PrimalModuleParallelUnit {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::dual_module_serial::*;
 
     pub fn primal_module_parallel_basic_standard_syndrome_optional_viz<F>(mut code: impl ExampleCode, visualize_filename: Option<String>

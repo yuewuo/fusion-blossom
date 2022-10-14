@@ -1713,7 +1713,7 @@ impl DualModuleSerial {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::primal_module_serial::tests::*;
 
     #[allow(dead_code)]

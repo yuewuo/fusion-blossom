@@ -1,7 +1,7 @@
 extern crate clap;
 extern crate pbr;
 
-use fusion_blossom::example::*;
+use fusion_blossom::example_codes::*;
 use fusion_blossom::util::*;
 use fusion_blossom::visualize::*;
 use fusion_blossom::dual_module::*;

@@ -23,7 +23,7 @@ Users can install the library using `pip3 install fusion-blossom`.
 # Contributing
 
 **fusion-blossom** is free and open source.
-You can find the source code on [GitHub](https://github.com/yuewuo/fusion-blossom), where you can report issues and feature requests using [GitHub issue tracker](https://github.com/yuewuo/fusion-blossom/issues).
+You can find the source code on [GitHub](https://github.com/yuewuo/fusion-blossom), where you can report issues and request features using [GitHub issue tracker](https://github.com/yuewuo/fusion-blossom/issues).
 Currently the project is maintained by [Yue Wu](https://wuyue98.cn/) at [Yale Efficient Computing Lab](http://www.yecl.org/).
 If you'd like to contribute to the project, consider [emailing the maintainer](mailto:yue.wu@yale.edu) or opening a [pull request](https://github.com/yuewuo/fusion-blossom/pulls).
 

@@ -9,7 +9,8 @@
 # Python Demos
 
 - [Example QEC Codes](demo/example-qec-codes.md)
+- [Construct Syndrome](demo/construct-syndrome.md)s
 - [Construct Graph](demo/construct-graph.md)
-- [Construct Syndrome](demo/construct-syndrome.md)
 - [Use Results](demo/use-results.md)
 
+[Visualizer Usage](visualizer_usage.md)

@@ -10,7 +10,7 @@ use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching, V
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::dual_module_parallel::*;
-use super::example::*;
+use super::example_codes::*;
 use super::primal_module_parallel::*;
 use super::visualize::*;
 use crate::derivative::Derivative;

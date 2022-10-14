@@ -1280,7 +1280,7 @@ impl PrimalModuleSerialPtr {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::dual_module_serial::*;
     use super::super::*;
 

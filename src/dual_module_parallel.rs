@@ -1020,7 +1020,7 @@ pub struct Interface {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::primal_module::*;
     use super::super::primal_module_serial::*;
 
