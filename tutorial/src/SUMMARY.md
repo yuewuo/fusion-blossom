@@ -2,7 +2,7 @@
 
 [Introduction](README.md)
 
-[Problem Definition](problem_definition.md)
+[Problem Definition](problem-definition.md)
 
 [Installation](installation.md)
 
@@ -18,4 +18,4 @@
 - [Decode Erasure Error](demo/decode-erasure-error.md)
 - [Blossom Algorithm](demo/blossom-algorithm.md)
 
-[Visualizer Usage](visualizer_usage.md)
+[Visualizer Usage](visualizer-usage.md)

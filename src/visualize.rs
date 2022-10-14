@@ -222,6 +222,33 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
     snapshot_copy_remaining_fields(value, value_2);
 }
 
+#[cfg_attr(feature = "python_binding", pyfunction)]
+pub fn center_positions(mut positions: Vec<VisualizePosition>) -> Vec<VisualizePosition> {
+    if !positions.is_empty() {
+        let mut max_i = positions[0].i;
+        let mut min_i = positions[0].i;
+        let mut max_j = positions[0].j;
+        let mut min_j = positions[0].j;
+        let mut max_t = positions[0].t;
+        let mut min_t = positions[0].t;
+        for position in positions.iter_mut() {
+            if position.i > max_i { max_i = position.i; }
+            if position.j > max_j { max_j = position.j; }
+            if position.t > max_t { max_t = position.t; }
+            if position.i < min_i { min_i = position.i; }
+            if position.j < min_j { min_j = position.j; }
+            if position.t < min_t { min_t = position.t; }
+        }
+        let (ci, cj, ct) = ((max_i + min_i) / 2., (max_j + min_j) / 2., (max_t + min_t) / 2.);
+        for position in positions.iter_mut() {
+            position.i -= ci;
+            position.j -= cj;
+            position.t -= ct;
+        }
+    }
+    positions
+}
+
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl Visualizer {
@@ -234,28 +261,7 @@ impl Visualizer {
             filepath = None;  // do not open file
         }
         if center {
-            if !positions.is_empty() {
-                let mut max_i = positions[0].i;
-                let mut min_i = positions[0].i;
-                let mut max_j = positions[0].j;
-                let mut min_j = positions[0].j;
-                let mut max_t = positions[0].t;
-                let mut min_t = positions[0].t;
-                for position in positions.iter_mut() {
-                    if position.i > max_i { max_i = position.i; }
-                    if position.j > max_j { max_j = position.j; }
-                    if position.t > max_t { max_t = position.t; }
-                    if position.i < min_i { min_i = position.i; }
-                    if position.j < min_j { min_j = position.j; }
-                    if position.t < min_t { min_t = position.t; }
-                }
-                let (ci, cj, ct) = ((max_i + min_i) / 2., (max_j + min_j) / 2., (max_t + min_t) / 2.);
-                for position in positions.iter_mut() {
-                    position.i -= ci;
-                    position.j -= cj;
-                    position.t -= ct;
-                }
-            }
+            positions = center_positions(positions);
         }
         let mut file = match filepath {
             Some(filepath) => Some(File::create(filepath)?),
@@ -372,6 +378,7 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(auto_visualize_data_filename, m)?)?;
     m.add_function(wrap_pyfunction!(print_visualize_link_with_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(print_visualize_link, m)?)?;
+    m.add_function(wrap_pyfunction!(center_positions, m)?)?;
     Ok(())
 }
 

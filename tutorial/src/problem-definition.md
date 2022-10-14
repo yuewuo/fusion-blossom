@@ -30,11 +30,11 @@ For simplicity each real vertex only connects to one nearest virtual vertex.
 
 <div style="display: flex; justify-content: center;">
     <div style="width: 49%; text-align: center;">
-        <img style="width: 90%;" src="img/decoding_graph.png"/>
+        <img style="width: 90%;" src="img/decoding-graph.png"/>
         <p>Decoding Graph</p>
     </div>
     <div style="width: 49%; text-align: center;">
-        <img style="width: 90%;" src="img/syndrome_graph.png"/>
+        <img style="width: 90%;" src="img/syndrome-graph.png"/>
         <p>Syndrome Graph</p>
     </div>
 </div>
@@ -51,11 +51,11 @@ The syndrome pattern essentially sets a parity constraint on the result subgraph
 
 <div style="display: flex; justify-content: center;">
     <div style="width: 49%; text-align: center;">
-        <img style="width: 90%;" src="img/decoding_graph_result.png"/>
+        <img style="width: 90%;" src="img/decoding-graph-result.png"/>
         <p>Decoding Graph: Parity Subgraph</p>
     </div>
     <div style="width: 49%; text-align: center;">
-        <img style="width: 90%;" src="img/syndrome_graph_result.png"/>
+        <img style="width: 90%;" src="img/syndrome-graph-result.png"/>
         <p>Syndrome Graph: Perfect Matching</p>
     </div>
 </div>

@@ -216,6 +216,8 @@ impl DualModuleImpl for DualModuleSerial {
         let mut edges = Vec::<EdgePtr>::new();
         for &(i, j, weight) in initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+            assert!(weight % 2 == 0, "edge ({}, {}) has odd weight value; weight should be even", i, j);
+            assert!(weight >= 0, "edge ({}, {}) is negative-weighted", i, j);
             assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
             assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
             let left = VertexIndex::min(i, j);
@@ -809,6 +811,8 @@ impl DualModuleImpl for DualModuleSerial {
         let mut edges = Vec::<EdgePtr>::new();
         for &(i, j, weight, edge_index) in partitioned_initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+            assert!(weight % 2 == 0, "edge ({}, {}) has odd weight value; weight should be even", i, j);
+            assert!(weight >= 0, "edge ({}, {}) is negative-weighted", i, j);
             debug_assert!(partitioned_initializer.owning_range.contains(i) || mirrored_vertices.contains_key(&i)
                 , "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
             debug_assert!(partitioned_initializer.owning_range.contains(j) || mirrored_vertices.contains_key(&j)
