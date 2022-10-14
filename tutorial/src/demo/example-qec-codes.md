@@ -1,5 +1,7 @@
 # Example QEC Codes
 
+In this chapter you'll learn how to use the builtin example QEC codes to run randomized decoder simulation and get familiar with the visualization tools.
+
 You can [download the complete code here](./example-qec-codes.py).
 
 ## Code Initialization
@@ -26,6 +28,7 @@ Current available QEC codes and noise models are:
 The example QEC code object can simulate random errors, outputs a syndrome pattern.
 You can provide a seed for the internal pseudo random number generator, otherwise it will use system-level random number for the seed.
 A syndrome pattern includes syndrome vertices (non-trivial stabilizer measurements) and also erasures (known-position errors, given by edge indices).
+Please check [Construct Syndrome Chapter](./construct-syndrome.md) for more details of constructing your own syndrome.
 
 ```python
 syndrome = code.generate_random_errors(seed=1000)
@@ -48,7 +51,7 @@ if True:  # change to False to disable visualizer for faster decoding
 
 We use `SolverSerial` here as an example. Other solvers like `SolverDualParallel` and `SolverParallel` requires more input, please check Rust documentation for more information.
 For the example QEC codes, we provide the initializer for the solver, but essentially it's a very simple format.
-Please check [Construct Graph Chapter](./construct-graph.md) for more details of constructing your own decoding graph initializer.
+Please check [Construct Decoding Graph Chapter](./construct-decoding-graph.md) for more details of constructing your own decoding graph initializer.
 
 ```python
 initializer = code.get_initializer()
@@ -103,6 +106,10 @@ virtual_matching_vertices = [(syndrome_vertices[a], b)
 print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
 print(f"             = vertices: {virtual_matching_vertices}")
 ```
+
+<div style="display: flex; justify-content: center;">
+    <img src="../img/example-qec-codes-perfect-matching.png" style="width: 30%;"/>
+</div>
 
 ## Clear Solver
 

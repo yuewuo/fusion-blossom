@@ -10,11 +10,12 @@
 
 - [Example QEC Codes](demo/example-qec-codes.md)
 - [Construct Syndrome](demo/construct-syndrome.md)s
-- [Construct Graph](demo/construct-graph.md)
+- [Construct Decoding Graph](demo/construct-decoding-graph.md)
 - [Use Results](demo/use-results.md)
 
-# Advanced Python Demos
+# Advanced Topics
 
 - [Decode Erasure Error](demo/decode-erasure-error.md)
+- [Blossom Algorithm](demo/blossom-algorithm.md)
 
 [Visualizer Usage](visualizer_usage.md)

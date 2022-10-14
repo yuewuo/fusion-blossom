@@ -1,5 +1,7 @@
 # Construct Syndrome
 
+In this chapter you'll learn how to construct your own syndrome to decode.
+
 You can [download the complete code here](./construct-syndrome.py).
 
 ## Code Initialization
