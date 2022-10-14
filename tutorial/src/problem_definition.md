@@ -52,7 +52,7 @@ The syndrome pattern essentially sets a parity constraint on the result subgraph
 <div style="display: flex; justify-content: center;">
     <div style="width: 49%; text-align: center;">
         <img style="width: 90%;" src="img/decoding_graph_result.png"/>
-        <p>Decoding Graph: Subgraph</p>
+        <p>Decoding Graph: Parity Subgraph</p>
     </div>
     <div style="width: 49%; text-align: center;">
         <img style="width: 90%;" src="img/syndrome_graph_result.png"/>
@@ -64,7 +64,7 @@ We shall note that in a traditional MWPM decoder, people have to translate each 
 In fact, in order to use traditional MWPM libraries to implement a MWPM decoder, people translate from the decoding graph to the syndrome graph and then back to the decoding graph, which is not only time-consuming but also make the decoder implementation more complex.
 What we do here is to directly solve the problem on the decoding graph for high efficiency, and also directly output results on the decoding graph so that user can simply multiple the individual error for each edge to get the most-likely error pattern.
 
-Our library can output both MWPM and MWPS.For more details, see [Example QEC Codes](demo/example-qec-codes.md). Here is an example in Python:
+Our library can output both MWPS and MWPM. For more details, see [Example QEC Codes](demo/example-qec-codes.md). Here is an example in Python:
 
 ```python
 solver = SolverSerial(initializer)

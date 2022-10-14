@@ -14,7 +14,7 @@ syndrome = fb.SyndromePattern(
     syndrome_vertices = [52],
 )
 
-## Initialize Visualizer [Optional]
+## Visualize Result
 
 visualizer = None
 if True:  # change to False to disable visualizer for faster decoding
@@ -22,21 +22,13 @@ if True:  # change to False to disable visualizer for faster decoding
     positions = code.get_positions()
     visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
 
-## Initialize Solver
-
 initializer = code.get_initializer()
 solver = fb.SolverSerial(initializer)
 
-## Run Solver
-
 solver.solve(syndrome)
-
-## Print Minimum-Weight Parity Subgraph (MWPS)
 
 subgraph = solver.subgraph(visualizer)
 print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}")  # Vec<EdgeIndex>
-
-## Visualization [Optional]
 
 if visualizer is not None:
     fb.print_visualize_link(filename=visualize_filename)
