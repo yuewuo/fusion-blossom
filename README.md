@@ -5,10 +5,14 @@
 # Fusion Blossom
 A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correction (QEC)
 
+Please see [our tutorial for a quick explanation and some Python demos](tutorial.fusion-blossom.com).
+
 ## Key Features
 
-- **Linear Complexity**: The decoding time is roughly $O(N)$, proportional to the number of syndrome vertices $N$.
+- **Correctness**: This is an exact MWPM solver, verified against the [Blossom V library](https://pub.ist.ac.at/~vnk/software.html) with millions of randomized test cases .
+- **Linear Complexity**: The decoding time is roughly $O(N)$ given small physical error rate, proportional to the number of syndrome vertices $N$.
 - **Parallelism**: A single MWPM decoding problem can be partitioned and solved in parallel, then *fused* together to find an **exact** global MWPM solution.
+- **Simple Interface**: The graph problem is abstracted and easy-to-use for QEC applications.
 
 ## Benchmark Highlights
 
@@ -159,7 +163,12 @@ cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
 - [ ] optimize performance by statically handling object allocation without using Arc and Weak
 - [ ] optimize scheduling of fusion operations and update data in README and MM2023 abstract
 
+# Acknowledgements
+
+This project is funded by [NSF MRI: Development of PARAGON: Control Instrument for Post NISQ Quantum Computing](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2216030)
+
 # References
+
 <a id="fowler2012topological">[1]</a> Fowler, Austin G., et al. "Topological code autotune." Physical Review X 2.4 (2012): 041003.
 
 <a id="criger2018multi">[2]</a> Criger, Ben, and Imran Ashraf. "Multi-path summation for decoding 2D topological codes." Quantum 2 (2018): 102.

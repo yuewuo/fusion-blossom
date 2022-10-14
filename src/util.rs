@@ -72,6 +72,7 @@ pub struct SyndromePattern {
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
     #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(syndrome_vertices="vec![]", erasures="vec![]"))]
     pub fn new(syndrome_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
         Self { syndrome_vertices, erasures }
     }
@@ -767,6 +768,7 @@ pub(crate) fn register(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<PartitionUnitInfo>()?;
     m.add_class::<PartitionInfo>()?;
     m.add_class::<PartitionConfig>()?;
+    m.add_class::<SyndromePattern>()?;
     use crate::pyo3::PyTypeInfo;
     // m.add_class::<IndexRange>()?;
     m.add("VertexRange", VertexRange::type_object(py))?;
