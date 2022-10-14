@@ -13,4 +13,8 @@
 - [Construct Graph](demo/construct-graph.md)
 - [Use Results](demo/use-results.md)
 
+# Advanced Python Demos
+
+- [Decode Erasure Error](demo/decode-erasure-error.md)
+
 [Visualizer Usage](visualizer_usage.md)

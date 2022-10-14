@@ -1,6 +1,6 @@
 # Example QEC Codes
 
-You can [download the full code here](./example-qec-codes.py).
+You can [download the complete code here](./example-qec-codes.py).
 
 ## Code Initialization
 
@@ -73,9 +73,11 @@ subgraph = solver.subgraph(visualizer)
 print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}")
 ```
 
-An example output is: `Minimum Weight Parity Subgraph (MWPS): [14, 24, 26, 34, 66, 68, 93, 107, 144, 159, 161, 169]`. Each number is an edge index, starting from 0 in the `initializer.weighted_edges` list. The visualization tool below can help identify those edges. You can click an edge to see its index.
+An example output is: `Minimum Weight Parity Subgraph (MWPS): [14, 24, 26, 34, 66, 68, 93, 107, 144, 159, 161, 169]`. Each number is an edge index, starting from 0 in the `initializer.weighted_edges` list. The visualization tool can help identify those edges (in blue).
 
-![](../img/example-qec-codes.png)
+<div style="display: flex; justify-content: center;">
+    <img src="../img/example-qec-codes-subgraph.png" style="width: 50%;"/>
+</div>
 
 ## Print Minimum-Weight Perfect Matching (MWPM)
 
@@ -122,3 +124,5 @@ if visualizer is not None:
     fb.print_visualize_link(filename=visualize_filename)
     fb.helper.open_visualizer(visualize_filename, open_browser=True)
 ```
+
+![](../img/example-qec-codes.png)
