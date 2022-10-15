@@ -470,7 +470,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                     module.nodes.push(None);
                                 }
                                 let cloned_primal_node_internal_blossom_ptr = primal_node_internal_blossom_ptr.clone();
-                                module.nodes[local_node_index] = Some(primal_node_internal_blossom_ptr);  // feature `unsafe_arc`: must push the owner
+                                module.nodes[local_node_index] = Some(primal_node_internal_blossom_ptr);  // feature `dangerous_pointer`: must push the owner
                                 cloned_primal_node_internal_blossom_ptr
                             };
                             // handle other part of the tree structure

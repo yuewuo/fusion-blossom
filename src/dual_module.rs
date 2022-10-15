@@ -4,7 +4,7 @@
 //!
 
 use super::util::*;
-#[cfg(not(feature="unsafe_arc"))]
+#[cfg(not(feature="dangerous_pointer"))]
 use std::sync::Arc;
 use crate::derivative::Derivative;
 use core::cmp::Ordering;
@@ -312,7 +312,7 @@ impl Ord for DualNodePtr {
     // a consistent compare (during a single program)
     fn cmp(&self, other: &Self) -> Ordering {
         cfg_if::cfg_if! {
-            if #[cfg(feature="unsafe_arc")] {
+            if #[cfg(feature="dangerous_pointer")] {
                 let node1 = self.read_recursive();
                 let node2 = other.read_recursive();
                 node1.index.cmp(&node2.index)
@@ -831,7 +831,7 @@ impl DualModuleInterfacePtr {
             interface.nodes.push(None);
         }
         let cloned_node_ptr = node_ptr.clone();
-        interface.nodes[local_node_index] = Some(node_ptr);  // feature `unsafe_arc`: must push the owner
+        interface.nodes[local_node_index] = Some(node_ptr);  // feature `dangerous_pointer`: must push the owner
         drop(interface);
         dual_module_impl.add_syndrome_node(&cloned_node_ptr);
         cloned_node_ptr
@@ -918,7 +918,7 @@ impl DualModuleInterfacePtr {
                 interface.nodes.push(None);
             }
             drop(node);
-            interface.nodes[local_node_index] = Some(blossom_node_ptr);  // feature `unsafe_arc`: must push the owner
+            interface.nodes[local_node_index] = Some(blossom_node_ptr);  // feature `dangerous_pointer`: must push the owner
         }
         interface.sum_grow_speed += 1;
         drop(interface);
@@ -983,7 +983,7 @@ impl DualModuleInterfacePtr {
             _ => { unreachable!() }
         }
         let mut interface = self.write();
-        interface.remove_node(node_idx);  // remove this blossom from root, feature `unsafe_arc` requires running this at the end
+        interface.remove_node(node_idx);  // remove this blossom from root, feature `dangerous_pointer` requires running this at the end
     }
 
     /// a helper function to update grow state

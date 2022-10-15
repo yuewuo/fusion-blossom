@@ -19,4 +19,4 @@ cargo run --release --features u32_index -- test serial
 
 # test memory safety for unsafe implementations
 cargo run --release --features unsafe_pointer -- test parallel
-cargo run --release --features unsafe_arc -- test parallel
+cargo run --release --features dangerous_pointer -- test parallel

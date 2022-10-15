@@ -101,7 +101,7 @@ def compile_code_if_necessary(additional_build_parameters=None):
     if FUSION_BLOSSOM_COMPILATION_DONE is False:
         build_parameters = ["cargo", "build", "--release"]
         if FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER:
-            build_parameters += ["--features", "unsafe_pointer"]
+            build_parameters += ["--features", "dangerous_pointer,u32_index,i32_weight"]
         if additional_build_parameters is not None:
             build_parameters += additional_build_parameters
         # print(build_parameters)

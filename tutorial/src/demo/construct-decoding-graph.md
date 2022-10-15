@@ -92,8 +92,8 @@ syndrome = fb.SyndromePattern(syndrome_vertices=[1,5])
 ```
 
 As shown in the following image, there are 4 edges selected in the Minimum-Weight Parity Subgraph (MWPS).
-This is because the weight sum of these 4 edges is 2664 but the sum of the other 3 edges is 3000.
-This can only be explained by the fact that the probability is roughly \\( 0.01^4 = 10^{-8} \\) for the MWPS, but the other solutions has a probability of roughly \\( 0.001^3 = 10^{-9} \\) which is less likely.
+This is because the weight sum of these 4 edges is 2664 but the sum of the other 3 complementary edges is 3000.
+This can also be explained by the fact that the probability is roughly \\( 0.01^4 = 10^{-8} \\) for the MWPS, but the complementary parity subgraph has a probability of roughly \\( 0.001^3 = 10^{-9} \\) which is less likely.
 
 ![](../img/construct-decoding-graph.png)
 

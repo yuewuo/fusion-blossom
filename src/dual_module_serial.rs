@@ -89,7 +89,7 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
-// when using feature `unsafe_arc`, it doesn't provide the `upgrade()` function, so we have to fall back to the safe solution
+// when using feature `dangerous_pointer`, it doesn't provide the `upgrade()` function, so we have to fall back to the safe solution
 pub type DualNodeInternalPtr = ArcManualSafeLock<DualNodeInternal>;
 pub type DualNodeInternalWeak = WeakManualSafeLock<DualNodeInternal>;
 
@@ -1027,7 +1027,9 @@ impl FastClear for Edge {
         self.right_grandson_dual_node = None;
     }
 
+    #[inline(always)]
     fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    #[inline(always)]
     fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
 
 }
@@ -1040,7 +1042,9 @@ impl FastClear for Vertex {
         self.propagated_grandson_dual_node = None;
     }
 
+    #[inline(always)]
     fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    #[inline(always)]
     fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
 
 }

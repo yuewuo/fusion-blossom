@@ -540,7 +540,7 @@ cfg_if::cfg_if! {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(feature="unsafe_arc")] {
+    if #[cfg(feature="dangerous_pointer")] {
 
         pub trait FastClearUnsafePtrDangerous<ObjType> where ObjType: FastClear {
 
@@ -728,7 +728,7 @@ cfg_if::cfg_if! {
         }
         #[allow(unused_imports)] pub use lock_write;
         cfg_if::cfg_if! {
-            if #[cfg(feature="unsafe_arc")] {
+            if #[cfg(feature="dangerous_pointer")] {
                 pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcUnsafeDangerous<T>;
                 pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakUnsafeDangerous<T>;
             } else {
@@ -804,7 +804,7 @@ cfg_if::cfg_if! {
         }
 
         #[test]
-        fn pointers_test_3() {  // cargo test pointers_test_3 --features unsafe_arc -- --nocapture
+        fn pointers_test_3() {  // cargo test pointers_test_3 --features dangerous_pointer -- --nocapture
             println!("{}", std::mem::size_of::<ArcManualSafeLock<Tester>>());
             println!("{}", std::mem::size_of::<Arc<Tester>>());
             println!("{}", std::mem::size_of::<*const Tester>());
