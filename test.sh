@@ -16,3 +16,7 @@ cargo run --release -- test parallel
 
 # just test one case would be enough
 cargo run --release --features u32_index -- test serial
+
+# test memory safety for unsafe implementations
+cargo run --release --features unsafe_pointer -- test parallel
+cargo run --release --features unsafe_arc -- test parallel
