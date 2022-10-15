@@ -60,7 +60,7 @@ solver = fb.SolverSerial(initializer)
 
 ## Run Solver
 
-The solver takes the syndrome as input and runs to a stable state. It also takes an optional parameter `visualizer`, to inspect the process of the problem being solver.
+The solver takes the syndrome as input and runs to a stable state. It also takes an optional parameter `visualizer`, to inspect the process of solving the problem.
 
 ```python
 solver.solve(syndrome)
@@ -68,8 +68,8 @@ solver.solve(syndrome)
 
 ## Print Minimum-Weight Parity Subgraph (MWPS)
 
-For definition of MWPM, please see [Problem Definition Chapter](../problem_definition.md).
-The function `subgraph()` takes an optional visualizer object for visualization of the subgraph.
+For definition of MWPS, please see [Problem Definition Chapter](../problem_definition.md).
+The function `subgraph()` takes an optional visualizer object for visualization of the parity subgraph.
 
 ```python
 subgraph = solver.subgraph(visualizer)
@@ -113,7 +113,7 @@ print(f"             = vertices: {virtual_matching_vertices}")
 
 ## Clear Solver
 
-The solver is optimized to be repeatedly used, because the object construction is very expensive compared given usually a few syndrome vertices.
+The solver is optimized to be repeatedly used, because the object construction is very expensive compared to solving the MWPS problem given usually a few syndrome vertices.
 The clear operation is a constant time operation.
 
 ```python

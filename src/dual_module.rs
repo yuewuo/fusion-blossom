@@ -4,6 +4,7 @@
 //!
 
 use super::util::*;
+#[cfg(not(feature="unsafe_arc"))]
 use std::sync::Arc;
 use crate::derivative::Derivative;
 use core::cmp::Ordering;
@@ -303,22 +304,30 @@ impl DualNode {
 
 }
 
-pub type DualNodePtr = ArcManualSafeLock<DualNode>;
-pub type DualNodeWeak = WeakManualSafeLock<DualNode>;
+pub type DualNodePtr = ArcManualSafeLockDangerous<DualNode>;
+pub type DualNodeWeak = WeakManualSafeLockDangerous<DualNode>;
 
 impl Ord for DualNodePtr {
     // a consistent compare (during a single program)
     fn cmp(&self, other: &Self) -> Ordering {
-        if false {  // faster way: compare pointer address, just to have a consistent order between pointers
-            let ptr1 = Arc::as_ptr(self.ptr());
-            let ptr2 = Arc::as_ptr(other.ptr());
-            // https://doc.rust-lang.org/reference/types/pointer.html
-            // "When comparing raw pointers they are compared by their address, rather than by what they point to."
-            ptr1.cmp(&ptr2)
-        } else {
-            let node1 = self.read_recursive();
-            let node2 = other.read_recursive();
-            node1.index.cmp(&node2.index)
+        cfg_if::cfg_if! {
+            if #[cfg(feature="unsafe_arc")] {
+                let node1 = self.read_recursive();
+                let node2 = other.read_recursive();
+                node1.index.cmp(&node2.index)
+            } else {
+                if false {  // faster way: compare pointer address, just to have a consistent order between pointers
+                    let ptr1 = Arc::as_ptr(self.ptr());
+                    let ptr2 = Arc::as_ptr(other.ptr());
+                    // https://doc.rust-lang.org/reference/types/pointer.html
+                    // "When comparing raw pointers they are compared by their address, rather than by what they point to."
+                    ptr1.cmp(&ptr2)
+                } else {
+                    let node1 = self.read_recursive();
+                    let node2 = other.read_recursive();
+                    node1.index.cmp(&node2.index)
+                }
+            }
         }
     }
 }
@@ -792,7 +801,7 @@ impl DualModuleInterfacePtr {
         let node_index = interface.nodes_count();
         // try to reuse existing pointer to avoid list allocation
         let node_ptr = if !interface.is_fusion && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
-            let node_ptr = interface.nodes[local_node_index].as_ref().unwrap().clone();
+            let node_ptr = interface.nodes[local_node_index].take().unwrap();
             let mut node = node_ptr.write();
             node.index = node_index;
             node.class = DualNodeClass::SyndromeVertex {
@@ -820,10 +829,11 @@ impl DualModuleInterfacePtr {
         if interface.nodes.len() < interface.nodes_length {
             interface.nodes.push(None);
         }
-        interface.nodes[local_node_index] = Some(node_ptr.clone());  // drop the previous
+        let cloned_node_ptr = node_ptr.clone();
+        interface.nodes[local_node_index] = Some(node_ptr);  // feature `unsafe_arc`: must push the owner
         drop(interface);
-        dual_module_impl.add_syndrome_node(&node_ptr);
-        node_ptr
+        dual_module_impl.add_syndrome_node(&cloned_node_ptr);
+        cloned_node_ptr
     }
 
     /// check whether a pointer belongs to this node, it will acquire a reader lock on `dual_node_ptr`
@@ -843,7 +853,7 @@ impl DualModuleInterfacePtr {
     pub fn create_blossom(&self, nodes_circle: Vec<DualNodePtr>, mut touching_children: Vec<(DualNodeWeak, DualNodeWeak)>
             , dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         let belonging = self.downgrade();
-        let interface = self.read_recursive();
+        let mut interface = self.write();
         if touching_children.is_empty() {  // automatically fill the children, only works when nodes_circle consists of all syndrome nodes
             touching_children = nodes_circle.iter().map(|ptr| (ptr.downgrade(), ptr.downgrade())).collect();
         }
@@ -851,7 +861,7 @@ impl DualModuleInterfacePtr {
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
         let blossom_node_ptr = if !interface.is_fusion && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
-            let node_ptr = interface.nodes[local_node_index].as_ref().unwrap().clone();
+            let node_ptr = interface.nodes[local_node_index].take().unwrap();
             let mut node = node_ptr.write();
             node.index = node_index;
             node.class = DualNodeClass::Blossom {
@@ -895,6 +905,7 @@ impl DualModuleInterfacePtr {
         if interface.debug_print_actions {
             eprintln!("[create blossom] {:?} -> {}", nodes_circle, node_index);
         }
+        let cloned_blossom_node_ptr = blossom_node_ptr.clone();
         {  // fill in the nodes because they're in a valid state (all linked to this blossom)
             let mut node = blossom_node_ptr.write();
             node.class = DualNodeClass::Blossom {
@@ -905,13 +916,14 @@ impl DualModuleInterfacePtr {
             if interface.nodes.len() < interface.nodes_length {
                 interface.nodes.push(None);
             }
-            interface.nodes[local_node_index] = Some(blossom_node_ptr.clone());
+            drop(node);
+            interface.nodes[local_node_index] = Some(blossom_node_ptr);  // feature `unsafe_arc`: must push the owner
         }
         interface.sum_grow_speed += 1;
         drop(interface);
         dual_module_impl.prepare_nodes_shrink(&nodes_circle);
-        dual_module_impl.add_blossom(&blossom_node_ptr);
-        blossom_node_ptr
+        dual_module_impl.add_blossom(&cloned_blossom_node_ptr);
+        cloned_blossom_node_ptr
     }
 
     /// expand a blossom: note that different from Blossom V library, we do not maintain tree structure after a blossom is expanded;
@@ -946,7 +958,6 @@ impl DualModuleInterfacePtr {
         let node_idx = node.index;
         debug_assert!(interface.get_node(node_idx).is_some(), "the blossom should not be expanded before");
         debug_assert!(interface.get_node(node_idx).as_ref().unwrap() == &blossom_node_ptr, "the blossom doesn't belong to this DualModuleInterface");
-        interface.remove_node(node_idx);  // remove this blossom from root
         drop(interface);
         match &node.class {
             DualNodeClass::Blossom { nodes_circle, .. } => {
@@ -970,6 +981,8 @@ impl DualModuleInterfacePtr {
             },
             _ => { unreachable!() }
         }
+        let mut interface = self.write();
+        interface.remove_node(node_idx);  // remove this blossom from root, feature `unsafe_arc` requires running this at the end
     }
 
     /// a helper function to update grow state

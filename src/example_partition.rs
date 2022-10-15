@@ -336,6 +336,8 @@ pub mod tests {
     use super::super::dual_module_serial::*;
     use super::super::dual_module::*;
     use super::super::primal_module::*;
+    #[cfg(feature="unsafe_pointer")]
+    use super::super::pointers::UnsafePtr;
 
     pub fn example_partition_basic_standard_syndrome_optional_viz(code: &mut dyn ExampleCode, visualize_filename: Option<String>
             , mut syndrome_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)

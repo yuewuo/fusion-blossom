@@ -6,6 +6,8 @@ cargo clippy  # A collection of lints to catch common mistakes and improve your 
 
 cargo test --features disable_visualizer
 cargo test --features disable_visualizer,u32_index
+cargo test --features unsafe_pointer
+cargo test --features unsafe_pointer,disable_visualizer
 cargo test
 
 cargo run --release -- test serial

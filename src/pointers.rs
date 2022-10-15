@@ -280,7 +280,7 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
 
   
 /*
- * unsafe APIs, used for production environment
+ * unsafe APIs, used for production environment where speed matters
  */
 
 cfg_if::cfg_if! {
@@ -536,6 +536,306 @@ cfg_if::cfg_if! {
         }
 
     }
+    
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="unsafe_arc")] {
+
+        pub trait FastClearUnsafePtrDangerous<ObjType> where ObjType: FastClear {
+
+            fn new_ptr(ptr: Arc<ObjType>) -> Self;
+
+            fn new_value(obj: ObjType) -> Self;
+
+            fn ptr(&self) -> *const ObjType;
+
+            #[inline(always)]
+            fn read_recursive(&self, active_timestamp: FastClearTimestamp) -> &ObjType {
+                unsafe {
+                    let ret = &*self.ptr();
+                    ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+                    ret
+                }
+            }
+
+            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+            #[inline(always)]
+            fn read_recursive_force(&self) -> &ObjType {
+                unsafe {
+                    &*self.ptr()
+                }
+            }
+
+            #[inline(always)]
+            fn write(&self, active_timestamp: FastClearTimestamp) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let const_ptr = self.ptr();
+                    let mut_ptr = &mut *(const_ptr as *mut ObjType);
+                    mut_ptr.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+                    mut_ptr
+                }
+            }
+
+            /// without sanity check: useful only in implementing hard_clear
+            #[inline(always)]
+            fn write_force(&self) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let const_ptr = self.ptr();
+                    let mut_ptr = const_ptr as *mut ObjType;
+                    &mut *mut_ptr
+                }
+            }
+
+            /// dynamically clear it if not already cleared; it's safe to call many times, but it will acquire a writer lock
+            #[inline(always)]
+            fn dynamic_clear(&self, active_timestamp: FastClearTimestamp) {
+                let value = self.write_force();
+                value.dynamic_clear(active_timestamp);
+            }
+
+            #[inline(always)]
+            fn ptr_eq(&self, other: &Self) -> bool {
+                std::ptr::eq(self.ptr(), other.ptr())
+            }
+
+        }
+
+        pub trait UnsafePtrDangerous<ObjType> {
+
+            fn new_ptr(ptr: Arc<ObjType>) -> Self;
+
+            fn new_value(obj: ObjType) -> Self;
+
+            fn ptr(&self) -> *const ObjType;
+
+            #[inline(always)]
+            fn read_recursive(&self) -> &ObjType {
+                unsafe {
+                    &*self.ptr()
+                }
+            }
+
+            #[inline(always)]
+            fn write(&self) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let const_ptr = self.ptr();
+                    let mut_ptr = const_ptr as *mut ObjType;
+                    &mut *mut_ptr
+                }
+            }
+
+            #[inline(always)]
+            fn ptr_eq(&self, other: &Self) -> bool {
+                std::ptr::eq(self.ptr(), other.ptr())
+            }
+
+        }
+
+        pub enum ArcUnsafeDangerous<T> {
+            Owner(Arc<T>),
+            Ref(*const T),
+        }
+
+        pub struct WeakUnsafeDangerous<T> {
+            ptr: *const T,
+        }
+
+        unsafe impl<T> Send for ArcUnsafeDangerous<T> {}
+        unsafe impl<T> Sync for ArcUnsafeDangerous<T> {}
+
+        unsafe impl<T> Send for WeakUnsafeDangerous<T> {}
+        unsafe impl<T> Sync for WeakUnsafeDangerous<T> {}
+
+        impl<T> ArcUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn downgrade(&self) -> WeakUnsafeDangerous<T> {
+                WeakUnsafeDangerous::<T> {
+                    ptr: self.ptr()
+                }
+            }
+        }
+
+        impl<T> WeakUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn upgrade_force(&self) -> ArcUnsafeDangerous<T> {
+                ArcUnsafeDangerous::<T>::Ref(self.ptr)
+            }
+        }
+
+        impl<T> Clone for ArcUnsafeDangerous<T> {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                Self::Ref(self.ptr())
+            }
+        }
+
+        impl<T> UnsafePtrDangerous<T> for ArcUnsafeDangerous<T> {
+            fn new_ptr(ptr: Arc<T>) -> Self { Self::Owner(ptr)  }
+            fn new_value(obj: T) -> Self { Self::Owner(Arc::new(obj)) }
+            #[inline(always)]
+            fn ptr(&self) -> *const T {
+                match self {
+                    Self::Owner(ptr) => Arc::as_ptr(ptr),
+                    Self::Ref(ptr) => *ptr,
+                }
+            }
+        }
+
+        impl<T> PartialEq for ArcUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl<T> Eq for ArcUnsafeDangerous<T> { }
+
+        impl<T> Clone for WeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                Self { ptr: self.ptr.clone() }
+            }
+        }
+
+        impl<T> PartialEq for WeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &Self) -> bool { std::ptr::eq(self.ptr, other.ptr) }
+        }
+
+        impl<T> Eq for WeakUnsafeDangerous<T> { }
+
+        impl<T> std::ops::Deref for ArcUnsafeDangerous<T> {
+            type Target = T;
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe {
+                    match self {
+                        Self::Owner(ptr) => &ptr,
+                        Self::Ref(ptr) => &**ptr,
+                    }
+                }
+            }
+        }
+
+        impl<T> weak_table::traits::WeakElement for WeakUnsafeDangerous<T> {
+            type Strong = ArcUnsafeDangerous<T>;
+            #[inline(always)]
+            fn new(view: &Self::Strong) -> Self {
+                view.downgrade()
+            }
+            #[inline(always)]
+            fn view(&self) -> Option<Self::Strong> {
+                Some(self.upgrade_force())
+            }
+            #[inline(always)]
+            fn clone(view: &Self::Strong) -> Self::Strong {
+                view.clone()
+            }
+        }
+
+        pub enum FastClearArcUnsafeDangerous<T: FastClear> {
+            Owner(Arc<T>),
+            Ref(*const T),
+        }
+
+        pub struct FastClearWeakUnsafeDangerous<T: FastClear> {
+            ptr: *const T,
+        }
+
+        unsafe impl<T: FastClear> Send for FastClearArcUnsafeDangerous<T> {}
+        unsafe impl<T: FastClear> Sync for FastClearArcUnsafeDangerous<T> {}
+    
+        unsafe impl<T: FastClear> Send for FastClearWeakUnsafeDangerous<T> {}
+        unsafe impl<T: FastClear> Sync for FastClearWeakUnsafeDangerous<T> {}
+
+        impl<T: FastClear> FastClearArcUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn downgrade(&self) -> FastClearWeakUnsafeDangerous<T> {
+                FastClearWeakUnsafeDangerous::<T> {
+                    ptr: self.ptr()
+                }
+            }
+        }
+
+        impl<T: FastClear> FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn upgrade_force(&self) -> FastClearArcUnsafeDangerous<T> {
+                FastClearArcUnsafeDangerous::<T>::Ref(self.ptr)
+            }
+        }
+
+        impl<T: FastClear> Clone for FastClearArcUnsafeDangerous<T> {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                Self::Ref(self.ptr())
+            }
+        }
+
+        impl<T: FastClear> FastClearUnsafePtrDangerous<T> for FastClearArcUnsafeDangerous<T> {
+            fn new_ptr(ptr: Arc<T>) -> Self { Self::Owner(ptr) }
+            fn new_value(obj: T) -> Self { Self::Owner(Arc::new(obj)) }
+            #[inline(always)]
+            fn ptr(&self) -> *const T {
+                match self {
+                    Self::Owner(ptr) => Arc::as_ptr(ptr),
+                    Self::Ref(ptr) => *ptr,
+                }
+            }
+        }
+
+        impl<T: FastClear> PartialEq for FastClearArcUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl<T: FastClear> Eq for FastClearArcUnsafeDangerous<T> { }
+
+        impl<T: FastClear> Clone for FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                Self { ptr: self.ptr.clone() }
+            }
+        }
+
+        impl<T: FastClear> PartialEq for FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &Self) -> bool { std::ptr::eq(self.ptr, other.ptr) }
+        }
+
+        impl<T: FastClear> Eq for FastClearWeakUnsafeDangerous<T> { }
+
+        impl<T: FastClear> std::ops::Deref for FastClearArcUnsafeDangerous<T> {
+            type Target = T;
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                unsafe {
+                    match self {
+                        Self::Owner(ptr) => &ptr,
+                        Self::Ref(ptr) => &**ptr,
+                    }
+                }
+            }
+        }
+
+        impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakUnsafeDangerous<T> {
+            type Strong = FastClearArcUnsafeDangerous<T>;
+            #[inline(always)]
+            fn new(view: &Self::Strong) -> Self {
+                view.downgrade()
+            }
+            #[inline(always)]
+            fn view(&self) -> Option<Self::Strong> {
+                Some(self.upgrade_force())
+            }
+            #[inline(always)]
+            fn clone(view: &Self::Strong) -> Self::Strong {
+                view.clone()
+            }
+        }
+
+    }
 }
 
 cfg_if::cfg_if! {
@@ -550,6 +850,19 @@ cfg_if::cfg_if! {
             ($variable:ident, $lock:expr, $timestamp:expr) => { let $variable = $lock.write($timestamp); };
         }
         #[allow(unused_imports)] pub use lock_write;
+        cfg_if::cfg_if! {
+            if #[cfg(feature="unsafe_arc")] {
+                pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcUnsafeDangerous<T>;
+                pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakUnsafeDangerous<T>;
+                pub type ArcManualSafeLockDangerous<T> = ArcUnsafeDangerous<T>;
+                pub type WeakManualSafeLockDangerous<T> = WeakUnsafeDangerous<T>;
+            } else {
+                pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcUnsafe<T>;
+                pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakUnsafe<T>;
+                pub type ArcManualSafeLockDangerous<T> = ArcUnsafe<T>;
+                pub type WeakManualSafeLockDangerous<T> = WeakUnsafe<T>;
+            }
+        }
     } else {
         pub type FastClearArcManualSafeLock<T> = FastClearArcRwLock<T>;
         pub type FastClearWeakManualSafeLock<T> = FastClearWeakRwLock<T>;
@@ -561,6 +874,10 @@ cfg_if::cfg_if! {
             ($variable:ident, $lock:expr, $timestamp:expr) => { let mut $variable = $lock.write($timestamp); };
         }
         #[allow(unused_imports)] pub use lock_write;
+        pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcRwLock<T>;
+        pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakRwLock<T>;
+        pub type ArcManualSafeLockDangerous<T> = ArcRwLock<T>;
+        pub type WeakManualSafeLockDangerous<T> = WeakRwLock<T>;
     }
 }
 
@@ -613,6 +930,21 @@ cfg_if::cfg_if! {
             assert_eq!(weak.upgrade_force().read_recursive().idx, 1);
             weak.upgrade_force().write().idx = 2;
             assert_eq!(ptr.read_recursive().idx, 2);
+        }
+
+    }
+}
+
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="unsafe_arc")] {
+
+        #[test]
+        fn pointers_test_3() {  // cargo test pointers_test_3 --features unsafe_arc -- --nocapture
+            println!("{}", std::mem::size_of::<ArcManualSafeLock<Tester>>());
+            println!("{}", std::mem::size_of::<ArcManualSafeLockDangerous<Tester>>());
+            println!("{}", std::mem::size_of::<Arc<Tester>>());
+            println!("{}", std::mem::size_of::<*const Tester>());
         }
 
     }

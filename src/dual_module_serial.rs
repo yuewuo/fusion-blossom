@@ -89,6 +89,7 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
+// when using feature `unsafe_arc`, it doesn't provide the `upgrade()` function, so we have to fall back to the safe solution
 pub type DualNodeInternalPtr = ArcManualSafeLock<DualNodeInternal>;
 pub type DualNodeInternalWeak = WeakManualSafeLock<DualNodeInternal>;
 
@@ -127,8 +128,8 @@ pub struct Vertex {
     pub timestamp: FastClearTimestamp,
 }
 
-pub type VertexPtr= FastClearArcManualSafeLock<Vertex>;
-pub type VertexWeak = FastClearWeakManualSafeLock<Vertex>;
+pub type VertexPtr = FastClearArcManualSafeLockDangerous<Vertex>;
+pub type VertexWeak = FastClearWeakManualSafeLockDangerous<Vertex>;
 
 impl std::fmt::Debug for VertexPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -175,8 +176,8 @@ pub struct Edge {
     pub dedup_timestamp: (FastClearTimestamp, FastClearTimestamp),
 }
 
-pub type EdgePtr= FastClearArcManualSafeLock<Edge>;
-pub type EdgeWeak = FastClearWeakManualSafeLock<Edge>;
+pub type EdgePtr = FastClearArcManualSafeLockDangerous<Edge>;
+pub type EdgeWeak = FastClearWeakManualSafeLockDangerous<Edge>;
 
 impl std::fmt::Debug for EdgePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -300,7 +301,7 @@ impl DualModuleImpl for DualModuleSerial {
         let node = dual_node_ptr.read_recursive();
         let node_index = self.nodes_length as NodeIndex;
         let node_internal_ptr = if node_index < self.nodes.len() as NodeIndex && self.nodes[node_index as usize].is_some() {
-            let node_ptr = self.nodes[node_index as usize].as_ref().unwrap().clone();
+            let node_ptr = self.nodes[node_index as usize].take().unwrap();
             let mut node = node_ptr.write();
             node.origin = dual_node_ptr.downgrade();
             node.index = node_index;
@@ -395,7 +396,6 @@ impl DualModuleImpl for DualModuleSerial {
         let node_idx = dual_node_internal.index;
         debug_assert!(self.nodes[node_idx as usize].is_some(), "blossom may have already been removed, do not call twice");
         debug_assert!(self.nodes[node_idx as usize].as_ref().unwrap() == &dual_node_internal_ptr, "the blossom doesn't belong to this DualModuleInterface");
-        self.nodes[node_idx as usize] = None;  // simply remove this blossom node
         // recover edge belongings
         for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
             let edge_ptr = edge_weak.upgrade_force();
@@ -429,6 +429,7 @@ impl DualModuleImpl for DualModuleSerial {
         } else {
             unreachable!()
         }
+        self.nodes[node_idx as usize] = None;  // simply remove this blossom node
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {

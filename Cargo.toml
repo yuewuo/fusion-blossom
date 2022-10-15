@@ -49,7 +49,8 @@ i32_weight = []  # use i32 instead of i64 as weight type, to be the same as blos
 u32_index = []  # use u32 instead of usize as index type, to save memory by at most half
 ordered_conflicts = []  # sort conflict events, by default do not sort for better performance
 disable_visualizer = []  # disable all visualizer behavior
-unsafe_pointer = []  # use raw pointers to access data when appropriate; fusion blossom requires very little synchronization
+unsafe_pointer = []  # use raw pointers to access data without lock when appropriate; fusion blossom requires very little synchronization
+unsafe_arc = ["unsafe_pointer"]  # use raw pointers instead of Arc and Weak, require "unsafe_pointer" feature
 python_binding = ["pyo3"]  # bind to Python
 
 [dependencies]
