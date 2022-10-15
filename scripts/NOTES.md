@@ -48,3 +48,35 @@ wget -c https://pub.ist.ac.at/~vnk/software/blossom5-v2.05.src.tar.gz -O - | tar
 cp -r blossom5-v2.05.src/* blossomV/
 rm -r blossom5-v2.05.src
 ```
+
+
+## Benchmarking and Profiling
+
+
+See https://github.com/flamegraph-rs/flamegraph
+
+enable the following debug configuration, and then run `cargo flamegraph -- ...` which is equivalent to `cargo run --release -- ...`;
+and then visit: http://localhost:8066/partition-profile.html?filename=tmp/flamegraph-test.profile
+example:
+
+```shell
+# generate data
+cargo run --release -- benchmark 15 -r 20 -n 10000 0.005 --code-type phenomenological-planar-code --primal-dual-type error-pattern-logger --verifier none --primal-dual-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}'
+# 1 partitions
+cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
+# 4 partitions
+cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":4,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
+# 100 partitions
+cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":100,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
+# 1000 partitions
+cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1000,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
+```
+
+```shell
+# default feature
+cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
+# unsafe_pointer
+cargo flamegraph -o visualize/data/tmp/flamegraph-test-unsafe-pointer.svg --features unsafe_pointer --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1,"enable_tree_fusion":true}' --verifier none
+# unsafe_arc
+cargo flamegraph -o visualize/data/tmp/flamegraph-test-unsafe-arc.svg --features unsafe_arc --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1,"enable_tree_fusion":true}' --verifier none
+```

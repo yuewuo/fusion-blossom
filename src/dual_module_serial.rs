@@ -50,7 +50,7 @@ pub struct DualModuleSerial {
     /// temporary variable to reduce reallocation
     updated_boundary: Vec<(bool, EdgeWeak)>,
     /// temporary variable to reduce reallocation
-    propagating_vertices: Vec<(VertexPtr, Option<DualNodeInternalWeak>)>,
+    propagating_vertices: Vec<(VertexWeak, Option<DualNodeInternalWeak>)>,
 }
 
 /// records information only available when used as a unit in the partitioned dual module
@@ -140,7 +140,9 @@ impl std::fmt::Debug for VertexPtr {
 
 impl std::fmt::Debug for VertexWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
+        let vertex_ptr = self.upgrade_force();
+        let vertex = vertex_ptr.read_recursive_force();
+        write!(f, "{}", vertex.vertex_index)
     }
 }
 
@@ -188,7 +190,9 @@ impl std::fmt::Debug for EdgePtr {
 
 impl std::fmt::Debug for EdgeWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
+        let edge_ptr = self.upgrade_force();
+        let edge = edge_ptr.read_recursive_force();
+        write!(f, "{}", edge.edge_index)
     }
 }
 
@@ -556,7 +560,7 @@ impl DualModuleImpl for DualModuleSerial {
                         let local_max_length_abs = edge.weight - edge.left_growth - edge.right_growth;
                         if local_max_length_abs == 0 {
                             // check if peer is virtual node
-                            let peer_vertex_ptr: VertexPtr = if is_left {
+                            let peer_vertex_ptr = if is_left {
                                 edge.right.upgrade_force()
                             } else {
                                 edge.left.upgrade_force()
@@ -1457,7 +1461,7 @@ impl DualModuleSerial {
                     } else {
                         debug_assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
                         debug_assert!(peer_vertex.propagated_grandson_dual_node.is_none(), "growing into another propagated vertex forbidden");
-                        self.propagating_vertices.push((peer_vertex_ptr.clone(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
+                        self.propagating_vertices.push((peer_vertex_ptr.downgrade(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
                         // this edge is dropped, so we need to set both end of this edge to this dual node
                         drop(edge);  // unlock read
                         let mut edge = edge_ptr.write(active_timestamp);
@@ -1477,7 +1481,8 @@ impl DualModuleSerial {
             }
             drop(dual_node_internal);  // unlock
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for (vertex_ptr, grandson_dual_node) in self.propagating_vertices.iter() {
+            for (vertex_weak, grandson_dual_node) in self.propagating_vertices.iter() {
+                let vertex_ptr = vertex_weak.upgrade_force();
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_none() {
                     vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
@@ -1620,7 +1625,7 @@ impl DualModuleSerial {
                         if edge.weight > 0 && self.unit_module_info.is_none() {  // do not check for 0-weight edges
                             debug_assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
                         }
-                        self.propagating_vertices.push((this_vertex_ptr.clone(), None));
+                        self.propagating_vertices.push((this_vertex_ptr.downgrade(), None));
                     }
                 } else {  // keep other edges
                     if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
@@ -1630,7 +1635,8 @@ impl DualModuleSerial {
                 }
             }
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for (vertex_ptr, _) in self.propagating_vertices.iter() {
+            for (vertex_weak, _) in self.propagating_vertices.iter() {
+                let vertex_ptr = vertex_weak.upgrade_force();
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_some() {
                     vertex.propagated_dual_node = None;
