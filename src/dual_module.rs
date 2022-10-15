@@ -304,8 +304,9 @@ impl DualNode {
 
 }
 
-pub type DualNodePtr = ArcManualSafeLockDangerous<DualNode>;
-pub type DualNodeWeak = WeakManualSafeLockDangerous<DualNode>;
+// should not use dangerous pointer because expanding a blossom will leave a weak pointer invalid
+pub type DualNodePtr = ArcManualSafeLock<DualNode>;
+pub type DualNodeWeak = WeakManualSafeLock<DualNode>;
 
 impl Ord for DualNodePtr {
     // a consistent compare (during a single program)
