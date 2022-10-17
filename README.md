@@ -1,6 +1,6 @@
 ![Build Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomBuild&subject=build&style=flat-square)
 ![Test Status](https://jenkins.fusionblossom.com/buildStatus/icon?job=FusionBlossomCI&subject=test&style=flat-square)
-![Build Python Binding](https://github.com/yuewuo/fusion-blossom/actions/workflows/wheels.yml/badge.svg)
+<!-- ![Build Python Binding](https://github.com/yuewuo/fusion-blossom/actions/workflows/wheels.yml/badge.svg) -->
 
 # Fusion Blossom
 A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correction (QEC)
@@ -39,15 +39,15 @@ Click the demo image below to view the corresponding demo
 
 #### Serial Execution
 
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/serial_simple.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_1.json)
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/serial_example.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_10.json)
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/serial_random.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_11.json)
+[<img src="https://visualize.fusionblossom.com/img/serial_simple.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_1.json)
+[<img src="https://visualize.fusionblossom.com/img/serial_example.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_10.json)
+[<img src="https://visualize.fusionblossom.com/img/serial_random.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_11.json)
 
 #### Parallel Execution (Shown in Serial For Better Visual)
 
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/parallel_simple.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_parallel_basic_3.json)
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/parallel_phenomenological.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=example_partition_demo_1.json)
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/parallel_circuit_level.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=example_partition_demo_2.json)
+[<img src="https://visualize.fusionblossom.com/img/parallel_simple.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=primal_module_parallel_basic_3.json)
+[<img src="https://visualize.fusionblossom.com/img/parallel_phenomenological.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=example_partition_demo_1.json)
+[<img src="https://visualize.fusionblossom.com/img/parallel_circuit_level.png" width="30%"/>](https://visualize.fusionblossom.com/?filename=example_partition_demo_2.json)
 
 ## Usage
 
@@ -63,15 +63,15 @@ We use Intel(R) Xeon(R) Platinum 8375C CPU for evaluation, with 64 physical core
 
 First of all, the number of partitions will effect the speed. Intuitively, the more partitions there are, the more overhead because fusing two partitions consumes more computation than solving them as a whole. But in practice, memory access is not always at the same speed. If cache cannot hold the data, then solving big partition may consume even more time than solving small ones. We test on a single-thread decoder, and try different partition numbers. At partition number = 1000, we get roughly the minimum decoding time of 3.4us per syndrome. This corresponds to each partition hosting 100 measurement rounds.
 
-![](https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/partition_num_single_thread.svg)
+![](https://visualize.fusionblossom.com/img/partition_num_single_thread.svg)
 
 Given the optimal partition number of a single thread, we keep the partition number the same and try increasing the number of threads. Note that the partition number may not be optimal for large number of threads, but even in this case, we reach 41x speed up given 64 physical cores. The decoding time is pushed to 85ns per sydnrome or 1.0us per measurement round. This can catch up with the 1us measurement round of a superconducting circuit. Interestingly, we found that hyperthreading won't help much in this case, perhaps because this decoder is memory-bounded, meaning memory throughput is the bottleneck. Although the number of syndrome is only a small portion, they are randomly distributed so every time a new syndrome is given, the memory is almost always cold and incur large cache miss panelty.
 
-![](https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/thread_pool_size_partition_1k.svg)
+![](https://visualize.fusionblossom.com/img/thread_pool_size_partition_1k.svg)
 
 In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Blue blocks is the base partition and green blocks is the fusion operation. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We'll study different partition and fusion strategies in our paper. Below shows the parallel execution on 24 threads. You can click the image and it will jump to this interactive visualization tool.
 
-[<img src="https://github.com/yuewuo/fusion-blossom/raw/main/visualize/img/thread_24.jpeg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_1k/tmp/24.profile)
+[<img src="https://visualize.fusionblossom.com/img/thread_24.jpeg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_1k/tmp/24.profile)
 
 ## Interface
 
