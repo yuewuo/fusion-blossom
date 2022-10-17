@@ -5,7 +5,7 @@
 # Fusion Blossom
 A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correction (QEC)
 
-Please see [our tutorial for a quick explanation and some Python demos](tutorial.fusion-blossom.com).
+Please see [our tutorial for a quick explanation and some Python demos](https://tutorial.fusionblossom.com).
 
 ## Key Features
 
@@ -51,47 +51,9 @@ Click the demo image below to view the corresponding demo
 
 ## Usage
 
-Our code is written in [Rust](https://www.rust-lang.org/) programming language for speed and memory safety, but it's hardly a easy language to learn. To make the decoder more accessible, we bind the library to Python and user can simply install the library using `pip3 install fusion_blossom`.
+Our code is written in [Rust](https://www.rust-lang.org/) programming language for speed and memory safety, but it's hardly a easy language to learn. To make the decoder more accessible, we bind the library to Python and user can simply install the library using `pip3 install fusion-blossom`.
 
-Here is an example for decode (you can run it by cloning the project and run `python3 scripts/demo.py`)
-
-```python
-import fusion_blossom as fb
-
-# create an example code
-code = fb.CodeCapacityPlanarCode(d=11, p=0.05, max_half_weight=500)
-initializer = code.get_initializer()  # the decoding graph structure (you can easily construct your own)
-positions = code.get_positions()  # the positions of vertices in the 3D visualizer, optional
-
-# randomly generate a syndrome according to the error model
-syndrome = code.generate_random_errors(seed=1000)
-with fb.PyMut(syndrome, "syndrome_vertices") as syndrome_vertices:
-    syndrome_vertices.append(0)  # you can modify the syndrome vertices
-print(syndrome)
-
-# visualizer (optional for debugging)
-visualizer = None
-if True:  # change to False to disable visualizer for much faster decoding
-    visualize_filename = fb.static_visualize_data_filename()
-    visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
-
-solver = fb.SolverSerial(initializer)
-solver.solve(syndrome, visualizer)  # enable visualizer for debugging
-perfect_matching = solver.perfect_matching()
-print(f"\n\nMinimum Weight Perfect Matching (MWPM):")
-print(f"    - peer_matchings: {perfect_matching.peer_matchings}")  # Vec<(SyndromeIndex, SyndromeIndex)>
-print(f"          = vertices: {[(syndrome_vertices[a], syndrome_vertices[b]) for a, b in perfect_matching.peer_matchings]}")
-print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")  # Vec<(SyndromeIndex, VertexIndex)>
-print(f"             = vertices: {[(syndrome_vertices[a], b) for a, b in perfect_matching.virtual_matchings]}")
-subgraph = solver.subgraph(visualizer)
-print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}\n\n")  # Vec<EdgeIndex>
-solver.clear()  # clear is O(1) complexity, recommended for repetitive simulation
-
-# view in browser
-if visualizer is not None:
-    fb.print_visualize_link(filename=visualize_filename)
-    fb.helper.open_visualizer(visualize_filename, open_browser=True)
-```
+We have several Python demos at [the tutorial website](https://tutorial.fusionblossom.com/demo/example-qec-codes.html) . Also there is a simple example for decoder, and you can run it by cloning the project and run `python3 scripts/demo.py`.
 
 For parallel solver, it needs user to provide a partition strategy. Please wait for our paper for a thorough description of how partition works.
 
