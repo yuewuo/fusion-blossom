@@ -443,7 +443,7 @@ impl Cli {
                                     , format!("--noisy-measurements"), format!("{noisy_measurement}")
                                     , format!("--partition-strategy"), format!("phenomenological-planar-code-time-partition")
                                     , format!("--partition-config"), format!("{{\"partition_num\":{partition_num},\"enable_tree_fusion\":false}}")
-                                    , format!("--pb-message"), format!("dual-parallel {partition_num}-partition circuit-level {d} {noisy_measurement} {p}")]);
+                                    , format!("--pb-message"), format!("parallel {partition_num}-partition circuit-level {d} {noisy_measurement} {p}")]);
                             }
                         }
                         let command_head = vec![format!(""), format!("benchmark")];

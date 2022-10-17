@@ -69,7 +69,7 @@ Given the optimal partition number of a single thread, we keep the partition num
 
 ![](https://visualize.fusionblossom.com/data/benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/decoding_time_per_syndrome.svg)
 
-In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Blue blocks is the base partition and green blocks is the fusion operation. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We'll study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each is a 49 * 21 * 20 decoding graph block. Green blocks are fusion blocks, each is a 1 * 21 * 20 decoding graph block sandwidthed by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
+In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Blue blocks is the base partition and green blocks is the fusion operation. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We'll study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each is a 49 * 21 * 20 decoding graph block. Green blocks are fusion blocks, each is a 1 * 21 * 20 decoding graph block sandwiched by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
 
 [<img src="https://visualize.fusionblossom.com/data/benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/64.svg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/tmp/64.profile)
 
@@ -122,8 +122,6 @@ cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
 # TODOs
 
 - [ ] support erasures in parallel solver
-- [ ] optimize performance by statically handling object allocation without using Arc and Weak
-- [ ] optimize scheduling of fusion operations and update data in README and MM2023 abstract
 
 # Acknowledgements
 
