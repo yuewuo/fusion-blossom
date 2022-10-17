@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -26,15 +26,7 @@ path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# profiling: https://github.com/flamegraph-rs/flamegraph
-# enable the following debug configuration, and then run `cargo flamegraph -- ...` which is equivalent to `cargo run --release -- ...`
-# example:
-# cargo run --release -- benchmark 15 -r 20 -n 10000 0.005 --code-type phenomenological-planar-code --primal-dual-type error-pattern-logger --verifier none --primal-dual-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}'
-# cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
-# cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":4,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
-# cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":100,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
-# cargo flamegraph -o visualize/data/tmp/flamegraph-test.svg --root -- benchmark 15 -r 20 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"visualize/data/tmp/flamegraph-test.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":1000,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/tmp/flamegraph-test.profile
-# and then visit: http://localhost:8066/partition-profile.html?filename=tmp/flamegraph-test.profile
+# profiling: see scripts/NOTES.md
 
 # embed debug symbols
 [profile.release]
@@ -49,7 +41,8 @@ i32_weight = []  # use i32 instead of i64 as weight type, to be the same as blos
 u32_index = []  # use u32 instead of usize as index type, to save memory by at most half
 ordered_conflicts = []  # sort conflict events, by default do not sort for better performance
 disable_visualizer = []  # disable all visualizer behavior
-unsafe_pointer = []  # use raw pointers to access data when appropriate; fusion blossom requires very little synchronization
+unsafe_pointer = []  # use raw pointers to access data without lock when appropriate; fusion blossom requires very little synchronization
+dangerous_pointer = ["unsafe_pointer"]  # use raw pointers instead of Arc and Weak, require "unsafe_pointer" feature
 python_binding = ["pyo3"]  # bind to Python
 
 [dependencies]

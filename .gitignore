@@ -37,3 +37,8 @@ fusion_blossom.egg-info/
 
 # visualizer files
 /*.json
+
+/docs/
+/tutorial-dist/
+
+*-uncompressed.png

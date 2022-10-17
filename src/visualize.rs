@@ -222,6 +222,33 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
     snapshot_copy_remaining_fields(value, value_2);
 }
 
+#[cfg_attr(feature = "python_binding", pyfunction)]
+pub fn center_positions(mut positions: Vec<VisualizePosition>) -> Vec<VisualizePosition> {
+    if !positions.is_empty() {
+        let mut max_i = positions[0].i;
+        let mut min_i = positions[0].i;
+        let mut max_j = positions[0].j;
+        let mut min_j = positions[0].j;
+        let mut max_t = positions[0].t;
+        let mut min_t = positions[0].t;
+        for position in positions.iter_mut() {
+            if position.i > max_i { max_i = position.i; }
+            if position.j > max_j { max_j = position.j; }
+            if position.t > max_t { max_t = position.t; }
+            if position.i < min_i { min_i = position.i; }
+            if position.j < min_j { min_j = position.j; }
+            if position.t < min_t { min_t = position.t; }
+        }
+        let (ci, cj, ct) = ((max_i + min_i) / 2., (max_j + min_j) / 2., (max_t + min_t) / 2.);
+        for position in positions.iter_mut() {
+            position.i -= ci;
+            position.j -= cj;
+            position.t -= ct;
+        }
+    }
+    positions
+}
+
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl Visualizer {
@@ -234,20 +261,7 @@ impl Visualizer {
             filepath = None;  // do not open file
         }
         if center {
-            let (mut ci, mut cj, mut ct) = (0., 0., 0.);
-            for position in positions.iter() {
-                ci += position.i;
-                cj += position.j;
-                ct += position.t;
-            }
-            ci /= positions.len() as f64;
-            cj /= positions.len() as f64;
-            ct /= positions.len() as f64;
-            for position in positions.iter_mut() {
-                position.i -= ci;
-                position.j -= cj;
-                position.t -= ct;
-            }
+            positions = center_positions(positions);
         }
         let mut file = match filepath {
             Some(filepath) => Some(File::create(filepath)?),
@@ -324,7 +338,7 @@ pub fn visualize_data_folder() -> String {
 
 #[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn static_visualize_data_filename() -> String {
-    "static.json".to_string()
+    "visualizer.json".to_string()
 }
 
 #[cfg_attr(feature = "python_binding", pyfunction)]
@@ -364,6 +378,7 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(auto_visualize_data_filename, m)?)?;
     m.add_function(wrap_pyfunction!(print_visualize_link_with_parameters, m)?)?;
     m.add_function(wrap_pyfunction!(print_visualize_link, m)?)?;
+    m.add_function(wrap_pyfunction!(center_positions, m)?)?;
     Ok(())
 }
 
@@ -372,10 +387,12 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
 mod tests {
     use super::*;
     use super::super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::dual_module_serial::*;
     use super::super::dual_module::*;
     use super::super::pointers::*;
+    use super::super::primal_module_serial::*;
+    use super::super::primal_module::*;
 
 
     #[test]
@@ -414,7 +431,6 @@ mod tests {
             visualizer.snapshot_combined(format!("grow half weight"), vec![&interface_ptr, &dual_module]).unwrap();
         }
     }
-
 
     #[test]
     fn visualize_paper_weighted_union_find_decoder() {  // cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
@@ -589,6 +605,69 @@ mod tests {
             visualizer.snapshot_combined(format!("add measurement #6"), vec![&interface_ptr, &dual_module]).unwrap();
             visualizer.snapshot_combined(format!("add measurement #7"), vec![&interface_ptr, &dual_module]).unwrap();
             visualizer.snapshot_combined(format!("add measurement #8"), vec![&interface_ptr, &dual_module]).unwrap();
+        }
+    }
+
+    #[test]
+    fn visualize_example_syndrome_graph() {  // cargo test visualize_example_syndrome_graph -- --nocapture
+        let visualize_filename = format!("visualize_example_syndrome_graph.json");
+        // let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        //                        0   1   2   3   4   5   6   7   8    9
+        //                        A  vA   B  vB   C  vC   D  vD   E   vE
+        let kept_vertices = vec![39, 47, 52, 59, 63, 71, 90, 94, 100, 107];  // including some virtual vertices
+        let mut old_to_new = std::collections::BTreeMap::<SyndromeIndex, SyndromeIndex>::new();
+        for (new_index, syndrome_vertex) in kept_vertices.iter().enumerate() {
+            old_to_new.insert(*syndrome_vertex, new_index as SyndromeIndex);
+        }
+        println!("{old_to_new:?}");
+        let d = 11;
+        let half_weight = 500;
+        let code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
+        let positions = code.get_positions();
+        let (ci, cj) = ((positions[131].i + positions[11].i) / 2., (positions[10].j + positions[11].j) / 2.);
+        let syndrome_graph_positions: Vec<_> = kept_vertices.iter().map(|i| {
+            let mut position = positions[*i as usize].clone();
+            position.i -= ci;
+            position.j -= cj;
+            position
+        }).collect();
+        let visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), syndrome_graph_positions, false).unwrap();
+        let mut visualizer = Some(visualizer);
+        print_visualize_link(visualize_filename.clone());
+        let syndrome_graph_edges = vec![
+            // virtual to real edges
+            (0, 1, 4000),
+            (2, 3, 5000),
+            (4, 5, 4000),
+            (6, 7, 4000),
+            (8, 9, 5000),
+            // real to real edges
+            (0, 2, 2000),
+            (0, 4, 2000),
+            (0, 6, 7000),
+            (0, 8, 6000),
+            (2, 4, 2000),
+            (2, 6, 5000),
+            (2, 8, 4000),
+            (4, 6, 5000),
+            (4, 8, 4000),
+            (6, 8, 3000),
+        ];
+        let syndrome_graph_initializer = SolverInitializer::new(kept_vertices.len() as VertexNum, syndrome_graph_edges, vec![1,3,5,7,9]);
+        println!("syndrome_graph_initializer: {syndrome_graph_initializer:?}");
+        let mut dual_module = DualModuleSerial::new_empty(&syndrome_graph_initializer);
+        // create primal module
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&syndrome_graph_initializer);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        let syndrome_graph_syndrome = SyndromePattern::new(vec![0,2,4,6,8], vec![]);
+        primal_module.solve_visualizer(&interface_ptr, &syndrome_graph_syndrome, &mut dual_module, visualizer.as_mut());
+        let perfect_matching = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
+        let mut subgraph_builder = SubGraphBuilder::new(&syndrome_graph_initializer);
+        subgraph_builder.load_perfect_matching(&perfect_matching);
+        let subgraph = subgraph_builder.get_subgraph();
+        if let Some(visualizer) = visualizer.as_mut() {
+            visualizer.snapshot_combined("perfect matching and subgraph".to_string(), vec![&interface_ptr, &dual_module
+                , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
         }
     }
 

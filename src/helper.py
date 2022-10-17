@@ -2,7 +2,7 @@
 Note: this file is compiled as part of the binary, recompile if you change this to take effect
 """
 
-import webbrowser, threading
+import webbrowser, threading, os, time
 # import bottle  # embedded 0.13-dev version for WSGIRefServer support
 
 fb = None
@@ -15,7 +15,7 @@ def register(module):
 """
 start a server to host the visualizer websites locally
 """
-def serve(host='localhost', port=51666, data_folder=".", return_server=False, quiet=True):
+def serve(host='localhost', port=51665, data_folder=".", return_server=False, quiet=True):
     from bottle import WSGIRefServer, route, abort, run, response, static_file
     global visualizer_website
     def guess_mime(filename):
@@ -58,3 +58,17 @@ def open_visualizer(filename, host='localhost', port=51666, data_folder=".", ope
     print("Hit ENTER to exit server.")
     input()
     server.srv.shutdown()
+    time.sleep(0.3)
+
+"""
+open the website to have a look at the code object
+"""
+def peek_code(code, host='localhost', port=51667, data_folder=".", open_browser=True, quiet=True):
+    positions = code.get_positions()
+    initializer = code.get_initializer()
+    solver = fb.SolverSerial(initializer)
+    solver.solve(fb.SyndromePattern())
+    visualize_filename = fb.static_visualize_data_filename()
+    visualizer = fb.Visualizer(filepath=os.path.join(data_folder, visualize_filename), positions=positions)
+    solver.perfect_matching(visualizer)
+    fb.helper.open_visualizer(visualize_filename, host=host, port=port, data_folder=data_folder, open_browser=open_browser)

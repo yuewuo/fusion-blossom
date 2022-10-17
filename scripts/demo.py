@@ -19,7 +19,6 @@ print(syndrome)
 # visualizer (optional for debugging)
 visualizer = None
 if True:  # change to False to disable visualizer for much faster decoding
-    import os
     visualize_filename = fb.static_visualize_data_filename()
     visualizer = fb.Visualizer(filepath=visualize_filename, positions=positions)
 

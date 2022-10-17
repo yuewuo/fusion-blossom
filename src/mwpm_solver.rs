@@ -10,7 +10,7 @@ use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching, V
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::dual_module_parallel::*;
-use super::example::*;
+use super::example_codes::*;
 use super::primal_module_parallel::*;
 use super::visualize::*;
 use crate::derivative::Derivative;
@@ -144,13 +144,11 @@ macro_rules! bind_trait_primal_dual_solver {
             fn trait_clear(&mut self) { self.clear() }
             #[pyo3(name = "solve_visualizer")]
             fn trait_solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-                // self.solve_visualizer(syndrome_pattern, visualizer)
-                self.solve_visualizer(syndrome_pattern, visualizer.and(None))  // TODO: temporarily disable visualization of the algorithm itself, remove later
+                self.solve_visualizer(syndrome_pattern, visualizer)
             }
             #[pyo3(name = "solve")]  // in Python, `solve` and `solve_visualizer` is the same because it can take optional parameter
             fn trait_solve(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-                // self.solve_visualizer(syndrome_pattern, visualizer)
-                self.solve_visualizer(syndrome_pattern, visualizer.and(None))  // TODO: temporarily disable visualization of the algorithm itself, remove later
+                self.solve_visualizer(syndrome_pattern, visualizer)
             }
             #[pyo3(name = "perfect_matching_visualizer")]
             fn trait_perfect_matching_visualizer(&mut self, visualizer: Option<&mut Visualizer>) -> PerfectMatching {

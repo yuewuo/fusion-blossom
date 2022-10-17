@@ -280,7 +280,7 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
 
   
 /*
- * unsafe APIs, used for production environment
+ * unsafe APIs, used for production environment where speed matters
  */
 
 cfg_if::cfg_if! {
@@ -536,6 +536,183 @@ cfg_if::cfg_if! {
         }
 
     }
+
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature="dangerous_pointer")] {
+
+        pub trait FastClearUnsafePtrDangerous<ObjType> where ObjType: FastClear {
+
+            fn new_ptr(ptr: Arc<ObjType>) -> Self;
+
+            fn new_value(obj: ObjType) -> Self;
+
+            fn ptr(&self) -> *const ObjType;
+
+            #[inline(always)]
+            fn read_recursive(&self, active_timestamp: FastClearTimestamp) -> &ObjType {
+                unsafe {
+                    let ret = &*self.ptr();
+                    ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+                    ret
+                }
+            }
+
+            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+            #[inline(always)]
+            fn read_recursive_force(&self) -> &ObjType {
+                unsafe {
+                    &*self.ptr()
+                }
+            }
+
+            #[inline(always)]
+            fn write(&self, active_timestamp: FastClearTimestamp) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let const_ptr = self.ptr();
+                    let mut_ptr = &mut *(const_ptr as *mut ObjType);
+                    mut_ptr.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+                    mut_ptr
+                }
+            }
+
+            /// without sanity check: useful only in implementing hard_clear
+            #[inline(always)]
+            fn write_force(&self) -> &mut ObjType {
+                unsafe {
+                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
+                    let const_ptr = self.ptr();
+                    let mut_ptr = const_ptr as *mut ObjType;
+                    &mut *mut_ptr
+                }
+            }
+
+            /// dynamically clear it if not already cleared; it's safe to call many times, but it will acquire a writer lock
+            #[inline(always)]
+            fn dynamic_clear(&self, active_timestamp: FastClearTimestamp) {
+                let value = self.write_force();
+                value.dynamic_clear(active_timestamp);
+            }
+
+            #[inline(always)]
+            fn ptr_eq(&self, other: &Self) -> bool {
+                std::ptr::eq(self.ptr(), other.ptr())
+            }
+
+        }
+
+        pub struct FastClearArcUnsafeDangerous<T: FastClear> {
+            raw_ptr: Arc<T>,
+        }
+
+        pub struct FastClearWeakUnsafeDangerous<T: FastClear> {
+            raw_ptr: *const T,
+        }
+
+        unsafe impl<T: FastClear> Send for FastClearArcUnsafeDangerous<T> {}
+        unsafe impl<T: FastClear> Sync for FastClearArcUnsafeDangerous<T> {}
+    
+        unsafe impl<T: FastClear> Send for FastClearWeakUnsafeDangerous<T> {}
+        unsafe impl<T: FastClear> Sync for FastClearWeakUnsafeDangerous<T> {}
+
+        impl<T: FastClear> FastClearArcUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn downgrade(&self) -> FastClearWeakUnsafeDangerous<T> {
+                FastClearWeakUnsafeDangerous::<T> {
+                    raw_ptr: Arc::as_ptr(&self.raw_ptr)
+                }
+            }
+        }
+
+        impl<T: FastClear> FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn downgrade(&self) -> FastClearWeakUnsafeDangerous<T> {
+                FastClearWeakUnsafeDangerous::<T> {
+                    raw_ptr: self.raw_ptr
+                }
+            }
+        }
+
+        impl<T: FastClear> FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            pub fn upgrade_force(&self) -> FastClearWeakUnsafeDangerous<T> {
+                self.clone()
+            }
+        }
+
+        impl<T: FastClear> Clone for FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn clone(&self) -> Self {
+                Self { raw_ptr: self.raw_ptr }
+            }
+        }
+
+        impl<T: FastClear> FastClearUnsafePtrDangerous<T> for FastClearArcUnsafeDangerous<T> {
+            fn new_ptr(ptr: Arc<T>) -> Self { Self { raw_ptr: ptr } }
+            fn new_value(obj: T) -> Self { Self { raw_ptr: Arc::new(obj) } }
+            #[inline(always)]
+            fn ptr(&self) -> *const T {
+                Arc::as_ptr(&self.raw_ptr)
+            }
+        }
+
+        impl<T: FastClear> FastClearUnsafePtrDangerous<T> for FastClearWeakUnsafeDangerous<T> {
+            fn new_ptr(_ptr: Arc<T>) -> Self { panic!() }
+            fn new_value(_obj: T) -> Self { panic!() }
+            #[inline(always)]
+            fn ptr(&self) -> *const T {
+                self.raw_ptr
+            }
+        }
+
+        impl<T: FastClear> PartialEq for FastClearArcUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+        }
+
+        impl<T: FastClear> PartialEq<FastClearArcUnsafeDangerous<T>> for FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &FastClearArcUnsafeDangerous<T>) -> bool {
+                self.ptr() == other.ptr()
+            }
+        }
+
+        impl<T: FastClear> Eq for FastClearArcUnsafeDangerous<T> { }
+
+        impl<T: FastClear> PartialEq for FastClearWeakUnsafeDangerous<T> {
+            #[inline(always)]
+            fn eq(&self, other: &Self) -> bool { std::ptr::eq(self.ptr(), other.ptr()) }
+        }
+
+        impl<T: FastClear> Eq for FastClearWeakUnsafeDangerous<T> { }
+
+        impl<T: FastClear> std::ops::Deref for FastClearArcUnsafeDangerous<T> {
+            type Target = T;
+            #[inline(always)]
+            fn deref(&self) -> &Self::Target {
+                &self.raw_ptr
+            }
+        }
+
+        impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakUnsafeDangerous<T> {
+            type Strong = FastClearWeakUnsafeDangerous<T>;
+            #[inline(always)]
+            fn new(view: &Self::Strong) -> Self {
+                view.downgrade()
+            }
+            #[inline(always)]
+            fn view(&self) -> Option<Self::Strong> {
+                Some(self.upgrade_force())
+            }
+            #[inline(always)]
+            fn clone(view: &Self::Strong) -> Self::Strong {
+                view.clone()
+            }
+        }
+
+    }
 }
 
 cfg_if::cfg_if! {
@@ -550,6 +727,15 @@ cfg_if::cfg_if! {
             ($variable:ident, $lock:expr, $timestamp:expr) => { let $variable = $lock.write($timestamp); };
         }
         #[allow(unused_imports)] pub use lock_write;
+        cfg_if::cfg_if! {
+            if #[cfg(feature="dangerous_pointer")] {
+                pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcUnsafeDangerous<T>;
+                pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakUnsafeDangerous<T>;
+            } else {
+                pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcUnsafe<T>;
+                pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakUnsafe<T>;
+            }
+        }
     } else {
         pub type FastClearArcManualSafeLock<T> = FastClearArcRwLock<T>;
         pub type FastClearWeakManualSafeLock<T> = FastClearWeakRwLock<T>;
@@ -561,6 +747,8 @@ cfg_if::cfg_if! {
             ($variable:ident, $lock:expr, $timestamp:expr) => { let mut $variable = $lock.write($timestamp); };
         }
         #[allow(unused_imports)] pub use lock_write;
+        pub type FastClearArcManualSafeLockDangerous<T> = FastClearArcRwLock<T>;
+        pub type FastClearWeakManualSafeLockDangerous<T> = FastClearWeakRwLock<T>;
     }
 }
 
@@ -613,6 +801,13 @@ cfg_if::cfg_if! {
             assert_eq!(weak.upgrade_force().read_recursive().idx, 1);
             weak.upgrade_force().write().idx = 2;
             assert_eq!(ptr.read_recursive().idx, 2);
+        }
+
+        #[test]
+        fn pointers_test_3() {  // cargo test pointers_test_3 --features dangerous_pointer -- --nocapture
+            println!("{}", std::mem::size_of::<ArcManualSafeLock<Tester>>());
+            println!("{}", std::mem::size_of::<Arc<Tester>>());
+            println!("{}", std::mem::size_of::<*const Tester>());
         }
 
     }

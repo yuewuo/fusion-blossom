@@ -50,7 +50,7 @@ pub struct DualModuleSerial {
     /// temporary variable to reduce reallocation
     updated_boundary: Vec<(bool, EdgeWeak)>,
     /// temporary variable to reduce reallocation
-    propagating_vertices: Vec<(VertexPtr, Option<DualNodeInternalWeak>)>,
+    propagating_vertices: Vec<(VertexWeak, Option<DualNodeInternalWeak>)>,
 }
 
 /// records information only available when used as a unit in the partitioned dual module
@@ -89,6 +89,7 @@ pub struct DualNodeInternal {
     last_visit_cycle: usize,
 }
 
+// when using feature `dangerous_pointer`, it doesn't provide the `upgrade()` function, so we have to fall back to the safe solution
 pub type DualNodeInternalPtr = ArcManualSafeLock<DualNodeInternal>;
 pub type DualNodeInternalWeak = WeakManualSafeLock<DualNodeInternal>;
 
@@ -127,8 +128,8 @@ pub struct Vertex {
     pub timestamp: FastClearTimestamp,
 }
 
-pub type VertexPtr= FastClearArcManualSafeLock<Vertex>;
-pub type VertexWeak = FastClearWeakManualSafeLock<Vertex>;
+pub type VertexPtr = FastClearArcManualSafeLockDangerous<Vertex>;
+pub type VertexWeak = FastClearWeakManualSafeLockDangerous<Vertex>;
 
 impl std::fmt::Debug for VertexPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -139,7 +140,9 @@ impl std::fmt::Debug for VertexPtr {
 
 impl std::fmt::Debug for VertexWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
+        let vertex_ptr = self.upgrade_force();
+        let vertex = vertex_ptr.read_recursive_force();
+        write!(f, "{}", vertex.vertex_index)
     }
 }
 
@@ -175,8 +178,8 @@ pub struct Edge {
     pub dedup_timestamp: (FastClearTimestamp, FastClearTimestamp),
 }
 
-pub type EdgePtr= FastClearArcManualSafeLock<Edge>;
-pub type EdgeWeak = FastClearWeakManualSafeLock<Edge>;
+pub type EdgePtr = FastClearArcManualSafeLockDangerous<Edge>;
+pub type EdgeWeak = FastClearWeakManualSafeLockDangerous<Edge>;
 
 impl std::fmt::Debug for EdgePtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -187,7 +190,9 @@ impl std::fmt::Debug for EdgePtr {
 
 impl std::fmt::Debug for EdgeWeak {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        self.upgrade_force().fmt(f)
+        let edge_ptr = self.upgrade_force();
+        let edge = edge_ptr.read_recursive_force();
+        write!(f, "{}", edge.edge_index)
     }
 }
 
@@ -216,6 +221,8 @@ impl DualModuleImpl for DualModuleSerial {
         let mut edges = Vec::<EdgePtr>::new();
         for &(i, j, weight) in initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+            assert!(weight % 2 == 0, "edge ({}, {}) has odd weight value; weight should be even", i, j);
+            assert!(weight >= 0, "edge ({}, {}) is negative-weighted", i, j);
             assert!(i < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
             assert!(j < initializer.vertex_num, "edge ({}, {}) connected to an invalid vertex {}", i, j, j);
             let left = VertexIndex::min(i, j);
@@ -298,7 +305,7 @@ impl DualModuleImpl for DualModuleSerial {
         let node = dual_node_ptr.read_recursive();
         let node_index = self.nodes_length as NodeIndex;
         let node_internal_ptr = if node_index < self.nodes.len() as NodeIndex && self.nodes[node_index as usize].is_some() {
-            let node_ptr = self.nodes[node_index as usize].as_ref().unwrap().clone();
+            let node_ptr = self.nodes[node_index as usize].take().unwrap();
             let mut node = node_ptr.write();
             node.origin = dual_node_ptr.downgrade();
             node.index = node_index;
@@ -393,7 +400,6 @@ impl DualModuleImpl for DualModuleSerial {
         let node_idx = dual_node_internal.index;
         debug_assert!(self.nodes[node_idx as usize].is_some(), "blossom may have already been removed, do not call twice");
         debug_assert!(self.nodes[node_idx as usize].as_ref().unwrap() == &dual_node_internal_ptr, "the blossom doesn't belong to this DualModuleInterface");
-        self.nodes[node_idx as usize] = None;  // simply remove this blossom node
         // recover edge belongings
         for (is_left, edge_weak) in dual_node_internal.boundary.iter() {
             let edge_ptr = edge_weak.upgrade_force();
@@ -427,6 +433,7 @@ impl DualModuleImpl for DualModuleSerial {
         } else {
             unreachable!()
         }
+        self.nodes[node_idx as usize] = None;  // simply remove this blossom node
     }
 
     fn set_grow_state(&mut self, dual_node_ptr: &DualNodePtr, grow_state: DualNodeGrowState) {
@@ -553,7 +560,7 @@ impl DualModuleImpl for DualModuleSerial {
                         let local_max_length_abs = edge.weight - edge.left_growth - edge.right_growth;
                         if local_max_length_abs == 0 {
                             // check if peer is virtual node
-                            let peer_vertex_ptr: VertexPtr = if is_left {
+                            let peer_vertex_ptr = if is_left {
                                 edge.right.upgrade_force()
                             } else {
                                 edge.left.upgrade_force()
@@ -809,6 +816,8 @@ impl DualModuleImpl for DualModuleSerial {
         let mut edges = Vec::<EdgePtr>::new();
         for &(i, j, weight, edge_index) in partitioned_initializer.weighted_edges.iter() {
             assert_ne!(i, j, "invalid edge from and to the same vertex {}", i);
+            assert!(weight % 2 == 0, "edge ({}, {}) has odd weight value; weight should be even", i, j);
+            assert!(weight >= 0, "edge ({}, {}) is negative-weighted", i, j);
             debug_assert!(partitioned_initializer.owning_range.contains(i) || mirrored_vertices.contains_key(&i)
                 , "edge ({}, {}) connected to an invalid vertex {}", i, j, i);
             debug_assert!(partitioned_initializer.owning_range.contains(j) || mirrored_vertices.contains_key(&j)
@@ -1018,7 +1027,9 @@ impl FastClear for Edge {
         self.right_grandson_dual_node = None;
     }
 
+    #[inline(always)]
     fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    #[inline(always)]
     fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
 
 }
@@ -1031,7 +1042,9 @@ impl FastClear for Vertex {
         self.propagated_grandson_dual_node = None;
     }
 
+    #[inline(always)]
     fn get_timestamp(&self) -> FastClearTimestamp { self.timestamp }
+    #[inline(always)]
     fn set_timestamp(&mut self, timestamp: FastClearTimestamp) { self.timestamp = timestamp; }
 
 }
@@ -1452,7 +1465,7 @@ impl DualModuleSerial {
                     } else {
                         debug_assert!(peer_vertex.propagated_dual_node.is_none(), "growing into another propagated vertex forbidden");
                         debug_assert!(peer_vertex.propagated_grandson_dual_node.is_none(), "growing into another propagated vertex forbidden");
-                        self.propagating_vertices.push((peer_vertex_ptr.clone(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
+                        self.propagating_vertices.push((peer_vertex_ptr.downgrade(), if is_left { edge.left_grandson_dual_node.clone() } else { edge.right_grandson_dual_node.clone() }));
                         // this edge is dropped, so we need to set both end of this edge to this dual node
                         drop(edge);  // unlock read
                         let mut edge = edge_ptr.write(active_timestamp);
@@ -1472,7 +1485,8 @@ impl DualModuleSerial {
             }
             drop(dual_node_internal);  // unlock
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for (vertex_ptr, grandson_dual_node) in self.propagating_vertices.iter() {
+            for (vertex_weak, grandson_dual_node) in self.propagating_vertices.iter() {
+                let vertex_ptr = vertex_weak.upgrade_force();
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_none() {
                     vertex.propagated_dual_node = Some(dual_node_internal_ptr.downgrade());
@@ -1615,7 +1629,7 @@ impl DualModuleSerial {
                         if edge.weight > 0 && self.unit_module_info.is_none() {  // do not check for 0-weight edges
                             debug_assert!(this_vertex.propagated_dual_node.is_some(), "unexpected shrink into an empty vertex");
                         }
-                        self.propagating_vertices.push((this_vertex_ptr.clone(), None));
+                        self.propagating_vertices.push((this_vertex_ptr.downgrade(), None));
                     }
                 } else {  // keep other edges
                     if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
@@ -1625,7 +1639,8 @@ impl DualModuleSerial {
                 }
             }
             // propagating nodes may be duplicated, but it's easy to check by `propagated_dual_node`
-            for (vertex_ptr, _) in self.propagating_vertices.iter() {
+            for (vertex_weak, _) in self.propagating_vertices.iter() {
+                let vertex_ptr = vertex_weak.upgrade_force();
                 let mut vertex = vertex_ptr.write(active_timestamp);
                 if vertex.propagated_dual_node.is_some() {
                     vertex.propagated_dual_node = None;
@@ -1713,7 +1728,7 @@ impl DualModuleSerial {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::primal_module_serial::tests::*;
 
     #[allow(dead_code)]

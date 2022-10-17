@@ -33,7 +33,7 @@ pub mod util;
 pub mod complete_graph;
 pub mod union_find;
 pub mod visualize;
-pub mod example;
+pub mod example_codes;
 pub mod dual_module;
 pub mod dual_module_serial;
 pub mod primal_module;
@@ -55,7 +55,7 @@ use complete_graph::*;
 fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     util::register(py, m)?;
     mwpm_solver::register(py, m)?;
-    example::register(py, m)?;
+    example_codes::register(py, m)?;
     visualize::register(py, m)?;
     primal_module::register(py, m)?;
     let helper_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/helper.py"));

@@ -190,7 +190,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         let node_index = module.nodes_count();
         debug_assert_eq!(node.index, node_index, "must load in order");
         let primal_node_internal_ptr = if !module.is_fusion && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
-            let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
+            let node_ptr = module.nodes[local_node_index].take().unwrap();
             let mut node = node_ptr.write();
             node.origin = dual_node_ptr.downgrade();
             node.index = node_index;
@@ -447,7 +447,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 let local_node_index = module.nodes_length;
                                 let node_index = module.nodes_count();
                                 let primal_node_internal_blossom_ptr = if !module.is_fusion && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
-                                    let node_ptr = module.nodes[local_node_index].as_ref().unwrap().clone();
+                                    let node_ptr = module.nodes[local_node_index].take().unwrap();
                                     let mut node = node_ptr.write();
                                     node.origin = blossom_node_ptr.downgrade();
                                     node.index = node_index;
@@ -469,8 +469,9 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 if module.nodes.len() < module.nodes_length {
                                     module.nodes.push(None);
                                 }
-                                module.nodes[local_node_index] = Some(primal_node_internal_blossom_ptr.clone());
-                                primal_node_internal_blossom_ptr
+                                let cloned_primal_node_internal_blossom_ptr = primal_node_internal_blossom_ptr.clone();
+                                module.nodes[local_node_index] = Some(primal_node_internal_blossom_ptr);  // feature `dangerous_pointer`: must push the owner
+                                cloned_primal_node_internal_blossom_ptr
                             };
                             // handle other part of the tree structure
                             let mut children = vec![];
@@ -613,11 +614,6 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                             _ => unreachable!("the expanding node is not a blossom")
                         }
                     };
-                    {  // remove it from nodes
-                        lock_write!(module, self);
-                        debug_assert_eq!(module.get_node(primal_node_internal.index), Some(primal_node_internal_ptr.clone()), "index wrong");
-                        module.remove_node(primal_node_internal.index);
-                    }
                     debug_assert!(primal_node_internal.tree_node.is_some(), "expanding blossom must belong to an alternating tree");
                     let tree_node = primal_node_internal.tree_node.as_ref().unwrap();
                     debug_assert!(tree_node.depth % 2 == 1, "expanding blossom must a '-' node in an alternating tree");
@@ -741,6 +737,11 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         let parent_ptr = self.get_primal_node_internal_ptr(&nodes_circle[tree_sequence[tree_sequence.len()-1]].upgrade_force());
                         child_tree_node.parent = Some((parent_ptr.downgrade(), child_touching_ptr));
                         child.change_sub_tree_root(tree_node.depth + tree_sequence.len(), tree_node.root.upgrade_force());
+                    }
+                    {  // remove it from nodes
+                        lock_write!(module, self);
+                        debug_assert_eq!(module.get_node(primal_node_internal.index), Some(primal_node_internal_ptr.clone()), "index wrong");
+                        module.remove_node(primal_node_internal.index);
                     }
                 },
                 MaxUpdateLength::VertexShrinkStop(_node_ptr) => {
@@ -1280,7 +1281,7 @@ impl PrimalModuleSerialPtr {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use super::super::example::*;
+    use super::super::example_codes::*;
     use super::super::dual_module_serial::*;
     use super::super::*;
 
