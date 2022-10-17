@@ -12,7 +12,7 @@ set xtics ('1' 1, '2' 2, '4' 4, '8' 8, '16' 16, '32' 32, '64' 64, '128' 128, '25
 set logscale y
 # print(", ".join([f"'1e{i}' 1e{i}" for i in range(-4, 2)]))
 set ytics ('0.05' 5e-8, '0.1' 1e-7, '0.3' 3e-7, '1' 1e-6, '3' 3e-6)
-set yrange [5e-8:5e-6]
+set yrange [3e-8:5e-6]
 set key outside horizontal top center font "Arial, 24"
 set style fill transparent solid 0.2 noborder
 set key samplen 4
