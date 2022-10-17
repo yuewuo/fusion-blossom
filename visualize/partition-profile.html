@@ -158,11 +158,11 @@ h3 {
                 <rect v-if="!info.is_base_partition" :width="length_scale * (event_time.end - event_time.start)" :height="job_height"
                     :x="left_panel + margin + length_scale * event_time.start" :y="job_y_bias + display_index * (job_height + margin)"
                     style="fill:lightgreen;" rx="10" ry="10"/>
-                <line v-if="info.left_event_time != null" stroke-linecap="round"
+                <line v-if="show_dependency && info.left_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.left_event_time.end" :y1="job_y_bias + info.left_display_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.start" :y2="job_y_bias + display_index * (job_height + margin)"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
-                <line v-if="info.right_event_time != null" stroke-linecap="round"
+                <line v-if="show_dependency && info.right_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.right_event_time.end" :y1="job_y_bias + info.right_display_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.start" :y2="job_y_bias + display_index * (job_height + margin) + job_height"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
@@ -208,13 +208,13 @@ h3 {
                 <text :x="left_panel + margin + length_scale * axis_values[1] - 5" :y="margin + decoding_time_height / 2 + 5" text-anchor="end">{{ axis_label }}</text>
             </g>
             <g v-for="([event_time, info], _) in display_info_vec">
-                <line v-if="info.left_event_time != null" stroke-linecap="round"
+                <line v-if="show_dependency && info.left_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.left_event_time.end"
                     :y1="job_y_bias + info.left_event_time.thread_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.start"
                     :y2="job_y_bias + event_time.thread_index * (job_height + margin) + job_height / 2"
                     style="stroke-width:2;stroke:purple;" marker-end="url(#arrowhead)"/>
-                <line v-if="info.right_event_time != null" stroke-linecap="round"
+                <line v-if="show_dependency && info.right_event_time != null" stroke-linecap="round"
                     :x1="left_panel + margin + length_scale * info.right_event_time.end"
                     :y1="job_y_bias + info.right_event_time.thread_index * (job_height + margin) + job_height / 2"
                     :x2="left_panel + margin + length_scale * event_time.start"
@@ -282,6 +282,7 @@ h3 {
         </div>
         <div class="flex-center-div">
             <div><q-toggle color="green" v-model="thread_view" label="thread view" size="md"/></div>
+            <div><q-toggle color="green" v-model="show_dependency" label="show_dependency" size="md"/></div>
         </div>
         <q-card bordered class="select-info-div" v-if="selected_profile != null">
             <q-card-section class="bg-cyan text-white">
@@ -361,6 +362,10 @@ const sizes = reactive({
 })
 
 watch([window_inner_width, window_inner_height], () => {
+    const window_scale = urlParams.get('window_scale')
+    if (window_scale != null) {
+        sizes.scale = window_scale
+    } else {
     sizes.scale = window_inner_width.value / 1920
     if (sizes.scale > window_inner_height.value / 1080) {  // ultra-wide
         sizes.scale = window_inner_height.value / 1080
@@ -370,6 +375,7 @@ watch([window_inner_width, window_inner_height], () => {
     }
     if (window_inner_width.value * 0.9 < 300) {
         sizes.scale = window_inner_width.value / 600 * 0.9
+    }
     }
     document.documentElement.style.setProperty('--s', sizes.scale)
     // sizes.scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--s'))
@@ -396,6 +402,7 @@ const App = {
             unit_info_vec: reactive([]),  // local information about units
             sizes: sizes,
             thread_view: ref(true),
+            show_dependency: ref(true),
             // round select
             round_num: ref(1),
             round_select: ref(null),
