@@ -105,7 +105,7 @@ enum Commands {
     Test {
         #[clap(subcommand)]
         command: TestCommands,
-    }
+    },
 }
 
 #[derive(Subcommand, Clone)]
