@@ -2,7 +2,6 @@
 set -ex
 
 cargo clean
-cargo clippy  # A collection of lints to catch common mistakes and improve your Rust code.
 
 cargo test --features disable_visualizer
 cargo test --features disable_visualizer,u32_index

@@ -144,8 +144,7 @@ pub trait PrimalDualSolver {
         for _ in 0..num_shots {
             in_reader.read_exact(&mut dets_bit_packed).expect("read success");
             let mut syndrome_vertices = vec![];
-            for i in 0..num_det_bytes {
-                let byte = dets_bit_packed[i];
+            for (i, &byte) in dets_bit_packed.iter().enumerate() {
                 if byte == 0 {
                     continue
                 }
@@ -164,7 +163,7 @@ pub trait PrimalDualSolver {
             }
             for j in 0..prediction_bytes {
                 let byte = ((prediction >> (j * 8)) & 0x0FF) as u8;
-                out_writer.write(&[byte]).unwrap();
+                out_writer.write_all(&[byte]).unwrap();
             }
             self.clear();
         }
