@@ -35,6 +35,13 @@ To manually upload the wheels
 twine upload artifact-0.1.0/* --repository-url https://upload.pypi.org/legacy/
 ```
 
+To also upload the source package
+
+```sh
+maturin sdist
+twine upload target/wheels/fusion_blossom-0.2.0.tar.gz --repository-url https://upload.pypi.org/legacy/
+```
+
 ## Jenkins CI
 
 I need to manually download Blossom V library
