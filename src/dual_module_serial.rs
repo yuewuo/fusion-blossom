@@ -1247,7 +1247,7 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "v" } else { "is_virtual" }: i32::from(vertex.is_virtual),
             });
             if self.owning_range.contains(vertex.vertex_index) {  // otherwise I don't know whether it's syndrome or not
-                vertices[vertex.vertex_index as usize].as_object_mut().unwrap().insert((if abbrev { "d" } else { "is_defect" })
+                vertices[vertex.vertex_index as usize].as_object_mut().unwrap().insert((if abbrev { "s" } else { "is_defect" })
                     .to_string(), json!(i32::from(vertex.is_defect)));
             }
             if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {

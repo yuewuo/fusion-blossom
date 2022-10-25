@@ -376,7 +376,7 @@ export async function refresh_snapshot_data() {
             load_position(vertex_mesh.position, position)
             if (vertex.mi != null && vertex.me == 0) {
                 vertex_mesh.material = disabled_mirror_vertex_material
-            } else if (vertex.d) {
+            } else if (vertex.s) {
                 vertex_mesh.material = defect_vertex_material
             } else if (vertex.v) {
                 vertex_mesh.material = virtual_vertex_material
@@ -497,7 +497,7 @@ export async function refresh_snapshot_data() {
             }
             const vertex_outline_mesh = vertex_outline_meshes[i]
             load_position(vertex_outline_mesh.position, position)
-            if (vertex.d) {
+            if (vertex.s) {
                 vertex_outline_mesh.material = defect_vertex_outline_material
             } else if (vertex.v) {
                 vertex_outline_mesh.material = virtual_vertex_outline_material
@@ -518,7 +518,7 @@ export async function refresh_snapshot_data() {
             if (dual_node == null) { continue }
             if (snapshot.subgraph != null) { continue }  // do not display convex if subgraph is displayed
             // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
-            let display_node = dual_node.p == null && (dual_node.dv > 0 || dual_node.o != null)
+            let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
             if (display_node) {  // no parent and (positive dual variable or it's a blossom)
                 let points = []
                 if (dual_node.b != null) {
