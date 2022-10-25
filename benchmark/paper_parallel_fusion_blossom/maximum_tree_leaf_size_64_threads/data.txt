@@ -1,4 +1,4 @@
-<maximum_tree_leaf_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>
+<maximum_tree_leaf_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>
 1 7.71225e-01 7.71217e-06 6.37525e-07
 2 4.51184e-01 4.51179e-06 3.72966e-07
 3 3.28875e-01 3.28872e-06 2.71861e-07

@@ -170,7 +170,7 @@ const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 1, s
 edge_geometry.translate(0, 0.5, 0)
 
 // create common materials
-export const syndrome_vertex_material = new THREE.MeshStandardMaterial({
+export const defect_vertex_material = new THREE.MeshStandardMaterial({
     color: 0xff0000,
     opacity: 1,
     transparent: true,
@@ -194,7 +194,7 @@ export const virtual_vertex_material = new THREE.MeshStandardMaterial({
     transparent: true,
     side: THREE.FrontSide,
 })
-export const syndrome_vertex_outline_material = new THREE.MeshStandardMaterial({
+export const defect_vertex_outline_material = new THREE.MeshStandardMaterial({
     color: 0x000000,
     opacity: 1,
     transparent: true,
@@ -377,7 +377,7 @@ export async function refresh_snapshot_data() {
             if (vertex.mi != null && vertex.me == 0) {
                 vertex_mesh.material = disabled_mirror_vertex_material
             } else if (vertex.s) {
-                vertex_mesh.material = syndrome_vertex_material
+                vertex_mesh.material = defect_vertex_material
             } else if (vertex.v) {
                 vertex_mesh.material = virtual_vertex_material
             } else {
@@ -498,7 +498,7 @@ export async function refresh_snapshot_data() {
             const vertex_outline_mesh = vertex_outline_meshes[i]
             load_position(vertex_outline_mesh.position, position)
             if (vertex.s) {
-                vertex_outline_mesh.material = syndrome_vertex_outline_material
+                vertex_outline_mesh.material = defect_vertex_outline_material
             } else if (vertex.v) {
                 vertex_outline_mesh.material = virtual_vertex_outline_material
             } else {
@@ -603,16 +603,16 @@ watch(sizes, () => {  // move render configuration GUI to 3D canvas
     gui.domElement.style.right = 0
 }, { immediate: true })
 const conf = {
-    syndrome_vertex_color: syndrome_vertex_material.color,
-    syndrome_vertex_opacity: syndrome_vertex_material.opacity,
+    defect_vertex_color: defect_vertex_material.color,
+    defect_vertex_opacity: defect_vertex_material.opacity,
     disabled_mirror_vertex_color: disabled_mirror_vertex_material.color,
     disabled_mirror_vertex_opacity: disabled_mirror_vertex_material.opacity,
     real_vertex_color: real_vertex_material.color,
     real_vertex_opacity: real_vertex_material.opacity,
     virtual_vertex_color: virtual_vertex_material.color,
     virtual_vertex_opacity: virtual_vertex_material.opacity,
-    syndrome_vertex_outline_color: syndrome_vertex_outline_material.color,
-    syndrome_vertex_outline_opacity: syndrome_vertex_outline_material.opacity,
+    defect_vertex_outline_color: defect_vertex_outline_material.color,
+    defect_vertex_outline_opacity: defect_vertex_outline_material.opacity,
     real_vertex_outline_color: real_vertex_outline_material.color,
     real_vertex_outline_opacity: real_vertex_outline_material.opacity,
     virtual_vertex_outline_color: virtual_vertex_outline_material.color,
@@ -634,8 +634,8 @@ const side_options = { "FrontSide": THREE.FrontSide, "BackSide": THREE.BackSide,
 const vertex_folder = gui.addFolder( 'vertex' )
 export const controller = {}
 window.controller = controller
-controller.syndrome_vertex_color = vertex_folder.addColor( conf, 'syndrome_vertex_color' ).onChange( function ( value ) { syndrome_vertex_material.color = value } )
-controller.syndrome_vertex_opacity = vertex_folder.add( conf, 'syndrome_vertex_opacity', 0, 1 ).onChange( function ( value ) { syndrome_vertex_material.opacity = Number(value) } )
+controller.defect_vertex_color = vertex_folder.addColor( conf, 'defect_vertex_color' ).onChange( function ( value ) { defect_vertex_material.color = value } )
+controller.defect_vertex_opacity = vertex_folder.add( conf, 'defect_vertex_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_material.opacity = Number(value) } )
 controller.disabled_mirror_vertex_color = vertex_folder.addColor( conf, 'disabled_mirror_vertex_color' ).onChange( function ( value ) { disabled_mirror_vertex_material.color = value } )
 controller.disabled_mirror_vertex_opacity = vertex_folder.add( conf, 'disabled_mirror_vertex_opacity', 0, 1 ).onChange( function ( value ) { disabled_mirror_vertex_material.opacity = Number(value) } )
 controller.real_vertex_color = vertex_folder.addColor( conf, 'real_vertex_color' ).onChange( function ( value ) { real_vertex_material.color = value } )
@@ -643,8 +643,8 @@ controller.real_vertex_opacity = vertex_folder.add( conf, 'real_vertex_opacity',
 controller.virtual_vertex_color = vertex_folder.addColor( conf, 'virtual_vertex_color' ).onChange( function ( value ) { virtual_vertex_material.color = value } )
 controller.virtual_vertex_opacity = vertex_folder.add( conf, 'virtual_vertex_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_material.opacity = Number(value) } )
 const vertex_outline_folder = gui.addFolder( 'vertex outline' )
-controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'syndrome_vertex_outline_color' ).onChange( function ( value ) { syndrome_vertex_outline_material.color = value } )
-controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'syndrome_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { syndrome_vertex_outline_material.opacity = Number(value) } )
+controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'defect_vertex_outline_color' ).onChange( function ( value ) { defect_vertex_outline_material.color = value } )
+controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'defect_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_outline_material.opacity = Number(value) } )
 controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'real_vertex_outline_color' ).onChange( function ( value ) { real_vertex_outline_material.color = value } )
 controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'real_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_outline_material.opacity = Number(value) } )
 controller.virtual_vertex_outline_color = vertex_outline_folder.addColor( conf, 'virtual_vertex_outline_color' ).onChange( function ( value ) { virtual_vertex_outline_material.color = value } )

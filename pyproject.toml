@@ -30,6 +30,7 @@ classifiers = [
 # by default remove blossom V in the build because of license issue;
 # users can enable blossom V by removing `remove_blossom_v` feature, at the responsibility of users
 [tool.maturin]
+# features = ["python_binding", "remove_blossom_v", "u32_index", "dangerous_pointer"]
 features = ["python_binding", "remove_blossom_v"]
 # Yue 2022.10.8: when maturin is called from `pip wheel`, it doesn't enable the above features, and thus pyo3 is not enabled
 #     since it cannot find pyo3, it falls back to use cffi (which is really confusing because I don't use cffi at all!)
@@ -39,4 +40,5 @@ features = ["python_binding", "remove_blossom_v"]
 #     later on I realize I have to provide the features in `cargo-extra-args` (credit to https://github.com/PyO3/maturin/issues/211)
 # conclusion: when calling `maturin develop`, it can read `features` above; but when called from `pip wheel`, it takes value below
 bindings = "pyo3"
+# cargo-extra-args = "--features python_binding,remove_blossom_v,u32_index,dangerous_pointer"
 cargo-extra-args = "--features python_binding,remove_blossom_v"

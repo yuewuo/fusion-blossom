@@ -65,11 +65,11 @@ pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) 
         if vertex.is_null() { continue }  // vertex not present, probably currently don't care
         let vertex = vertex.as_object_mut().expect("each vertex must be an object");
         let key_is_virtual = if abbrev { "v" } else { "is_virtual" };
-        let key_is_syndrome = if abbrev { "s" } else { "is_syndrome" };
+        let key_is_defect = if abbrev { "s" } else { "is_defect" };
         // recover
         assert!(vertex.contains_key(key_is_virtual), "missing unrecoverable field");
-        if !vertex.contains_key(key_is_syndrome) {
-            vertex.insert(key_is_syndrome.to_string(), json!(0));  // by default no syndrome
+        if !vertex.contains_key(key_is_defect) {
+            vertex.insert(key_is_defect.to_string(), json!(0));  // by default no syndrome
         }
     }
     // fix edges missing fields
@@ -146,8 +146,8 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                 let vertex_2 = vertex_2.as_object_mut().expect("each vertex must be an object");
                 // list known keys
                 let key_is_virtual = if abbrev { "v" } else { "is_virtual" };
-                let key_is_syndrome = if abbrev { "s" } else { "is_syndrome" };
-                let known_keys = [key_is_virtual, key_is_syndrome];
+                let key_is_defect = if abbrev { "s" } else { "is_defect" };
+                let known_keys = [key_is_virtual, key_is_defect];
                 for key in known_keys {
                     snapshot_combine_object_known_key(vertex, vertex_2, key);
                 }
@@ -205,11 +205,11 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                 let key_boundary = if abbrev { "b" } else { "boundary" };
                 let key_dual_variable = if abbrev { "d" } else { "dual_variable" };
                 let key_blossom = if abbrev { "o" } else { "blossom" };
-                let key_syndrome_vertex = if abbrev { "s" } else { "syndrome_vertex" };
+                let key_defect_vertex = if abbrev { "s" } else { "defect_vertex" };
                 let key_grow_state = if abbrev { "g" } else { "grow_state" };
                 let key_unit_growth = if abbrev { "u" } else { "unit_growth" };
                 let key_parent_blossom = if abbrev { "p" } else { "parent_blossom" };
-                let known_keys = [key_boundary, key_dual_variable, key_blossom, key_syndrome_vertex, key_grow_state, key_unit_growth, key_parent_blossom];
+                let known_keys = [key_boundary, key_dual_variable, key_blossom, key_defect_vertex, key_grow_state, key_unit_growth, key_parent_blossom];
                 for key in known_keys {
                     snapshot_combine_object_known_key(dual_node, dual_node_2, key);
                 }
@@ -405,9 +405,9 @@ mod tests {
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
-        let syndrome_vertices = vec![39, 63, 52, 100, 90];
-        for syndrome_vertex in syndrome_vertices.iter() {
-            code.vertices[*syndrome_vertex].is_syndrome = true;
+        let defect_vertices = vec![39, 63, 52, 100, 90];
+        for defect_vertex in defect_vertices.iter() {
+            code.vertices[*defect_vertex].is_defect = true;
         }
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module]).unwrap();
@@ -504,7 +504,7 @@ mod tests {
             virtual_vertices
         };
         // hardcode syndrome
-        let syndrome_vertices = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
+        let defect_vertices = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
         let grow_edges = vec![48, 156, 169, 81, 38, 135];
         // run single-thread fusion blossom algorithm
         print_visualize_link_with_parameters(visualize_filename.clone(), vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))]);
@@ -533,7 +533,7 @@ mod tests {
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
         let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
-        let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(syndrome_vertices), &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(defect_vertices), &mut dual_module);
         // grow edges
         for &edge_index in grow_edges.iter() {
             let mut edge = dual_module.edges[edge_index].write_force();
@@ -564,8 +564,8 @@ mod tests {
             let initializer = code.get_initializer();
             let mut dual_module = DualModuleSerial::new_empty(&initializer);
             // hardcode syndrome          1   2   0   3    5    4    6    7
-            let syndrome_vertices = vec![25, 33, 20, 76, 203, 187, 243, 315];
-            code.set_syndrome_vertices(&syndrome_vertices);
+            let defect_vertices = vec![25, 33, 20, 76, 203, 187, 243, 315];
+            code.set_defect_vertices(&defect_vertices);
             // create dual nodes and grow them by half length
             let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
             // save snapshot
@@ -611,13 +611,13 @@ mod tests {
     #[test]
     fn visualize_example_syndrome_graph() {  // cargo test visualize_example_syndrome_graph -- --nocapture
         let visualize_filename = format!("visualize_example_syndrome_graph.json");
-        // let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        // let defect_vertices = vec![39, 52, 63, 90, 100];
         //                        0   1   2   3   4   5   6   7   8    9
         //                        A  vA   B  vB   C  vC   D  vD   E   vE
         let kept_vertices = vec![39, 47, 52, 59, 63, 71, 90, 94, 100, 107];  // including some virtual vertices
         let mut old_to_new = std::collections::BTreeMap::<SyndromeIndex, SyndromeIndex>::new();
-        for (new_index, syndrome_vertex) in kept_vertices.iter().enumerate() {
-            old_to_new.insert(*syndrome_vertex, new_index as SyndromeIndex);
+        for (new_index, defect_vertex) in kept_vertices.iter().enumerate() {
+            old_to_new.insert(*defect_vertex, new_index as SyndromeIndex);
         }
         println!("{old_to_new:?}");
         let d = 11;

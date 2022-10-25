@@ -96,7 +96,7 @@ impl LegacySolverSerial {
         self.interface_ptr.clear();
         self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
         let perfect_matching = self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module);
-        perfect_matching.legacy_get_mwpm_result(syndrome_pattern.syndrome_vertices.clone())
+        perfect_matching.legacy_get_mwpm_result(syndrome_pattern.defect_vertices.clone())
     }
 
 }
@@ -133,6 +133,41 @@ pub trait PrimalDualSolver {
     fn subgraph(&mut self) -> Vec<EdgeIndex> { self.subgraph_visualizer(None) }
     fn sum_dual_variables(&self) -> Weight;
     fn generate_profiler_report(&self) -> serde_json::Value;
+    fn stim_integration_predict_bit_packed_data(&mut self, in_file: String, out_file: String, edge_masks: &[usize], num_shots: usize
+            , num_dets: usize, num_obs: usize) {
+        let mut in_reader = std::io::BufReader::new(File::open(&in_file).expect("in_file not found"));
+        let mut out_writer = std::io::BufWriter::new(File::create(&out_file).expect("out_file not found"));
+        let num_det_bytes = (num_dets + 7) / 8;  // ceil
+        let mut dets_bit_packed = vec![0; num_det_bytes];
+        assert!(num_obs <= 64, "too many observables");
+        let prediction_bytes = (num_obs + 7) / 8;  // ceil
+        for _ in 0..num_shots {
+            in_reader.read_exact(&mut dets_bit_packed).expect("read success");
+            let mut defect_vertices = vec![];
+            for (i, &byte) in dets_bit_packed.iter().enumerate() {
+                if byte == 0 {
+                    continue
+                }
+                for j in 0..8 {
+                    if byte & (1 << j) != 0 {  // little endian
+                        defect_vertices.push((i * 8 + j) as VertexIndex);
+                    }
+                }
+            }
+            let syndrome_pattern = SyndromePattern::new_vertices(defect_vertices);
+            self.solve(&syndrome_pattern);
+            let subgraph = self.subgraph();
+            let mut prediction = 0;
+            for edge_index in subgraph {
+                prediction ^= edge_masks[edge_index as usize];
+            }
+            for j in 0..prediction_bytes {
+                let byte = ((prediction >> (j * 8)) & 0x0FF) as u8;
+                out_writer.write_all(&[byte]).unwrap();
+            }
+            self.clear();
+        }
+    }
 }
 
 #[cfg(feature="python_binding")]
@@ -170,6 +205,11 @@ macro_rules! bind_trait_primal_dual_solver {
             fn trait_sum_dual_variables(&self) -> Weight { self.sum_dual_variables() }
             #[pyo3(name = "generate_profiler_report")]
             fn trait_generate_profiler_report(&self) -> PyObject { json_to_pyobject(self.generate_profiler_report()) }
+            #[pyo3(name = "stim_integration_predict_bit_packed_data")]
+            fn trait_stim_integration_predict_bit_packed_data(&mut self, in_file: String, out_file: String, edge_masks: Vec<usize>, num_shots: usize
+                    , num_dets: usize, num_obs: usize) {
+                self.stim_integration_predict_bit_packed_data(in_file, out_file, &edge_masks, num_shots, num_dets, num_obs)
+            }
         }
     };
 }

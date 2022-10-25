@@ -35,13 +35,13 @@ print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}")  # Vec<EdgeIndex>
 ## Print Minimum-Weight Perfect Matching (MWPM)
 
 perfect_matching = solver.perfect_matching()
-syndrome_vertices = syndrome.syndrome_vertices
+defect_vertices = syndrome.defect_vertices
 print(f"Minimum Weight Perfect Matching (MWPM):")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
-peer_matching_vertices = [(syndrome_vertices[a], syndrome_vertices[b])
+peer_matching_vertices = [(defect_vertices[a], defect_vertices[b])
                             for a, b in perfect_matching.peer_matchings]
 print(f"          = vertices: {peer_matching_vertices}")
-virtual_matching_vertices = [(syndrome_vertices[a], b)
+virtual_matching_vertices = [(defect_vertices[a], b)
                             for a, b in perfect_matching.virtual_matchings]
 print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
 print(f"             = vertices: {virtual_matching_vertices}")

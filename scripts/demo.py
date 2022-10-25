@@ -12,8 +12,8 @@ positions = code.get_positions()  # the positions of vertices in the 3D visualiz
 
 # randomly generate a syndrome according to the error model
 syndrome = code.generate_random_errors(seed=1000)
-with fb.PyMut(syndrome, "syndrome_vertices") as syndrome_vertices:
-    syndrome_vertices.append(0)  # you can modify the syndrome vertices
+with fb.PyMut(syndrome, "defect_vertices") as defect_vertices:
+    defect_vertices.append(0)  # you can modify the syndrome vertices
 print(syndrome)
 
 # visualizer (optional for debugging)
@@ -27,9 +27,9 @@ solver.solve(syndrome, visualizer)  # enable visualizer for debugging
 perfect_matching = solver.perfect_matching()
 print(f"\n\nMinimum Weight Perfect Matching (MWPM):")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")  # Vec<(SyndromeIndex, SyndromeIndex)>
-print(f"          = vertices: {[(syndrome_vertices[a], syndrome_vertices[b]) for a, b in perfect_matching.peer_matchings]}")
+print(f"          = vertices: {[(defect_vertices[a], defect_vertices[b]) for a, b in perfect_matching.peer_matchings]}")
 print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")  # Vec<(SyndromeIndex, VertexIndex)>
-print(f"             = vertices: {[(syndrome_vertices[a], b) for a, b in perfect_matching.virtual_matchings]}")
+print(f"             = vertices: {[(defect_vertices[a], b) for a, b in perfect_matching.virtual_matchings]}")
 subgraph = solver.subgraph(visualizer)
 print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}\n\n")  # Vec<EdgeIndex>
 solver.clear()  # clear is O(1) complexity, recommended for repetitive simulation

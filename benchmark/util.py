@@ -36,13 +36,13 @@ class Profile:
         return decoding_time
     def average_decoding_time(self):
         return self.sum_decoding_time() / len(self.entries)
-    def sum_syndrome_num(self):
-        syndrome_num = 0
+    def sum_defect_num(self):
+        defect_num = 0
         for entry in self.entries:
-            syndrome_num += entry["syndrome_num"]
-        return syndrome_num
-    def average_decoding_time_per_syndrome(self):
-        return self.sum_decoding_time() / self.sum_syndrome_num()
+            defect_num += entry["defect_num"]
+        return defect_num
+    def average_decoding_time_per_defect(self):
+        return self.sum_decoding_time() / self.sum_defect_num()
     def sum_computation_cpu_seconds(self):
         total_computation_cpu_seconds = 0
         for entry in self.entries:

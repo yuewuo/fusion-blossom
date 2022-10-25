@@ -30,7 +30,7 @@ pub struct IntermediateMatching {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct PerfectMatching {
-    /// matched pairs; note that each pair will only appear once. (syndrome_node_1, syndrome_node_2)
+    /// matched pairs; note that each pair will only appear once. (defect_node_1, defect_node_2)
     pub peer_matchings: Vec<(DualNodePtr, DualNodePtr)>,
     /// those nodes matched to the boundary. (syndrome node, virtual_vertex)
     pub virtual_matchings: Vec<(DualNodePtr, VertexIndex)>,
@@ -45,14 +45,14 @@ pub trait PrimalModuleImpl {
     /// clear all states; however this method is not necessarily called when load a new decoding problem, so you need to call it yourself
     fn clear(&mut self);
 
-    fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
+    fn load_defect_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
 
     /// load a single syndrome and update the dual module and the interface
-    fn load_syndrome<D: DualModuleImpl>(&mut self, syndrome_vertex: VertexIndex, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
-        interface_ptr.create_syndrome_node(syndrome_vertex, dual_module);
+    fn load_defect<D: DualModuleImpl>(&mut self, defect_vertex: VertexIndex, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
+        interface_ptr.create_defect_node(defect_vertex, dual_module);
         let interface = interface_ptr.read_recursive();
         let index = interface.nodes_length - 1;
-        self.load_syndrome_dual_node(interface.nodes[index].as_ref().expect("must load a fresh dual module interface, found empty node"))
+        self.load_defect_dual_node(interface.nodes[index].as_ref().expect("must load a fresh dual module interface, found empty node"))
     }
 
     /// load a new decoding problem given dual interface: note that all nodes MUST be syndrome node
@@ -65,9 +65,9 @@ pub trait PrimalModuleImpl {
             debug_assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
             let node_ptr = node.as_ref().unwrap();
             let node = node_ptr.read_recursive();
-            debug_assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
+            debug_assert!(matches!(node.class, DualNodeClass::DefectVertex{ .. }), "must load a fresh dual module interface, found a blossom");
             debug_assert_eq!(node.index, index, "must load a fresh dual module interface, found index out of order");
-            self.load_syndrome_dual_node(node_ptr);
+            self.load_defect_dual_node(node_ptr);
         }
     }
 
@@ -265,16 +265,16 @@ impl PerfectMatching {
     }
 
     /// this interface is not very optimized, but is compatible with blossom V algorithm's result
-    pub fn legacy_get_mwpm_result(&self, syndrome_vertices: Vec<VertexIndex>) -> Vec<SyndromeIndex> {
+    pub fn legacy_get_mwpm_result(&self, defect_vertices: Vec<VertexIndex>) -> Vec<SyndromeIndex> {
         let mut peer_matching_maps = BTreeMap::<VertexIndex, VertexIndex>::new();
         for (ptr_1, ptr_2) in self.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
-                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
             };
             let b_vid = {
                 let node = ptr_2.read_recursive();
-                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
             };
             peer_matching_maps.insert(a_vid, b_vid);
             peer_matching_maps.insert(b_vid, a_vid);
@@ -283,17 +283,17 @@ impl PerfectMatching {
         for (ptr, virtual_vertex) in self.virtual_matchings.iter() {
             let a_vid = {
                 let node = ptr.read_recursive();
-                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
             };
             virtual_matching_maps.insert(a_vid, *virtual_vertex);
         }
-        let mut mwpm_result = Vec::with_capacity(syndrome_vertices.len());
-        for syndrome_vertex in syndrome_vertices.iter() {
-            if let Some(a) = peer_matching_maps.get(syndrome_vertex) {
+        let mut mwpm_result = Vec::with_capacity(defect_vertices.len());
+        for defect_vertex in defect_vertices.iter() {
+            if let Some(a) = peer_matching_maps.get(defect_vertex) {
                 mwpm_result.push(*a);
-            } else if let Some(v) = virtual_matching_maps.get(syndrome_vertex) {
+            } else if let Some(v) = virtual_matching_maps.get(defect_vertex) {
                 mwpm_result.push(*v);
-            } else { panic!("cannot find syndrome vertex {}", syndrome_vertex) }
+            } else { panic!("cannot find defect vertex {}", defect_vertex) }
         }
         mwpm_result
     }
@@ -410,18 +410,18 @@ impl SubGraphBuilder {
         for (ptr_1, ptr_2) in perfect_matching.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
-                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
             };
             let b_vid = {
                 let node = ptr_2.read_recursive();
-                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
             };
             self.add_matching(a_vid, b_vid);
         }
         for (ptr, virtual_vertex) in perfect_matching.virtual_matchings.iter() {
             let a_vid = {
                 let node = ptr.read_recursive();
-                if let DualNodeClass::SyndromeVertex{ syndrome_index } = &node.class { *syndrome_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
             };
             self.add_matching(a_vid, *virtual_vertex);
         }

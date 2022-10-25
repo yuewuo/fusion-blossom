@@ -294,8 +294,8 @@ h3 {
                     <div class="text-body2" style="padding-left: 30px;">Pure Computation 
                         ({{ Math.round(100 * selected_profile_statistics.computation_time / selected_profile.round_time) }}%):
                         {{ Number.parseFloat(selected_profile_statistics.computation_time).toExponential(3) }} (s)</div>
-                        <div class="text-body2" style="padding-left: 60px;">Per Syndrome:
-                            {{ Number.parseFloat(selected_profile_statistics.decoding_time_per_syndrome).toExponential(3) }} (s)</div>
+                        <div class="text-body2" style="padding-left: 60px;">Per Defect:
+                            {{ Number.parseFloat(selected_profile_statistics.decoding_time_per_defect).toExponential(3) }} (s)</div>
                         <div class="text-body2" style="padding-left: 60px;">Per Measurement Round:
                             {{ Number.parseFloat(selected_profile_statistics.decoding_time_per_measurement_round).toExponential(3) }} (s)</div>
                         <div class="text-body2" style="padding-left: 60px;">Max Base Partition 
@@ -310,8 +310,8 @@ h3 {
                     <div class="text-body2" style="padding-left: 30px;">Garbage Collection
                         ({{ Math.round(100 * selected_profile_statistics.garbage_collection_time / selected_profile.round_time) }}%):
                         {{ Number.parseFloat(selected_profile_statistics.garbage_collection_time).toExponential(3) }} (s)</div>
-                    <div class="text-body2" style="padding-left: 30px;">Per Syndrome:
-                        {{ Number.parseFloat(selected_profile_statistics.round_time_per_syndrome).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Per Defect:
+                        {{ Number.parseFloat(selected_profile_statistics.round_time_per_defect).toExponential(3) }} (s)</div>
                     <div class="text-body2" style="padding-left: 30px;">Per Measurement Round:
                         {{ Number.parseFloat(selected_profile_statistics.round_time_per_measurement_round).toExponential(3) }} (s)</div>
                 <div class="text-body1">Computation CPU Seconds: {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds).toExponential(3) }} (s)</div>
@@ -321,8 +321,8 @@ h3 {
                     <div class="text-body2" style="padding-left: 30px;">Fusion
                         ({{ Math.round(100 * selected_profile_statistics.computation_cpu_seconds_fusion / selected_profile_statistics.computation_cpu_seconds) }}%):
                         {{ Number.parseFloat(selected_profile_statistics.computation_cpu_seconds_fusion).toExponential(3) }} (s)</div>
-                    <div class="text-body2" style="padding-left: 30px;">Per Syndrome:
-                        {{ Number.parseFloat(selected_profile_statistics.cpu_time_per_syndrome).toExponential(3) }} (s)</div>
+                    <div class="text-body2" style="padding-left: 30px;">Per Defect:
+                        {{ Number.parseFloat(selected_profile_statistics.cpu_time_per_defect).toExponential(3) }} (s)</div>
                     <div class="text-body2" style="padding-left: 30px;">Per Measurement Round:
                         {{ Number.parseFloat(selected_profile_statistics.cpu_time_per_measurement_round).toExponential(3) }} (s)</div>
                 <div class="text-body1">Noisy Measurements: {{ benchmark_config.noisy_measurements }}</div>
@@ -673,11 +673,11 @@ const App = {
             let computation_cpu_seconds_fusion = computation_cpu_seconds - computation_cpu_seconds_base_partition
             let base_partition_computation_time = max_base_event_end - min_event_time
             let base_partition_computation_min = min_base_event_end - min_event_time
-            let round_time_per_syndrome = this.selected_profile.round_time / this.selected_profile.syndrome_num
+            let round_time_per_defect = this.selected_profile.round_time / this.selected_profile.defect_num
             let round_time_per_measurement_round = this.selected_profile.round_time / (this.benchmark_config.noisy_measurements + 1)
-            let decoding_time_per_syndrome = this.selected_profile.events.decoded / this.selected_profile.syndrome_num
+            let decoding_time_per_defect = this.selected_profile.events.decoded / this.selected_profile.defect_num
             let decoding_time_per_measurement_round = this.selected_profile.events.decoded / (this.benchmark_config.noisy_measurements + 1)
-            let cpu_time_per_syndrome = computation_cpu_seconds / this.selected_profile.syndrome_num
+            let cpu_time_per_defect = computation_cpu_seconds / this.selected_profile.defect_num
             let cpu_time_per_measurement_round = computation_cpu_seconds / (this.benchmark_config.noisy_measurements + 1)
             let max_thread_index = 0
             for (let i=0; i<event_time_vec.length; ++i) {
@@ -692,11 +692,11 @@ const App = {
                 computation_cpu_seconds,
                 base_partition_computation_time,
                 base_partition_computation_min,
-                round_time_per_syndrome,
+                round_time_per_defect,
                 round_time_per_measurement_round,
-                decoding_time_per_syndrome,
+                decoding_time_per_defect,
                 decoding_time_per_measurement_round,
-                cpu_time_per_syndrome,
+                cpu_time_per_defect,
                 cpu_time_per_measurement_round,
                 computation_cpu_seconds_base_partition,
                 computation_cpu_seconds_fusion,

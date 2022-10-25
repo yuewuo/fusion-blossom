@@ -105,7 +105,7 @@ enum Commands {
     Test {
         #[clap(subcommand)]
         command: TestCommands,
-    }
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -623,8 +623,8 @@ impl ResultVerifier for VerifierBlossomV {
             self.initializer.weighted_edges[*edge_index as usize] = (*vertex_idx_1, *vertex_idx_2, 0);
         }
         // use blossom V to compute ground truth
-        let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&self.initializer, &syndrome_pattern.syndrome_vertices);
-        let blossom_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = fusion_blossom::blossom_v_mwpm(&self.initializer, &syndrome_pattern.defect_vertices);
+        let blossom_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             blossom_total_weight += detail.weight;
@@ -633,8 +633,8 @@ impl ResultVerifier for VerifierBlossomV {
         assert_eq!(primal_dual_solver.sum_dual_variables(), blossom_total_weight, "unexpected final dual variable sum");
         // also construct the perfect matching from fusion blossom to compare them
         let fusion_mwpm = primal_dual_solver.perfect_matching();
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_pattern.syndrome_vertices.clone());
-        let fusion_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_pattern.defect_vertices.clone());
+        let fusion_details = fusion_blossom::detailed_matching(&self.initializer, &syndrome_pattern.defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             fusion_total_weight += detail.weight;

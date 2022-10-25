@@ -10,20 +10,24 @@ In fact, our speed advantage originates from the sparse graph (*decoding graph*)
 
 The decoding graph \\( (V_D, E_D) \\) is naturally defined by the QEC code and the noise model.
 Every real vertex \\( v \in V_D \\) is a stabilizer measurement result.
-Every edge \\( e = \langle u, v \rangle \in E_D \\) corresponds to independent physical error(s) that can cause a pair of non-trivial measurement results on vertices \\( u, v \\).
+Every edge \\( e = \langle u, v \rangle \in E_D \\) corresponds to independent physical error(s) that can cause a pair of defect measurement results on vertices \\( u, v \\).
 Each edge has a non-negative weight \\( w_e \\), calculated by \\( \ln \frac{1-p_e}{p_e} \\) for the aggregated physical error rate \\( p_e \le \frac{1}{2} \\) (see [explanation here](#how-mwpm-decoder-works)).
-For open-boundary QEC codes, there are some errors that only generate a single non-trivial measurement. We add some *virtual vertices* to the graph which is not a real stabilizer measurement but can be connected by such an edge.
+For open-boundary QEC codes, there are some errors that only generate a single defect measurement. We add some *virtual vertices* to the graph which is not a real stabilizer measurement but can be connected by such an edge.
+
+Note that here we're assuming a single round of measurement.
+A normal stabilizer measurement means trivial measurement result (+1) and a defect stabilizer measurement means non-trivial measurement result (-1).
+This can be easily extended to multiple rounds of measurement, where a normal stabilizer measurement means the same result as the previous round, and a defect stabilizer stabilizer measurement means different result from the previous round.
 
 The syndrome Graph \\( (V_S, E_S) \\) is generated from the decoding graph.
-In the syndrome graph, \\( V_S \subseteq V_D \\), where real vertices with trivial measurement results are discarded, and only syndrome vertices and some virtual vertices are preserved.
+In the syndrome graph, \\( V_S \subseteq V_D \\), where real vertices with normal measurement results are discarded, and only syndrome vertices and some virtual vertices are preserved.
 Syndrome graph first constructs a complete graph for the syndrome vertices, meaning there are edges between any pair of syndrome vertices.
 The weight of each edge in the syndrome graph \\( e = \langle u_S, v_S \rangle \in E_S \\) is calculated by finding the minimum-weight path between \\( u_S, v_S \in V_D \\) in the decoding graph.
 Apart from this complete graph, each vertex also connects to a virtual vertex if there exists a path towards any virtual vertex.
 For simplicity each real vertex only connects to one nearest virtual vertex.
 
 
-- white circle: real vertex \\( v \in V_D, v \notin V_S \\), a trivial stabilizer measurement
-- red circle: syndrome vertex \\( v \in V_D, v \in V_S \\), a non-trivial stabilizer measurement
+- white circle: real vertex \\( v \in V_D, v \notin V_S \\), a normal stabilizer measurement
+- red circle: syndrome vertex \\( v \in V_D, v \in V_S \\), a defect stabilizer measurement
 - yellow circle: virtual vertex  \\( v \in V_D \\), non-existing stabilizer that is only used to support physical errors on the boundary of an open-boundary QEC code
 - grey line: decoding graph edge \\( e \in E_D \\)
 - pink line: syndrome graph edge \\( e \in E_S \\)

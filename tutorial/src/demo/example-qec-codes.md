@@ -35,7 +35,7 @@ syndrome = code.generate_random_errors(seed=1000)
 print(syndrome)
 ```
 
-An example output is: `SyndromePattern { syndrome_vertices: [3, 14, 16, 17, 18, 26, 39, 40, 41, 42, 57, 62, 63, 79, 85, 87, 91, 98, 99], erasures: [] }`
+An example output is: `SyndromePattern { defect_vertices: [3, 14, 16, 17, 18, 26, 39, 40, 41, 42, 57, 62, 63, 79, 85, 87, 91, 98, 99], erasures: [] }`
 
 ## Initialize Visualizer [Optional]
 
@@ -91,17 +91,17 @@ We also provide a method to get the minimum-weight perfect matching, grouped int
 - `virtual_matchings: Vec<SyndromeIndex, VertexIndex>`: list of syndrome matched to virtual vertices.
 
 Note that type `SyndromeIndex` means the index applies to the syndrome list (usually used in a traditional decoder implementation).
-In order to get the matched syndrome vertex indices, simply use the `syndrome.syndrome_vertices` list.
+In order to get the matched syndrome vertex indices, simply use the `syndrome.defect_vertices` list.
 
 ```python
 perfect_matching = solver.perfect_matching()
-syndrome_vertices = syndrome.syndrome_vertices
+defect_vertices = syndrome.defect_vertices
 print(f"Minimum Weight Perfect Matching (MWPM):")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
-peer_matching_vertices = [(syndrome_vertices[a], syndrome_vertices[b])
+peer_matching_vertices = [(defect_vertices[a], defect_vertices[b])
                             for a, b in perfect_matching.peer_matchings]
 print(f"          = vertices: {peer_matching_vertices}")
-virtual_matching_vertices = [(syndrome_vertices[a], b)
+virtual_matching_vertices = [(defect_vertices[a], b)
                             for a, b in perfect_matching.virtual_matchings]
 print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
 print(f"             = vertices: {virtual_matching_vertices}")

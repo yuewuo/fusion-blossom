@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.1.4"
+version = "0.2.0"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -10,6 +10,12 @@ homepage = "https://fusionblossom.com"
 repository = "https://github.com/yuewuo/fusion-blossom"
 keywords = ["QEC", "quantum-computing", "error-correction", "visualization"]
 categories = ["science"]
+exclude = [
+    "tutorial/*",
+    "benchmark/*",
+    "visualize/data/persist/*",
+    ".github/*",
+]
 
 # see https://doc.rust-lang.org/1.39.0/cargo/reference/manifest.html#the-documentation-field-optional
 [badges]

@@ -85,7 +85,7 @@ Gather useful data
 
 data_file = os.path.join(script_dir, "data.txt")
 with open(data_file, "w", encoding="utf8") as f:
-    f.write("<maximum_tree_leaf_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>\n")
+    f.write("<maximum_tree_leaf_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
     for idx, maximum_tree_leaf_size in enumerate(maximum_tree_leaf_size_vec):
         benchmark_profile_path = benchmark_profile_path_vec[idx]
         print(benchmark_profile_path)
@@ -93,11 +93,11 @@ with open(data_file, "w", encoding="utf8") as f:
         print("maximum_tree_leaf_size:", maximum_tree_leaf_size)
         print("    average_decoding_time:", profile.average_decoding_time())
         print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
-        print("    average_decoding_time_per_syndrome:", profile.average_decoding_time_per_syndrome())
-        print("    average_syndrome_per_measurement:", profile.sum_syndrome_num() / (noisy_measurements + 1) / len(profile.entries))
+        print("    average_decoding_time_per_defect:", profile.average_decoding_time_per_defect())
+        print("    average_defect_per_measurement:", profile.sum_defect_num() / (noisy_measurements + 1) / len(profile.entries))
         f.write("%d %.5e %.5e %.5e\n" % (
             maximum_tree_leaf_size,
             profile.average_decoding_time(),
             profile.average_decoding_time() / (noisy_measurements + 1),
-            profile.average_decoding_time_per_syndrome(),
+            profile.average_decoding_time_per_defect(),
         ))
