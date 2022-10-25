@@ -181,10 +181,10 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         module.children = None;
     }
 
-    fn load_syndrome_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
+    fn load_defect_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
         let belonging = self.downgrade();
         let node = dual_node_ptr.read_recursive();
-        debug_assert!(matches!(node.class, DualNodeClass::SyndromeVertex{ .. }), "must load a fresh dual module interface, found a blossom");
+        debug_assert!(matches!(node.class, DualNodeClass::DefectVertex{ .. }), "must load a fresh dual module interface, found a blossom");
         let mut module = self.write();
         let local_node_index = module.nodes_length;
         let node_index = module.nodes_count();
@@ -1285,9 +1285,9 @@ pub mod tests {
     use super::super::dual_module_serial::*;
     use super::super::*;
 
-    pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: VertexNum, visualize_filename: Option<String>, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+    pub fn primal_module_serial_basic_standard_syndrome_optional_viz(d: VertexNum, visualize_filename: Option<String>, defect_vertices: Vec<VertexIndex>, final_dual: Weight)
             -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
-        println!("{syndrome_vertices:?}");
+        println!("{defect_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
         let mut visualizer = match visualize_filename.as_ref() {
@@ -1304,7 +1304,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         let perfect_matching = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
@@ -1320,89 +1320,89 @@ pub mod tests {
         (interface_ptr, primal_module, dual_module)
     }
 
-    pub fn primal_module_serial_basic_standard_syndrome(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight)
+    pub fn primal_module_serial_basic_standard_syndrome(d: VertexNum, visualize_filename: String, defect_vertices: Vec<VertexIndex>, final_dual: Weight)
             -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
-        primal_module_serial_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), syndrome_vertices, final_dual)
+        primal_module_serial_basic_standard_syndrome_optional_viz(d, Some(visualize_filename), defect_vertices, final_dual)
     }
 
     /// test a simple blossom
     #[test]
     fn primal_module_serial_basic_1() {  // cargo test primal_module_serial_basic_1 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_1.json");
-        let syndrome_vertices = vec![18, 26, 34];
-        primal_module_serial_basic_standard_syndrome(7, visualize_filename, syndrome_vertices, 4);
+        let defect_vertices = vec![18, 26, 34];
+        primal_module_serial_basic_standard_syndrome(7, visualize_filename, defect_vertices, 4);
     }
 
     /// test a free node conflict with a virtual boundary
     #[test]
     fn primal_module_serial_basic_2() {  // cargo test primal_module_serial_basic_2 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_2.json");
-        let syndrome_vertices = vec![16];
-        primal_module_serial_basic_standard_syndrome(7, visualize_filename, syndrome_vertices, 1);
+        let defect_vertices = vec![16];
+        primal_module_serial_basic_standard_syndrome(7, visualize_filename, defect_vertices, 1);
     }
 
     /// test a free node conflict with a matched node (with virtual boundary)
     #[test]
     fn primal_module_serial_basic_3() {  // cargo test primal_module_serial_basic_3 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_3.json");
-        let syndrome_vertices = vec![16, 26];
-        primal_module_serial_basic_standard_syndrome(7, visualize_filename, syndrome_vertices, 3);
+        let defect_vertices = vec![16, 26];
+        primal_module_serial_basic_standard_syndrome(7, visualize_filename, defect_vertices, 3);
     }
 
     /// test blossom shrinking and expanding
     #[test]
     fn primal_module_serial_basic_4() {  // cargo test primal_module_serial_basic_4 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_4.json");
-        let syndrome_vertices = vec![16, 52, 65, 76, 112];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 10);
+        let defect_vertices = vec![16, 52, 65, 76, 112];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 10);
     }
 
     /// test blossom conflicts with vertex
     #[test]
     fn primal_module_serial_basic_5() {  // cargo test primal_module_serial_basic_5 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_5.json");
-        let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 6);
+        let defect_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 6);
     }
 
     /// test cascaded blossom
     #[test]
     fn primal_module_serial_basic_6() {  // cargo test primal_module_serial_basic_6 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_6.json");
-        let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 6);
+        let defect_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 6);
     }
 
     /// test two alternating trees conflict with each other
     #[test]
     fn primal_module_serial_basic_7() {  // cargo test primal_module_serial_basic_7 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_7.json");
-        let syndrome_vertices = vec![37, 61, 63, 66, 68, 44];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 7);
+        let defect_vertices = vec![37, 61, 63, 66, 68, 44];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 7);
     }
 
     /// test an alternating tree touches a virtual boundary
     #[test]
     fn primal_module_serial_basic_8() {  // cargo test primal_module_serial_basic_8 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_8.json");
-        let syndrome_vertices = vec![61, 64, 67];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 5);
+        let defect_vertices = vec![61, 64, 67];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 5);
     }
 
     /// test a matched node (with virtual boundary) conflicts with an alternating tree
     #[test]
     fn primal_module_serial_basic_9() {  // cargo test primal_module_serial_basic_9 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_9.json");
-        let syndrome_vertices = vec![60, 63, 66, 30];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 6);
+        let defect_vertices = vec![60, 63, 66, 30];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 6);
     }
 
     /// test the error pattern in the paper
     #[test]
     fn primal_module_serial_basic_10() {  // cargo test primal_module_serial_basic_10 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_10.json");
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 9);
+        let defect_vertices = vec![39, 52, 63, 90, 100];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 9);
     }
 
     /// debug a case of deadlock after changing the strategy of detecting conflicts around VertexShrinkStop;
@@ -1410,24 +1410,24 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_11() {  // cargo test primal_module_serial_basic_11 -- --nocapture
         let visualize_filename = format!("primal_module_serial_basic_11.json");
-        let syndrome_vertices = vec![13, 29, 52, 53, 58, 60, 71, 74, 76, 87, 96, 107, 112, 118, 121, 122, 134, 137, 141, 145, 152, 153, 154, 156, 157, 169, 186, 202, 203, 204, 230, 231];
-        primal_module_serial_basic_standard_syndrome(15, visualize_filename, syndrome_vertices, 20);
+        let defect_vertices = vec![13, 29, 52, 53, 58, 60, 71, 74, 76, 87, 96, 107, 112, 118, 121, 122, 134, 137, 141, 145, 152, 153, 154, 156, 157, 169, 186, 202, 203, 204, 230, 231];
+        primal_module_serial_basic_standard_syndrome(15, visualize_filename, defect_vertices, 20);
     }
 
     /// debug a case where it disagree with blossom V library, mine reports 11866, blossom V reports 12284
     #[test]
     fn primal_module_debug_1() {  // cargo test primal_module_debug_1 -- --nocapture
         let visualize_filename = format!("primal_module_debug_1.json");
-        let syndrome_vertices = vec![34, 35, 84, 89, 92, 100, 141, 145, 149, 164, 193, 201, 205, 220, 235, 242, 243, 260, 261, 290, 300, 308, 309, 315, 317];
+        let defect_vertices = vec![34, 35, 84, 89, 92, 100, 141, 145, 149, 164, 193, 201, 205, 220, 235, 242, 243, 260, 261, 290, 300, 308, 309, 315, 317];
         let max_half_weight = 500;
         let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &defect_vertices);
         println!("blossom_mwpm_result: {blossom_mwpm_result:?}");
-        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_details = detailed_matching(&initializer, &defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
@@ -1439,12 +1439,12 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
-        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(defect_vertices.clone());
+        let fusion_details = detailed_matching(&initializer, &defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1463,15 +1463,15 @@ pub mod tests {
     #[test]
     fn primal_module_debug_2() {  // cargo test primal_module_debug_2 -- --nocapture
         let visualize_filename = format!("primal_module_debug_2.json");
-        let syndrome_vertices = vec![7, 8, 10, 22, 23, 24, 25, 37, 38, 39, 40, 42, 43, 69, 57, 59, 60, 72, 76, 93, 109, 121, 123, 125, 135, 136, 137, 138, 139, 140, 141, 150, 151, 153, 154, 155, 166, 171, 172, 181, 183, 184, 188, 200, 204, 219, 233];
+        let defect_vertices = vec![7, 8, 10, 22, 23, 24, 25, 37, 38, 39, 40, 42, 43, 69, 57, 59, 60, 72, 76, 93, 109, 121, 123, 125, 135, 136, 137, 138, 139, 140, 141, 150, 151, 153, 154, 155, 166, 171, 172, 181, 183, 184, 188, 200, 204, 219, 233];
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(15, 0.3, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
-        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &defect_vertices);
+        let blossom_details = detailed_matching(&initializer, &defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
@@ -1483,12 +1483,12 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
-        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(defect_vertices.clone());
+        let fusion_details = detailed_matching(&initializer, &defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1507,15 +1507,15 @@ pub mod tests {
     #[test]
     fn primal_module_debug_3() {  // cargo test primal_module_debug_3 -- --nocapture
         let visualize_filename = format!("primal_module_debug_3.json");
-        let syndrome_vertices = vec![17, 34, 36, 54, 55, 74, 95, 96, 112, 113, 114, 115, 116, 130, 131, 132, 134, 150, 151, 154, 156, 171, 172, 173, 190];
+        let defect_vertices = vec![17, 34, 36, 54, 55, 74, 95, 96, 112, 113, 114, 115, 116, 130, 131, 132, 134, 150, 151, 154, 156, 171, 172, 173, 190];
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(19, 0.499, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
-        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &defect_vertices);
+        let blossom_details = detailed_matching(&initializer, &defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
@@ -1527,12 +1527,12 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
-        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(defect_vertices.clone());
+        let fusion_details = detailed_matching(&initializer, &defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1551,15 +1551,15 @@ pub mod tests {
     #[test]
     fn primal_module_debug_4() {  // cargo test primal_module_debug_4 -- --nocapture
         let visualize_filename = format!("primal_module_debug_4.json");
-        let syndrome_vertices = vec![1, 3, 6, 8, 9, 11, 13];
+        let defect_vertices = vec![1, 3, 6, 8, 9, 11, 13];
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(15, 0.499, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
-        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &defect_vertices);
+        let blossom_details = detailed_matching(&initializer, &defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
@@ -1571,12 +1571,12 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
-        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(defect_vertices.clone());
+        let fusion_details = detailed_matching(&initializer, &defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1595,15 +1595,15 @@ pub mod tests {
     #[test]
     fn primal_module_debug_5() {  // cargo test primal_module_debug_5 -- --nocapture
         let visualize_filename = format!("primal_module_debug_5.json");
-        let syndrome_vertices = vec![0, 1, 3, 8, 9];
+        let defect_vertices = vec![0, 1, 3, 8, 9];
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(11, 0.03, max_half_weight);
         let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
         print_visualize_link(visualize_filename.clone());
         let initializer = code.get_initializer();
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
-        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &defect_vertices);
+        let blossom_details = detailed_matching(&initializer, &defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
@@ -1614,12 +1614,12 @@ pub mod tests {
         // create primal module
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
-        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(defect_vertices.clone());
+        let fusion_details = detailed_matching(&initializer, &defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");
@@ -1636,8 +1636,8 @@ pub mod tests {
 
     #[test]
     fn primal_module_serial_perfect_matching_1() {  // cargo test primal_module_serial_perfect_matching_1 -- --nocapture
-        let syndrome_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
-        let (interface_ptr, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, syndrome_vertices, 6);
+        let defect_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
+        let (interface_ptr, mut primal_module, mut dual_module) = primal_module_serial_basic_standard_syndrome_optional_viz(11, None, defect_vertices, 6);
         let intermediate_matching = primal_module.intermediate_matching(&interface_ptr, &mut dual_module);
         println!("intermediate_matching: {intermediate_matching:?}");
         let perfect_matching = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
@@ -1648,7 +1648,7 @@ pub mod tests {
     #[test]
     fn primal_module_debug_6() {  // cargo test primal_module_debug_6 -- --nocapture
         let visualize_filename = format!("primal_module_debug_6.json");
-        let syndrome_vertices = vec![13, 34, 87, 107, 276, 296];
+        let defect_vertices = vec![13, 34, 87, 107, 276, 296];
         let erasures = vec![13, 33, 174, 516];
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(19, 0., max_half_weight);
@@ -1661,8 +1661,8 @@ pub mod tests {
             initializer.weighted_edges[*edge_index] = (*vertex_idx_1, *vertex_idx_2, 0);
         }
         // blossom V ground truth
-        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &syndrome_vertices);
-        let blossom_details = detailed_matching(&initializer, &syndrome_vertices, &blossom_mwpm_result);
+        let blossom_mwpm_result = blossom_v_mwpm(&initializer, &defect_vertices);
+        let blossom_details = detailed_matching(&initializer, &defect_vertices, &blossom_mwpm_result);
         let mut blossom_total_weight = 0;
         for detail in blossom_details.iter() {
             println!("    {detail:?}");
@@ -1673,12 +1673,12 @@ pub mod tests {
         // create primal module
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
         let fusion_mwpm = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_vertices.clone());
-        let fusion_details = detailed_matching(&initializer, &syndrome_vertices, &fusion_mwpm_result);
+        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(defect_vertices.clone());
+        let fusion_details = detailed_matching(&initializer, &defect_vertices, &fusion_mwpm_result);
         let mut fusion_total_weight = 0;
         for detail in fusion_details.iter() {
             println!("    {detail:?}");

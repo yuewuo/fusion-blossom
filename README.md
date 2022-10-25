@@ -10,15 +10,15 @@ Please see [our tutorial for a quick explanation and some Python demos](https://
 ## Key Features
 
 - **Correctness**: This is an exact MWPM solver, verified against the [Blossom V library](https://pub.ist.ac.at/~vnk/software.html) with millions of randomized test cases .
-- **Linear Complexity**: The decoding time is roughly $O(N)$ given small physical error rate, proportional to the number of syndrome vertices $N$.
+- **Linear Complexity**: The decoding time is roughly $O(N)$ given small physical error rate, proportional to the number of defect vertices $N$.
 - **Parallelism**: A single MWPM decoding problem can be partitioned and solved in parallel, then *fused* together to find an **exact** global MWPM solution.
 - **Simple Interface**: The graph problem is abstracted and easy-to-use for QEC applications.
 
 ## Benchmark Highlights
 
 - In phenomenological noise model with **$p$ = 0.005**, code distance **$d$ = 21**, planar code with $d(d-1)$ = 420 $Z$ stabilizers, 100000 measurement rounds
-  - single-thread: **2.4us per syndrome** or 29us per measurement round
-  - 64-threads: 58ns per syndrome or **0.7us per measurement round**
+  - single-thread: **2.4us per defect vertex** or 29us per measurement round
+  - 64-threads: 58ns per defect vertex or **0.7us per measurement round**
 
 ## Background and Key Ideas
 
@@ -61,13 +61,13 @@ For parallel solver, it needs user to provide a partition strategy. Please wait 
 
 We use Intel(R) Xeon(R) Platinum 8375C CPU for evaluation, with 64 physical cores and 128 threads. Note that Apple m1max CPU has roughly 2x single-core decoding speed, but it has limited number of cores so we do not use data from m1max. The benchmark scripts can be found in `benchmark` folder, running in Rust native binary (not the Python package, which has fewer optimization features enabled). By default, we test phenomenological noise model with **$p$ = 0.005**, code distance **$d$ = 21**, planar code with $d(d-1)$ = 420 $Z$ stabilizers, 100000 measurement rounds.
 
-First of all, the number of partitions will effect the speed. Intuitively, the more partitions there are, the more overhead because fusing two partitions consumes more computation than solving them as a whole. But in practice, memory access is not always at the same speed. If cache cannot hold the data, then solving big partition may consume even more time than solving small ones. We test on a single-thread decoder, and try different partition numbers. At partition number = 2000, we get roughly the minimum decoding time of 2.4us per syndrome. This corresponds to each partition hosting 50 measurement rounds (decoding blocks of 49 * 21 * 20).
+First of all, the number of partitions will effect the speed. Intuitively, the more partitions there are, the more overhead because fusing two partitions consumes more computation than solving them as a whole. But in practice, memory access is not always at the same speed. If cache cannot hold the data, then solving big partition may consume even more time than solving small ones. We test on a single-thread decoder, and try different partition numbers. At partition number = 2000, we get roughly the minimum decoding time of 2.4us per defect vertex. This corresponds to each partition hosting 50 measurement rounds (decoding blocks of 49 * 21 * 20).
 
-![](https://visualize.fusionblossom.com/data/benchmark/paper_parallel_fusion_blossom/partition_num_single_thread_2_tree/decoding_time_per_syndrome.svg)
+![](https://visualize.fusionblossom.com/data/benchmark/paper_parallel_fusion_blossom/partition_num_single_thread_2_tree/decoding_time_per_defect.svg)
 
-Given the optimal partition number of a single thread, we keep the partition number the same and try increasing the number of threads. Note that the partition number may not be optimal for large number of threads, but even in this case, we reach 41x speed up given 64 physical cores. The decoding time is pushed to 58ns per sydnrome or 0.7us per measurement round. This can catch up with the 1us measurement round of a superconducting circuit. Interestingly, we found that hyperthreading won't help much in this case, perhaps because this decoder is memory-bounded, meaning memory throughput is the bottleneck. Although the number of syndrome is only a small portion, they are randomly distributed so every time a new syndrome is given, the memory is almost always cold and incur large cache miss panelty.
+Given the optimal partition number of a single thread, we keep the partition number the same and try increasing the number of threads. Note that the partition number may not be optimal for large number of threads, but even in this case, we reach 41x speed up given 64 physical cores. The decoding time is pushed to 58ns per sydnrome or 0.7us per measurement round. This can catch up with the 1us measurement round of a superconducting circuit. Interestingly, we found that hyperthreading won't help much in this case, perhaps because this decoder is memory-bounded, meaning memory throughput is the bottleneck. Although the number of defect vertices is only a small portion, they are randomly distributed so every time a new syndrome is given, the memory is almost always cold and incur large cache miss panelty.
 
-![](https://visualize.fusionblossom.com/data/benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/decoding_time_per_syndrome.svg)
+![](https://visualize.fusionblossom.com/data/benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/decoding_time_per_defect.svg)
 
 In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Blue blocks is the base partition and green blocks is the fusion operation. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We'll study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each is a 49 * 21 * 20 decoding graph block. Green blocks are fusion blocks, each is a 1 * 21 * 20 decoding graph block sandwiched by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
 

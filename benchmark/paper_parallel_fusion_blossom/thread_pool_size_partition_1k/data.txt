@@ -1,4 +1,4 @@
-<thread_pool_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>
+<thread_pool_size> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>
 1 4.14452e+00 4.14448e-05 3.42598e-06
 2 1.96212e+00 1.96210e-05 1.62195e-06
 3 1.34482e+00 1.34480e-05 1.11167e-06

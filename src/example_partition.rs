@@ -19,11 +19,11 @@ pub trait ExamplePartition {
         self.build_partition(code)
     }
 
-    fn re_index_syndrome_vertices(&mut self, code: &dyn ExampleCode, syndrome_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
+    fn re_index_defect_vertices(&mut self, code: &dyn ExampleCode, defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
         if let Some(reordered_vertices) = self.build_reordered_vertices(code) {
-            translated_syndrome_to_reordered(&reordered_vertices, syndrome_vertices)
+            translated_syndrome_to_reordered(&reordered_vertices, defect_vertices)
         } else {
-            syndrome_vertices.into()
+            defect_vertices.into()
         }
     }
 
@@ -340,11 +340,11 @@ pub mod tests {
     use super::super::pointers::UnsafePtr;
 
     pub fn example_partition_basic_standard_syndrome_optional_viz(code: &mut dyn ExampleCode, visualize_filename: Option<String>
-            , mut syndrome_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)
+            , mut defect_vertices: Vec<VertexIndex>, re_index_syndrome: bool, final_dual: Weight, mut partition: impl ExamplePartition)
             -> (PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
-        println!("{syndrome_vertices:?}");
+        println!("{defect_vertices:?}");
         if re_index_syndrome {
-            syndrome_vertices = partition.re_index_syndrome_vertices(code, &syndrome_vertices);
+            defect_vertices = partition.re_index_defect_vertices(code, &defect_vertices);
         }
         let partition_config = partition.build_apply(code);
         let mut visualizer = match visualize_filename.as_ref() {
@@ -360,7 +360,7 @@ pub mod tests {
         let mut primal_config = PrimalModuleParallelConfig::default();
         primal_config.debug_sequential = true;
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         let useless_interface_ptr = DualModuleInterfacePtr::new_empty();  // don't actually use it
         let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
@@ -378,10 +378,10 @@ pub mod tests {
         (primal_module, dual_module)
     }
 
-    pub fn example_partition_standard_syndrome(code: &mut dyn ExampleCode, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
+    pub fn example_partition_standard_syndrome(code: &mut dyn ExampleCode, visualize_filename: String, defect_vertices: Vec<VertexIndex>
             , re_index_syndrome: bool, final_dual: Weight, partition: impl ExamplePartition)
             -> (PrimalModuleParallel, DualModuleParallel<DualModuleSerial>) {
-        example_partition_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), syndrome_vertices, re_index_syndrome
+        example_partition_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), defect_vertices, re_index_syndrome
             , final_dual, partition)
     }
 
@@ -389,20 +389,20 @@ pub mod tests {
     #[test]
     fn example_partition_basic_1() {  // cargo test example_partition_basic_1 -- --nocapture
         let visualize_filename = format!("example_partition_basic_1.json");
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         example_partition_standard_syndrome(&mut CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename
-            , syndrome_vertices, true, 9 * half_weight, NoPartition::new());
+            , defect_vertices, true, 9 * half_weight, NoPartition::new());
     }
 
     /// split into 2
     #[test]
     fn example_partition_basic_2() {  // cargo test example_partition_basic_2 -- --nocapture
         let visualize_filename = format!("example_partition_basic_2.json");
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         example_partition_standard_syndrome(&mut CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename
-            , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionHalf{ d: 11, partition_row: 7 });
+            , defect_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionHalf{ d: 11, partition_row: 7 });
     }
 
     /// split a repetition code into 2 parts
@@ -410,10 +410,10 @@ pub mod tests {
     fn example_partition_basic_3() {  // cargo test example_partition_basic_3 -- --nocapture
         let visualize_filename = format!("example_partition_basic_3.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
+        let defect_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
         let half_weight = 500;
         example_partition_standard_syndrome(&mut CodeCapacityRepetitionCode::new(11, 0.1, half_weight), visualize_filename
-            , syndrome_vertices, true, 5 * half_weight, CodeCapacityRepetitionCodePartitionHalf{ d: 11, partition_index: 6 });
+            , defect_vertices, true, 5 * half_weight, CodeCapacityRepetitionCodePartitionHalf{ d: 11, partition_index: 6 });
     }
 
     /// split into 4
@@ -421,10 +421,10 @@ pub mod tests {
     fn example_partition_basic_4() {  // cargo test example_partition_basic_4 -- --nocapture
         let visualize_filename = format!("example_partition_basic_4.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        let defect_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
         let half_weight = 500;
         example_partition_standard_syndrome(&mut CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename
-            , syndrome_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionFour{ d: 11, partition_row: 7, partition_column: 6 });
+            , defect_vertices, true, 9 * half_weight, CodeCapacityPlanarCodeVerticalPartitionFour{ d: 11, partition_row: 7, partition_column: 6 });
     }
 
     /// phenomenological time axis split
@@ -432,11 +432,11 @@ pub mod tests {
     fn example_partition_basic_5() {  // cargo test example_partition_basic_5 -- --nocapture
         let visualize_filename = format!("example_partition_basic_5.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![352, 365];  // indices are before the reorder
+        let defect_vertices = vec![352, 365];  // indices are before the reorder
         let half_weight = 500;
         let noisy_measurements = 10;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(11, noisy_measurements, 0.1, half_weight), visualize_filename
-            , syndrome_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(11, noisy_measurements, 2));
+            , defect_vertices, true, 2 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(11, noisy_measurements, 2));
     }
 
     /// a demo to show how partition works in phenomenological planar code
@@ -444,11 +444,11 @@ pub mod tests {
     fn example_partition_demo_1() {  // cargo test example_partition_demo_1 -- --nocapture
         let visualize_filename = format!("example_partition_demo_1.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let defect_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 3));
+            , defect_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 3));
     }
 
     /// a demo to show how partition works in circuit-level planar code
@@ -456,11 +456,11 @@ pub mod tests {
     fn example_partition_demo_2() {  // cargo test example_partition_demo_2 -- --nocapture
         let visualize_filename = format!("example_partition_demo_2.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let defect_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut CircuitLevelPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 28980 / 2, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 3));
+            , defect_vertices, true, 28980 / 2, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 3));
     }
 
     /// demo of tree fusion
@@ -468,11 +468,11 @@ pub mod tests {
     fn example_partition_demo_3() {  // cargo test example_partition_demo_3 -- --nocapture
         let visualize_filename = format!("example_partition_demo_3.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let defect_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true, usize::MAX));
+            , defect_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true, usize::MAX));
     }
 
     /// demo of sequential fuse
@@ -480,11 +480,11 @@ pub mod tests {
     fn example_partition_demo_4() {  // cargo test example_partition_demo_4 -- --nocapture
         let visualize_filename = format!("example_partition_demo_4.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let defect_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 8));
+            , defect_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new(7, noisy_measurements, 8));
     }
 
     /// demo of tree + sequential fuse
@@ -492,11 +492,11 @@ pub mod tests {
     fn example_partition_demo_5() {  // cargo test example_partition_demo_5 -- --nocapture
         let visualize_filename = format!("example_partition_demo_5.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
+        let defect_vertices = vec![57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884, 904, 940, 1152, 1184, 1208, 1258, 1266, 1344, 1413, 1421, 1481, 1489, 1490, 1546, 1690, 1733, 1740, 1746, 1796, 1825, 1826, 1856, 1857, 1996, 2004, 2020, 2028, 2140, 2196, 2306, 2307, 2394, 2395, 2413, 2417, 2425, 2496, 2497, 2731, 2739, 2818, 2874];  // indices are before the reorder
         let half_weight = 500;
         let noisy_measurements = 51;
         example_partition_standard_syndrome(&mut PhenomenologicalPlanarCode::new(7, noisy_measurements, 0.005, half_weight), visualize_filename
-            , syndrome_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true, 3));
+            , defect_vertices, true, 35 * half_weight, PhenomenologicalPlanarCodeTimePartition::new_tree(7, noisy_measurements, 8, true, 3));
     }
 
 }

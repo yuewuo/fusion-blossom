@@ -27,7 +27,7 @@ code = CustomRepetitionCode(d=len(p_vec), p_vec=p_vec)
 
 ## Construct Syndrome
 
-syndrome = fb.SyndromePattern(syndrome_vertices=[1,5])
+syndrome = fb.SyndromePattern(defect_vertices=[1,5])
 
 ## Visualize Result
 

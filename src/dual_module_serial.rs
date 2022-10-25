@@ -113,8 +113,8 @@ pub struct Vertex {
     pub vertex_index: VertexIndex,
     /// if a vertex is virtual, then it can be matched any times
     pub is_virtual: bool,
-    /// if a vertex is syndrome, then [`Vertex::propagated_dual_node`] always corresponds to that root
-    pub is_syndrome: bool,
+    /// if a vertex is defect, then [`Vertex::propagated_dual_node`] always corresponds to that root
+    pub is_defect: bool,
     /// if it's a mirrored vertex (present on multiple units), then this is the parallel unit that exclusively owns it
     pub mirror_unit: Option<PartitionUnitWeak>,
     /// all neighbor edges, in surface code this should be constant number of edges
@@ -205,7 +205,7 @@ impl DualModuleImpl for DualModuleSerial {
         let vertices: Vec<VertexPtr> = (0..initializer.vertex_num).map(|vertex_index| VertexPtr::new_value(Vertex {
             vertex_index,
             is_virtual: false,
-            is_syndrome: false,
+            is_defect: false,
             mirror_unit: None,
             edges: Vec::new(),
             propagated_dual_node: None,
@@ -355,14 +355,14 @@ impl DualModuleImpl for DualModuleSerial {
                         }
                     }
                 },
-                DualNodeClass::SyndromeVertex { syndrome_index } => {
-                    let vertex_index = self.get_vertex_index(*syndrome_index).expect("syndrome not belonging to this dual module");
+                DualNodeClass::DefectVertex { defect_index } => {
+                    let vertex_index = self.get_vertex_index(*defect_index).expect("syndrome not belonging to this dual module");
                     let vertex_ptr = &self.vertices[vertex_index];
                     vertex_ptr.dynamic_clear(active_timestamp);
                     let mut vertex = vertex_ptr.write(active_timestamp);
                     vertex.propagated_dual_node = Some(node_internal_ptr.downgrade());
                     vertex.propagated_grandson_dual_node = Some(node_internal_ptr.downgrade());
-                    vertex.is_syndrome = true;
+                    vertex.is_defect = true;
                     for edge_weak in vertex.edges.iter() {
                         let edge_ptr = edge_weak.upgrade_force();
                         edge_ptr.dynamic_clear(active_timestamp);
@@ -460,9 +460,9 @@ impl DualModuleImpl for DualModuleSerial {
                 let dual_node = dual_node_ptr.read_recursive();
                 match dual_node.class {
                     DualNodeClass::Blossom { .. } => { return MaxUpdateLength::BlossomNeedExpand(dual_node_ptr.clone()) }
-                    DualNodeClass::SyndromeVertex { syndrome_index } => {
+                    DualNodeClass::DefectVertex { defect_index } => {
                         // try to report Conflicting event or give a VertexShrinkStop with potential conflicting node
-                        if let Some(vertex_index) = self.get_vertex_index(syndrome_index) {  // since propagated node is never removed, this event could happen with no vertex
+                        if let Some(vertex_index) = self.get_vertex_index(defect_index) {  // since propagated node is never removed, this event could happen with no vertex
                             let vertex_ptr = &self.vertices[vertex_index];
                             let vertex = vertex_ptr.read_recursive(active_timestamp);
                             let mut potential_conflict: Option<(DualNodePtr, DualNodePtr)> = None;
@@ -783,7 +783,7 @@ impl DualModuleImpl for DualModuleSerial {
         let mut vertices: Vec<VertexPtr> = partitioned_initializer.owning_range.iter().map(|vertex_index| VertexPtr::new_value(Vertex {
             vertex_index,
             is_virtual: false,
-            is_syndrome: false,
+            is_defect: false,
             mirror_unit: partitioned_initializer.owning_interface.clone(),
             edges: Vec::new(),
             propagated_dual_node: None,
@@ -803,7 +803,7 @@ impl DualModuleImpl for DualModuleSerial {
                 vertices.push(VertexPtr::new_value(Vertex {
                     vertex_index: *vertex_index,
                     is_virtual: *is_virtual,  // interface vertices are always virtual at the beginning
-                    is_syndrome: false,
+                    is_defect: false,
                     mirror_unit: Some(mirror_unit.clone()),
                     edges: Vec::new(),
                     propagated_dual_node: None,
@@ -922,7 +922,7 @@ impl DualModuleImpl for DualModuleSerial {
         } else {  // conflict with existing value, action needed
             // first vacate the vertex, recovering dual node boundaries accordingly
             if let Some(dual_node_internal_weak) = vertex.propagated_dual_node.as_ref() {
-                debug_assert!(!vertex.is_syndrome, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
+                debug_assert!(!vertex.is_defect, "cannot vacate a syndrome vertex: it shouldn't happen that a syndrome vertex is updated in any partitioned unit");
                 let mut updated_boundary = Vec::<(bool, EdgeWeak)>::new();
                 let dual_node_internal_ptr = dual_node_internal_weak.upgrade_force();
                 lock_write!(dual_node_internal, dual_node_internal_ptr);
@@ -1037,7 +1037,7 @@ impl FastClear for Edge {
 impl FastClear for Vertex {
 
     fn hard_clear(&mut self) {
-        self.is_syndrome = false;
+        self.is_defect = false;
         self.propagated_dual_node = None;
         self.propagated_grandson_dual_node = None;
     }
@@ -1159,8 +1159,8 @@ impl DualModuleSerial {
         let propagated_node = propagated_node_ptr.read_recursive();
         let propagated_grandson_ptr = propagated_grandson_dual_node.origin.upgrade_force();
         let propagated_grandson = propagated_grandson_ptr.read_recursive();
-        if matches!(propagated_grandson.class, DualNodeClass::SyndromeVertex{..}) {
-            if matches!(propagated_node.class, DualNodeClass::SyndromeVertex{..}) {
+        if matches!(propagated_grandson.class, DualNodeClass::DefectVertex{..}) {
+            if matches!(propagated_node.class, DualNodeClass::DefectVertex{..}) {
                 if propagated_dual_node_ptr != propagated_grandson_dual_node_ptr {
                     return Err(format!("syndrome node {:?} must have grandson equal to itself {:?}", propagated_dual_node_ptr, propagated_grandson_dual_node_ptr))
                 }
@@ -1247,8 +1247,8 @@ impl FusionVisualizer for DualModuleSerial {
                 if abbrev { "v" } else { "is_virtual" }: i32::from(vertex.is_virtual),
             });
             if self.owning_range.contains(vertex.vertex_index) {  // otherwise I don't know whether it's syndrome or not
-                vertices[vertex.vertex_index as usize].as_object_mut().unwrap().insert((if abbrev { "s" } else { "is_syndrome" })
-                    .to_string(), json!(i32::from(vertex.is_syndrome)));
+                vertices[vertex.vertex_index as usize].as_object_mut().unwrap().insert((if abbrev { "d" } else { "is_defect" })
+                    .to_string(), json!(i32::from(vertex.is_defect)));
             }
             if let Some(value) = vertex.propagated_dual_node.as_ref().map(|weak| weak.upgrade_force().read_recursive().origin.upgrade_force().read_recursive().index) {
                 vertices[vertex.vertex_index as usize].as_object_mut().unwrap().insert((if abbrev { "p" } else { "propagated_dual_node" })
@@ -1620,7 +1620,7 @@ impl DualModuleSerial {
                     };
                     // to avoid already occupied node being propagated
                     let this_vertex = this_vertex_ptr.read_recursive(active_timestamp);
-                    if this_vertex.is_syndrome {  // never shrink from the syndrome itself
+                    if this_vertex.is_defect {  // never shrink from the syndrome itself
                         if (if is_left { edge.dedup_timestamp.0 } else { edge.dedup_timestamp.1 }) != self.edge_dedup_timestamp {
                             if is_left { edge.dedup_timestamp.0 = self.edge_dedup_timestamp; } else { edge.dedup_timestamp.1 = self.edge_dedup_timestamp; }
                             self.updated_boundary.push((is_left, edge_weak.clone()));
@@ -1754,8 +1754,8 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[19].is_syndrome = true;
-        code.vertices[25].is_syndrome = true;
+        code.vertices[19].is_defect = true;
+        code.vertices[25].is_defect = true;
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
@@ -1792,9 +1792,9 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[19].is_syndrome = true;
-        code.vertices[26].is_syndrome = true;
-        code.vertices[35].is_syndrome = true;
+        code.vertices[19].is_defect = true;
+        code.vertices[26].is_defect = true;
+        code.vertices[35].is_defect = true;
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
@@ -1843,8 +1843,8 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[19].is_syndrome = true;
-        code.vertices[25].is_syndrome = true;
+        code.vertices[19].is_defect = true;
+        code.vertices[25].is_defect = true;
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
@@ -1878,9 +1878,9 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[18].is_syndrome = true;
-        code.vertices[26].is_syndrome = true;
-        code.vertices[34].is_syndrome = true;
+        code.vertices[18].is_defect = true;
+        code.vertices[26].is_defect = true;
+        code.vertices[34].is_defect = true;
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
@@ -1979,9 +1979,9 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[18].is_syndrome = true;
-        code.vertices[26].is_syndrome = true;
-        code.vertices[34].is_syndrome = true;
+        code.vertices[18].is_defect = true;
+        code.vertices[26].is_defect = true;
+        code.vertices[34].is_defect = true;
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         // create dual nodes and grow them by half length
         let dual_node_18_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
@@ -2070,9 +2070,9 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[39].is_syndrome = true;
-        code.vertices[65].is_syndrome = true;
-        code.vertices[87].is_syndrome = true;
+        code.vertices[39].is_defect = true;
+        code.vertices[65].is_defect = true;
+        code.vertices[87].is_defect = true;
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
         // create dual nodes and grow them by half length
@@ -2093,15 +2093,15 @@ mod tests {
     #[test]
     fn dual_module_debug_1() {  // cargo test dual_module_debug_1 -- --nocapture
         let visualize_filename = format!("dual_module_debug_1.json");
-        let syndrome_vertices = vec![6, 7, 17, 18, 21, 27, 28, 42, 43, 49, 51, 52, 54, 55, 61, 63, 65, 67, 76, 78, 80, 86, 103, 110, 113, 114, 116, 122, 125, 127];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 23);
+        let defect_vertices = vec![6, 7, 17, 18, 21, 27, 28, 42, 43, 49, 51, 52, 54, 55, 61, 63, 65, 67, 76, 78, 80, 86, 103, 110, 113, 114, 116, 122, 125, 127];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 23);
     }
 
     #[test]
     fn dual_module_debug_2() {  // cargo test dual_module_debug_2 -- --nocapture
         let visualize_filename = format!("dual_module_debug_2.json");
-        let syndrome_vertices = vec![5, 12, 16, 19, 21, 38, 42, 43, 49, 56, 61, 67, 72, 73, 74, 75, 76, 88, 89, 92, 93, 99, 105, 112, 117, 120, 124, 129];
-        primal_module_serial_basic_standard_syndrome(11, visualize_filename, syndrome_vertices, 22);
+        let defect_vertices = vec![5, 12, 16, 19, 21, 38, 42, 43, 49, 56, 61, 67, 72, 73, 74, 75, 76, 88, 89, 92, 93, 99, 105, 112, 117, 120, 124, 129];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 22);
     }
 
     #[test]
@@ -2115,7 +2115,7 @@ mod tests {
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
         // try to work on a simple syndrome
-        code.vertices[64].is_syndrome = true;
+        code.vertices[64].is_defect = true;
         code.set_erasures(&vec![110, 78, 57, 142, 152, 163, 164]);
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
@@ -2135,7 +2135,7 @@ mod tests {
         // cancel the erasures and grow the dual module in normal case, this should automatically clear the erasures
         dual_module.clear();
          // no erasures this time, to test if the module recovers correctly
-        let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(code.get_syndrome().syndrome_vertices), &mut dual_module);
+        let interface_ptr = DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(code.get_syndrome().defect_vertices), &mut dual_module);
         visualizer.snapshot_combined(format!("after clear"), vec![&interface_ptr, &dual_module]).unwrap();
         for _ in 0..3 {
             interface_ptr.grow_iterative(2 * half_weight, &mut dual_module);

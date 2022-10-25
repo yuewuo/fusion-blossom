@@ -6,16 +6,16 @@ function cmd_data_source() {
 window.cmd = {
 
     // report syndrome vertices
-    get_syndrome() {
+    get_defect_vertices() {
         let [fusion_data, snapshot_idx] = cmd_data_source()
         const snapshot = fusion_data.snapshots[snapshot_idx][1]
-        let syndrome_vertices = []
+        let defect_vertices = []
         for (let [i, vertex] of snapshot.vertices.entries()) {
             if (vertex.s) {
-                syndrome_vertices.push(i)
+                defect_vertices.push(i)
             }
         }
-        return syndrome_vertices
+        return defect_vertices
     },
     
 }

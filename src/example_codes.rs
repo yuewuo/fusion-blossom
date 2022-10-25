@@ -37,9 +37,9 @@ pub struct CodeVertex {
     /// virtual vertex won't report measurement results
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub is_virtual: bool,
-    /// whether it shows up syndrome, note that virtual nodes should NOT have syndrome
+    /// whether it's a defect, note that virtual nodes should NOT be defects
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub is_syndrome: bool,
+    pub is_defect: bool,
 }
 
 #[cfg_attr(feature = "python_binding", cfg_eval)]
@@ -185,7 +185,7 @@ pub trait ExampleCode {
                 position: VisualizePosition::new(0., 0., 0.),
                 neighbor_edges: Vec::new(),
                 is_virtual: false,
-                is_syndrome: false,
+                is_defect: false,
             });
         }
         for (edge_idx, edge) in edges.iter().enumerate() {
@@ -227,15 +227,16 @@ pub trait ExampleCode {
         }
     }
 
-    /// set syndrome vertices
-    fn set_syndrome_vertices(&mut self, syndrome_vertices: &[VertexIndex]) {
+    /// set defect vertices (non-trivial measurement result in case of single round of measurement, 
+    /// or different result from the previous round in case of multiple rounds of measurement)
+    fn set_defect_vertices(&mut self, defect_vertices: &[VertexIndex]) {
         let (vertices, _edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
-            vertex.is_syndrome = false;
+            vertex.is_defect = false;
         }
-        for vertex_idx in syndrome_vertices.iter() {
+        for vertex_idx in defect_vertices.iter() {
             let vertex = &mut vertices[*vertex_idx as usize];
-            vertex.is_syndrome = true;
+            vertex.is_defect = true;
         }
     }
 
@@ -253,16 +254,16 @@ pub trait ExampleCode {
 
     /// set syndrome
     fn set_syndrome(&mut self, syndrome_pattern: &SyndromePattern) {
-        self.set_syndrome_vertices(&syndrome_pattern.syndrome_vertices);
+        self.set_defect_vertices(&syndrome_pattern.defect_vertices);
         self.set_erasures(&syndrome_pattern.erasures);
     }
 
-    /// get current syndrome vertices
-    fn get_syndrome_vertices(&self) -> Vec<VertexIndex> {
+    /// get current defect vertices
+    fn get_defect_vertices(&self) -> Vec<VertexIndex> {
         let (vertices, _edges) = self.immutable_vertices_edges();
         let mut syndrome = Vec::new();
         for (vertex_idx, vertex) in vertices.iter().enumerate() {
-            if vertex.is_syndrome {
+            if vertex.is_defect {
                 syndrome.push(vertex_idx as VertexIndex);
             }
         }
@@ -283,7 +284,7 @@ pub trait ExampleCode {
 
     /// get current syndrome
     fn get_syndrome(&self) -> SyndromePattern {
-        SyndromePattern::new(self.get_syndrome_vertices(), self.get_erasures())
+        SyndromePattern::new(self.get_defect_vertices(), self.get_erasures())
     }
 
     /// generate random errors based on the edge probabilities and a seed for pseudo number generator
@@ -291,7 +292,7 @@ pub trait ExampleCode {
         let mut rng = DeterministicRng::seed_from_u64(seed);
         let (vertices, edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
-            vertex.is_syndrome = false;
+            vertex.is_defect = false;
         }
         for edge in edges.iter_mut() {
             let p = if rng.next_f64() < edge.pe {
@@ -305,11 +306,11 @@ pub trait ExampleCode {
                 let (v1, v2) = edge.vertices;
                 let vertex_1 = &mut vertices[v1 as usize];
                 if !vertex_1.is_virtual {
-                    vertex_1.is_syndrome = !vertex_1.is_syndrome;
+                    vertex_1.is_defect = !vertex_1.is_defect;
                 }
                 let vertex_2 = &mut vertices[v2 as usize];
                 if !vertex_2.is_virtual {
-                    vertex_2.is_syndrome = !vertex_2.is_syndrome;
+                    vertex_2.is_defect = !vertex_2.is_defect;
                 }
             }
         }
@@ -321,9 +322,9 @@ pub trait ExampleCode {
         vertices[vertex_idx].is_virtual
     }
 
-    fn is_syndrome(&self, vertex_idx: usize) -> bool {
+    fn is_defect(&self, vertex_idx: usize) -> bool {
         let (vertices, _edges) = self.immutable_vertices_edges();
-        vertices[vertex_idx].is_syndrome
+        vertices[vertex_idx].is_defect
     }
 
     /// reorder the vertices such that new vertices (the indices of the old order) is sequential
@@ -368,14 +369,14 @@ macro_rules! bind_trait_example_code {
             fn trait_get_positions(&self) -> Vec<VisualizePosition> { self.get_positions() }
             #[pyo3(name = "get_initializer")]
             fn trait_get_initializer(&self) -> SolverInitializer { self.get_initializer() }
-            #[pyo3(name = "set_syndrome_vertices")]
-            fn trait_set_syndrome_vertices(&mut self, syndrome_vertices: Vec<VertexIndex>) { self.set_syndrome_vertices(&syndrome_vertices) }
+            #[pyo3(name = "set_defect_vertices")]
+            fn trait_set_defect_vertices(&mut self, defect_vertices: Vec<VertexIndex>) { self.set_defect_vertices(&defect_vertices) }
             #[pyo3(name = "set_erasures")]
             fn trait_set_erasures(&mut self, erasures: Vec<EdgeIndex>) { self.set_erasures(&erasures) }
             #[pyo3(name = "set_syndrome")]
             fn trait_set_syndrome(&mut self, syndrome_pattern: &SyndromePattern) { self.set_syndrome(syndrome_pattern) }
-            #[pyo3(name = "get_syndrome_vertices")]
-            fn trait_get_syndrome_vertices(&self) -> Vec<VertexIndex> { self.get_syndrome_vertices() }
+            #[pyo3(name = "get_defect_vertices")]
+            fn trait_get_defect_vertices(&self) -> Vec<VertexIndex> { self.get_defect_vertices() }
             #[pyo3(name = "get_erasures")]
             fn trait_get_erasures(&self) -> Vec<EdgeIndex> { self.get_erasures() }
             #[pyo3(name = "get_syndrome")]
@@ -385,8 +386,8 @@ macro_rules! bind_trait_example_code {
             fn trait_generate_random_errors(&mut self, seed: u64) -> SyndromePattern { self.generate_random_errors(seed) }
             #[pyo3(name = "is_virtual")]
             fn trait_is_virtual(&mut self, vertex_idx: usize) -> bool { self.is_virtual(vertex_idx) }
-            #[pyo3(name = "is_syndrome")]
-            fn trait_is_syndrome(&mut self, vertex_idx: usize) -> bool { self.is_syndrome(vertex_idx) }
+            #[pyo3(name = "is_defect")]
+            fn trait_is_defect(&mut self, vertex_idx: usize) -> bool { self.is_defect(vertex_idx) }
             #[pyo3(name = "reorder_vertices")]
             fn trait_reorder_vertices(&mut self, sequential_vertices: Vec<VertexIndex>) { self.reorder_vertices(&sequential_vertices) }
             #[pyo3(name = "snapshot")]
@@ -403,7 +404,7 @@ impl<T> FusionVisualizer for T where T: ExampleCode {
         for vertex in self_vertices.iter() {
             vertices.push(json!({
                 if abbrev { "v" } else { "is_virtual" }: i32::from(vertex.is_virtual),
-                if abbrev { "s" } else { "is_syndrome" }: i32::from(vertex.is_syndrome),
+                if abbrev { "s" } else { "is_defect" }: i32::from(vertex.is_defect),
             }));
         }
         let mut edges = Vec::<serde_json::Value>::new();
@@ -816,16 +817,16 @@ pub struct ErrorPatternReader {
     pub syndrome_patterns: Vec<SyndromePattern>,
     /// cursor of current errors
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub syndrome_index: usize,
+    pub defect_index: usize,
 }
 
 impl ExampleCode for ErrorPatternReader {
     fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
     fn generate_random_errors(&mut self, _seed: u64) -> SyndromePattern {
-        assert!(self.syndrome_index < self.syndrome_patterns.len(), "reading syndrome pattern more than in the file, consider generate the file with more data points");
-        let syndrome_pattern = self.syndrome_patterns[self.syndrome_index].clone();
-        self.syndrome_index += 1;
+        assert!(self.defect_index < self.syndrome_patterns.len(), "reading syndrome pattern more than in the file, consider generate the file with more data points");
+        let syndrome_pattern = self.syndrome_patterns[self.defect_index].clone();
+        self.defect_index += 1;
         syndrome_pattern
     }
 }
@@ -869,7 +870,7 @@ impl ErrorPatternReader {
             vertices: Vec::with_capacity(initializer.vertex_num as usize),
             edges: Vec::with_capacity(initializer.weighted_edges.len()),
             syndrome_patterns,
-            syndrome_index: 0,
+            defect_index: 0,
         };
         for (left_vertex, right_vertex, weight) in initializer.weighted_edges.iter() {
             assert!(weight % 2 == 0, "weight must be even number");

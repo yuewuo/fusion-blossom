@@ -96,7 +96,7 @@ impl LegacySolverSerial {
         self.interface_ptr.clear();
         self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
         let perfect_matching = self.primal_module.perfect_matching(&self.interface_ptr, &mut self.dual_module);
-        perfect_matching.legacy_get_mwpm_result(syndrome_pattern.syndrome_vertices.clone())
+        perfect_matching.legacy_get_mwpm_result(syndrome_pattern.defect_vertices.clone())
     }
 
 }
@@ -143,18 +143,18 @@ pub trait PrimalDualSolver {
         let prediction_bytes = (num_obs + 7) / 8;  // ceil
         for _ in 0..num_shots {
             in_reader.read_exact(&mut dets_bit_packed).expect("read success");
-            let mut syndrome_vertices = vec![];
+            let mut defect_vertices = vec![];
             for (i, &byte) in dets_bit_packed.iter().enumerate() {
                 if byte == 0 {
                     continue
                 }
                 for j in 0..8 {
                     if byte & (1 << j) != 0 {  // little endian
-                        syndrome_vertices.push((i * 8 + j) as VertexIndex);
+                        defect_vertices.push((i * 8 + j) as VertexIndex);
                     }
                 }
             }
-            let syndrome_pattern = SyndromePattern::new_vertices(syndrome_vertices);
+            let syndrome_pattern = SyndromePattern::new_vertices(defect_vertices);
             self.solve(&syndrome_pattern);
             let subgraph = self.subgraph();
             let mut prediction = 0;

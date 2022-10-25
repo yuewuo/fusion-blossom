@@ -10,9 +10,7 @@ code = fb.CodeCapacityPlanarCode(d=11, p=0.05, max_half_weight=500)
 
 ## Construct Syndrome
 
-syndrome = fb.SyndromePattern(
-    syndrome_vertices = [52],
-)
+syndrome = fb.SyndromePattern([52])
 
 ## Visualize Result
 

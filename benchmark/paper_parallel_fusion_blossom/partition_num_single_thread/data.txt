@@ -1,4 +1,4 @@
-<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_syndrome>
+<partition_num> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>
 1 5.65440e+00 5.65435e-05 4.67222e-06
 2 5.52680e+00 5.52675e-05 4.56678e-06
 3 5.42307e+00 5.42302e-05 4.48107e-06

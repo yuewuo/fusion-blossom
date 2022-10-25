@@ -29,14 +29,14 @@ Click on each vertex to see its index on the right bottom. In this example, I'm 
 
 ## Construct Syndrome
 
-A syndrome pattern takes 2 inputs: `syndrome_vertices` and `erasures`. They both default to empty list `[]`.
-We want to set vertex 52 as a syndrome vertex, so `syndrome_vertices = [52]`.
+A syndrome pattern takes 2 inputs: `defect_vertices` and `erasures`. They both default to empty list `[]`.
+We want to set vertex 52 as a syndrome vertex, so `defect_vertices = [52]`.
 A usual case for quantum error correction would have much less syndrome vertices than real vertices.
 For more details about `erasures`, please see [Decode Erasure Error Chapter](./decode-erasure-error.md).
 
 ```python
 syndrome = fb.SyndromePattern(
-    syndrome_vertices = [52],
+    defect_vertices = [52],
 )
 ```
 

@@ -60,9 +60,9 @@ pub struct SolverInitializer {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SyndromePattern {
-    /// the vertices corresponding to non-trivial measurements
+    /// the vertices corresponding to defect measurements
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
-    pub syndrome_vertices: Vec<VertexIndex>,
+    pub defect_vertices: Vec<VertexIndex>,
     /// the edges that experience erasures, i.e. known errors
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub erasures: Vec<EdgeIndex>,
@@ -72,13 +72,13 @@ pub struct SyndromePattern {
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(syndrome_vertices="vec![]", erasures="vec![]"))]
-    pub fn new(syndrome_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
-        Self { syndrome_vertices, erasures }
+    #[cfg_attr(feature = "python_binding", args(defect_vertices="vec![]", erasures="vec![]"))]
+    pub fn new(defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
+        Self { defect_vertices, erasures }
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    pub fn new_vertices(syndrome_vertices: Vec<VertexIndex>) -> Self {
-        Self::new(syndrome_vertices, vec![])
+    pub fn new_vertices(defect_vertices: Vec<VertexIndex>) -> Self {
+        Self::new(defect_vertices, vec![])
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_empty() -> Self {
@@ -105,7 +105,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
         a single range simply because the partition is vertex-based. need more consideration");
         Self {
             syndrome_pattern,
-            whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.syndrome_vertices.len() as SyndromeIndex),
+            whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.defect_vertices.len() as SyndromeIndex),
         }
     }
 
@@ -346,9 +346,9 @@ impl PartitionInfo {
     /// this is a slow method and should only be used when the syndrome pattern is not well-ordered
     pub fn partition_syndrome_unordered(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
         let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| SyndromePattern::new_empty()).collect();
-        for syndrome_vertex in syndrome_pattern.syndrome_vertices.iter() {
-            let unit_index = self.vertex_to_owning_unit[*syndrome_vertex as usize];
-            partitioned_syndrome[unit_index].syndrome_vertices.push(*syndrome_vertex);
+        for defect_vertex in syndrome_pattern.defect_vertices.iter() {
+            let unit_index = self.vertex_to_owning_unit[*defect_vertex as usize];
+            partitioned_syndrome[unit_index].defect_vertices.push(*defect_vertex);
         }
         // TODO: partition edges
         partitioned_syndrome
@@ -369,8 +369,8 @@ impl<'a> PartitionedSyndromePattern<'a> {
             let mut right_index = self.whole_syndrome_range.end();
             while left_index != right_index {
                 let mid_index = (left_index + right_index) / 2;
-                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index as usize];
-                if mid_syndrome_vertex < partition_unit_info.owning_range.start() {
+                let mid_defect_vertex = self.syndrome_pattern.defect_vertices[mid_index as usize];
+                if mid_defect_vertex < partition_unit_info.owning_range.start() {
                     left_index = mid_index + 1;
                 } else {
                     right_index = mid_index;
@@ -384,8 +384,8 @@ impl<'a> PartitionedSyndromePattern<'a> {
             let mut right_index = self.whole_syndrome_range.end();
             while left_index != right_index {
                 let mid_index = (left_index + right_index) / 2;
-                let mid_syndrome_vertex = self.syndrome_pattern.syndrome_vertices[mid_index as usize];
-                if mid_syndrome_vertex < partition_unit_info.owning_range.end() {
+                let mid_defect_vertex = self.syndrome_pattern.defect_vertices[mid_index as usize];
+                if mid_defect_vertex < partition_unit_info.owning_range.end() {
                     left_index = mid_index + 1;
                 } else {
                     right_index = mid_index;
@@ -406,11 +406,11 @@ impl<'a> PartitionedSyndromePattern<'a> {
     }
 
     pub fn expand(&self) -> SyndromePattern {
-        let mut syndrome_vertices = Vec::with_capacity(self.whole_syndrome_range.len());
-        for syndrome_index in self.whole_syndrome_range.iter() {
-            syndrome_vertices.push(self.syndrome_pattern.syndrome_vertices[syndrome_index as usize]);
+        let mut defect_vertices = Vec::with_capacity(self.whole_syndrome_range.len());
+        for defect_index in self.whole_syndrome_range.iter() {
+            defect_vertices.push(self.syndrome_pattern.defect_vertices[defect_index as usize]);
         }
-        SyndromePattern::new(syndrome_vertices, vec![])
+        SyndromePattern::new(defect_vertices, vec![])
     }
 
 }
@@ -479,9 +479,9 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<Ver
 }
 
 /// translate syndrome vertices into the current new index given reordered_vertices
-pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_syndrome_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
+pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
-    old_syndrome_vertices.iter().map(|old_index| {
+    old_defect_vertices.iter().map(|old_index| {
         old_to_new[*old_index as usize].unwrap()
     }).collect()
 }
@@ -572,7 +572,7 @@ impl BenchmarkProfiler {
         let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
         last_entry.record_end();
         self.sum_round_time += last_entry.round_time.unwrap();
-        self.sum_syndrome += last_entry.syndrome_pattern.syndrome_vertices.len();
+        self.sum_syndrome += last_entry.syndrome_pattern.defect_vertices.len();
         if let Some(file) = self.benchmark_profiler_output.as_mut() {
             let mut events = serde_json::Map::new();
             for (event_name, time) in last_entry.events.iter() {
@@ -580,7 +580,7 @@ impl BenchmarkProfiler {
             }
             let mut value = json!({
                 "round_time": last_entry.round_time.unwrap(),
-                "syndrome_num": last_entry.syndrome_pattern.syndrome_vertices.len(),
+                "defect_num": last_entry.syndrome_pattern.defect_vertices.len(),
                 "events": events,
             });
             if let Some(solver) = solver {
@@ -595,8 +595,8 @@ impl BenchmarkProfiler {
     pub fn brief(&self) -> String {
         let total = self.sum_round_time / (self.records.len() as f64);
         let per_round = total / (1. + self.noisy_measurements as f64);
-        let per_syndrome = self.sum_round_time / (self.sum_syndrome as f64);
-        format!("total: {total:.3e}, round: {per_round:.3e}, syndrome: {per_syndrome:.3e},")
+        let per_defect = self.sum_round_time / (self.sum_syndrome as f64);
+        format!("total: {total:.3e}, round: {per_round:.3e}, syndrome: {per_defect:.3e},")
     }
 }
 
@@ -799,8 +799,8 @@ pub mod tests {
             (vec![10, 11, 12, 71, 72, 73, 83, 84, 85, 111], SyndromeRange::new(4, 7)),
             (vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111], SyndromeRange::new(4, 6)),
         ];
-        for (syndrome_vertices, expected_syndrome_range) in tests.into_iter() {
-            let syndrome_pattern = SyndromePattern::new(syndrome_vertices, vec![]);
+        for (defect_vertices, expected_syndrome_range) in tests.into_iter() {
+            let syndrome_pattern = SyndromePattern::new(defect_vertices, vec![]);
             let partitioned_syndrome_pattern = PartitionedSyndromePattern::new(&syndrome_pattern);
             let (owned_partitioned, (_left_partitioned, _right_partitioned)) = partitioned_syndrome_pattern.partition(&partition_info.units[2]);
             println!("syndrome_range: {:?}", owned_partitioned.whole_syndrome_range);

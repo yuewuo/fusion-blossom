@@ -88,7 +88,7 @@ code = CustomRepetitionCode(d=len(p_vec), p_vec=p_vec)
 We use a syndrome pattern below to demonstrate the effect of weights.
 
 ```python
-syndrome = fb.SyndromePattern(syndrome_vertices=[1,5])
+syndrome = fb.SyndromePattern(defect_vertices=[1,5])
 ```
 
 As shown in the following image, there are 4 edges selected in the Minimum-Weight Parity Subgraph (MWPS).

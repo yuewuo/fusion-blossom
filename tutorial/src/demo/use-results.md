@@ -66,9 +66,9 @@ User should generate syndrome according to noise model instead of the graph itse
 ```python
 syndrome_x = code.generate_random_errors(seed=1000)
 syndrome_z = code.generate_random_errors(seed=2000)
-syndrome_vertices = syndrome_x.syndrome_vertices
-syndrome_vertices += [i + bias for i in syndrome_z.syndrome_vertices]
-syndrome = fb.SyndromePattern(syndrome_vertices)
+defect_vertices = syndrome_x.defect_vertices
+defect_vertices += [i + bias for i in syndrome_z.defect_vertices]
+syndrome = fb.SyndromePattern(defect_vertices)
 ```
 
 ## Visualize Result

@@ -1,7 +1,7 @@
 set terminal postscript eps color "Arial, 24"
 set terminal postscript landscape
 set xlabel "Maximum Tree Leaf Size" font "Arial, 24"
-set ylabel "Decoding Time Per Syndrome (ns)" font "Arial, 24"
+set ylabel "Decoding Time Per Defect (ns)" font "Arial, 24"
 set grid ytics
 set size 1,1
 
@@ -19,8 +19,8 @@ set key samplen 4
 
 set arrow from 1000, graph 0 to 1000, graph 1 nohead lc rgb "blue"
 
-set output "decoding_time_per_syndrome.eps"
+set output "decoding_time_per_defect.eps"
 
 plot "data.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 notitle
 
-system("ps2pdf -dEPSCrop decoding_time_per_syndrome.eps decoding_time_per_syndrome.pdf")
+system("ps2pdf -dEPSCrop decoding_time_per_defect.eps decoding_time_per_defect.pdf")

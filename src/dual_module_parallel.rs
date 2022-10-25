@@ -677,7 +677,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         }
     }
 
-    fn iterative_add_syndrome_node(&mut self, dual_node_ptr: &DualNodePtr, vertex_index: VertexIndex) {
+    fn iterative_add_defect_node(&mut self, dual_node_ptr: &DualNodePtr, vertex_index: VertexIndex) {
         // if the vertex is not hold by any descendant, simply return
         if !self.is_vertex_in_descendant(vertex_index) {
             return
@@ -688,18 +688,18 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
             if self.enable_parallel_execution {
                 rayon::join(|| {
-                    left_child_weak.upgrade_force().write().iterative_add_syndrome_node(dual_node_ptr, vertex_index);
+                    left_child_weak.upgrade_force().write().iterative_add_defect_node(dual_node_ptr, vertex_index);
                 }, || {
-                    right_child_weak.upgrade_force().write().iterative_add_syndrome_node(dual_node_ptr, vertex_index);
+                    right_child_weak.upgrade_force().write().iterative_add_defect_node(dual_node_ptr, vertex_index);
                 });
             } else {
-                left_child_weak.upgrade_force().write().iterative_add_syndrome_node(dual_node_ptr, vertex_index);
-                right_child_weak.upgrade_force().write().iterative_add_syndrome_node(dual_node_ptr, vertex_index);
+                left_child_weak.upgrade_force().write().iterative_add_defect_node(dual_node_ptr, vertex_index);
+                right_child_weak.upgrade_force().write().iterative_add_defect_node(dual_node_ptr, vertex_index);
             }
         }
         // update on my serial module
         if self.serial_module.contains_vertex(vertex_index) {
-            self.serial_module.add_syndrome_node(dual_node_ptr);
+            self.serial_module.add_defect_node(dual_node_ptr);
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
@@ -850,9 +850,9 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         let representative_vertex = dual_node_ptr.get_representative_vertex();
         match &dual_node_ptr.read_recursive().class {
             // fast path: if dual node is a single vertex, then only add to the owning node; single vertex dual node can only add when dual variable = 0
-            DualNodeClass::SyndromeVertex { syndrome_index } => {
+            DualNodeClass::DefectVertex { defect_index } => {
                 if self.owning_range.contains(representative_vertex) {  // fast path: the most common one
-                    self.iterative_add_syndrome_node(dual_node_ptr, *syndrome_index);
+                    self.iterative_add_defect_node(dual_node_ptr, *defect_index);
                 } else {
                     // find the one that owns it and add the dual node, and then add the serial_module
                     if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
@@ -872,7 +872,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
                             }
                         }
                         lock_write!(child, child_ptr);
-                        child.iterative_add_syndrome_node(dual_node_ptr, *syndrome_index);
+                        child.iterative_add_defect_node(dual_node_ptr, *defect_index);
                     } else { unreachable!() }
                 }
                 // if it's children mirrors this vertex as well, then it's necessary to add this dual node to those children as well
@@ -1025,12 +1025,12 @@ pub mod tests {
     use super::super::primal_module_serial::*;
 
     pub fn dual_module_parallel_basic_standard_syndrome_optional_viz<F>(mut code: impl ExampleCode, visualize_filename: Option<String>
-            , mut syndrome_vertices: Vec<VertexIndex>, final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
+            , mut defect_vertices: Vec<VertexIndex>, final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
             -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
-        println!("{syndrome_vertices:?}");
+        println!("{defect_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
-            syndrome_vertices = translated_syndrome_to_reordered(reordered_vertices, &syndrome_vertices);
+            defect_vertices = translated_syndrome_to_reordered(reordered_vertices, &defect_vertices);
         }
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
@@ -1051,7 +1051,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true;  // to enable debug mode
         // try to work on a simple syndrome
-        code.set_syndrome_vertices(&syndrome_vertices);
+        code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
         let perfect_matching = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
@@ -1067,19 +1067,19 @@ pub mod tests {
         (interface_ptr, primal_module, dual_module)
     }
 
-    pub fn dual_module_parallel_standard_syndrome<F>(code: impl ExampleCode, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>
+    pub fn dual_module_parallel_standard_syndrome<F>(code: impl ExampleCode, visualize_filename: String, defect_vertices: Vec<VertexIndex>
             , final_dual: Weight, partition_func: F, reordered_vertices: Option<Vec<VertexIndex>>)
             -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleParallel<DualModuleSerial>) where F: Fn(&SolverInitializer, &mut PartitionConfig) {
-        dual_module_parallel_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), syndrome_vertices, final_dual, partition_func, reordered_vertices)
+        dual_module_parallel_basic_standard_syndrome_optional_viz(code, Some(visualize_filename), defect_vertices, final_dual, partition_func, reordered_vertices)
     }
 
     /// test a simple case
     #[test]
     fn dual_module_parallel_basic_1() {  // cargo test dual_module_parallel_basic_1 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_1.json");
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |initializer, _config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, defect_vertices, 9 * half_weight, |initializer, _config| {
             println!("initializer: {initializer:?}");
         }, None);
     }
@@ -1088,9 +1088,9 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_2() {  // cargo test dual_module_parallel_basic_2 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_2.json");
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, defect_vertices, 9 * half_weight, |_initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, 72),    // unit 0
                 VertexRange::new(84, 132),  // unit 1
@@ -1105,9 +1105,9 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_3() {  // cargo test dual_module_parallel_basic_3 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_3.json");
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];
+        let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, defect_vertices, 9 * half_weight, |_initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, 60),    // unit 0
                 VertexRange::new(72, 132),  // unit 1
@@ -1123,9 +1123,9 @@ pub mod tests {
     fn dual_module_parallel_basic_4() {  // cargo test dual_module_parallel_basic_4 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_4.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        let defect_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, defect_vertices, 9 * half_weight, |_initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, 36),
                 VertexRange::new(42, 72),
@@ -1185,9 +1185,9 @@ pub mod tests {
     fn dual_module_parallel_basic_5() {  // cargo test dual_module_parallel_basic_5 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_5.json");
         // reorder vertices to enable the partition;
-        let syndrome_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
+        let defect_vertices = vec![39, 52, 63, 90, 100];  // indices are before the reorder
         let half_weight = 500;
-        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, syndrome_vertices, 9 * half_weight, |_initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(11, 0.1, half_weight), visualize_filename, defect_vertices, 9 * half_weight, |_initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, 25),
                 VertexRange::new(30, 60),
@@ -1242,10 +1242,10 @@ pub mod tests {
         })()));
     }
 
-    fn dual_module_parallel_debug_repetition_code_common(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    fn dual_module_parallel_debug_repetition_code_common(d: VertexNum, visualize_filename: String, defect_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
         let split_vertical = (d + 1) / 2;
-        dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(d, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityRepetitionCode::new(d, 0.1, half_weight), visualize_filename, defect_vertices, final_dual * half_weight, |initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, split_vertical + 1),
                 VertexRange::new(split_vertical + 2, initializer.vertex_num),
@@ -1270,8 +1270,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_1() {  // cargo test dual_module_parallel_debug_1 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_1.json");
-        let syndrome_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
-        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 5);
+        let defect_vertices = vec![2, 3, 4, 5, 6, 7, 8];  // indices are before the reorder
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 5);
     }
 
     /// debug 'internal error: entered unreachable code: VertexShrinkStop conflict cannot be solved by primal module
@@ -1283,16 +1283,16 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_2() {  // cargo test dual_module_parallel_debug_2 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_2.json");
-        let syndrome_vertices = vec![5, 6, 7];  // indices are before the reorder
-        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 4);
+        let defect_vertices = vec![5, 6, 7];  // indices are before the reorder
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 4);
     }
 
     /// the reason for this bug is that I forgot to set dual_variable correctly, leading to false VertexShrinkStop event at the 
     #[test]
     fn dual_module_parallel_debug_3() {  // cargo test dual_module_parallel_debug_3 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_3.json");
-        let syndrome_vertices = vec![3, 5, 7];  // indices are before the reorder
-        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 5);
+        let defect_vertices = vec![3, 5, 7];  // indices are before the reorder
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 5);
     }
 
     /// incorrect final result
@@ -1300,8 +1300,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_4() {  // cargo test dual_module_parallel_debug_4 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_4.json");
-        let syndrome_vertices = vec![2, 3, 5, 6, 7];  // indices are before the reorder
-        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, syndrome_vertices, 5);
+        let defect_vertices = vec![2, 3, 5, 6, 7];  // indices are before the reorder
+        dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 5);
     }
 
     /// unwrap fail on dual node to internal dual node
@@ -1309,15 +1309,15 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_5() {  // cargo test dual_module_parallel_debug_5 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_5.json");
-        let syndrome_vertices = vec![0, 4, 7, 8, 9, 11];  // indices are before the reorder
-        dual_module_parallel_debug_repetition_code_common(15, visualize_filename, syndrome_vertices, 7);
+        let defect_vertices = vec![0, 4, 7, 8, 9, 11];  // indices are before the reorder
+        dual_module_parallel_debug_repetition_code_common(15, visualize_filename, defect_vertices, 7);
     }
 
-    fn dual_module_parallel_debug_planar_code_common(d: VertexNum, visualize_filename: String, syndrome_vertices: Vec<VertexIndex>, final_dual: Weight) {
+    fn dual_module_parallel_debug_planar_code_common(d: VertexNum, visualize_filename: String, defect_vertices: Vec<VertexIndex>, final_dual: Weight) {
         let half_weight = 500;
         let split_horizontal = (d + 1) / 2;
         let row_count = d + 1;
-        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(d, 0.1, half_weight), visualize_filename, syndrome_vertices, final_dual * half_weight, |initializer, config| {
+        dual_module_parallel_standard_syndrome(CodeCapacityPlanarCode::new(d, 0.1, half_weight), visualize_filename, defect_vertices, final_dual * half_weight, |initializer, config| {
             config.partitions = vec![
                 VertexRange::new(0, split_horizontal * row_count),
                 VertexRange::new((split_horizontal + 1) * row_count, initializer.vertex_num),
@@ -1334,8 +1334,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_6() {  // cargo test dual_module_parallel_debug_6 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_6.json");
-        let syndrome_vertices = vec![10, 11, 13, 32, 36, 37, 40, 44];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 5);
+        let defect_vertices = vec![10, 11, 13, 32, 36, 37, 40, 44];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(7, visualize_filename, defect_vertices, 5);
     }
 
     /// panic 'one cannot conflict with itself, double check to avoid deadlock'
@@ -1343,16 +1343,16 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_7() {  // cargo test dual_module_parallel_debug_7 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_7.json");
-        let syndrome_vertices = vec![3, 12, 21, 24, 27, 28, 33, 35, 36, 43, 50, 51];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 10);
+        let defect_vertices = vec![3, 12, 21, 24, 27, 28, 33, 35, 36, 43, 50, 51];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(7, visualize_filename, defect_vertices, 10);
     }
 
     /// panic `Option::unwrap()` on a `None` value', src/dual_module.rs:242:1
     #[test]
     fn dual_module_parallel_debug_8() {  // cargo test dual_module_parallel_debug_8 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_8.json");
-        let syndrome_vertices = vec![1, 2, 3, 4, 9, 10, 13, 16, 17, 19, 24, 29, 33, 36, 37, 44, 48, 49, 51, 52];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(7, visualize_filename, syndrome_vertices, 13);
+        let defect_vertices = vec![1, 2, 3, 4, 9, 10, 13, 16, 17, 19, 24, 29, 33, 36, 37, 44, 48, 49, 51, 52];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(7, visualize_filename, defect_vertices, 13);
     }
 
     /// panicked at 'dual node of edge should be some', src/dual_module_serial.rs:379:13
@@ -1360,8 +1360,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_9() {  // cargo test dual_module_parallel_debug_9 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_9.json");
-        let syndrome_vertices = vec![60, 61, 72, 74, 84, 85, 109];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(11, visualize_filename, syndrome_vertices, 6);
+        let defect_vertices = vec![60, 61, 72, 74, 84, 85, 109];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(11, visualize_filename, defect_vertices, 6);
     }
 
     /// infinite loop at group_max_update_length: Conflicts(([Conflicting((12, 4), (15, 5))], {}))
@@ -1369,8 +1369,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_10() {  // cargo test dual_module_parallel_debug_10 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_10.json");
-        let syndrome_vertices = vec![145, 146, 165, 166, 183, 185, 203, 204, 205, 225, 264];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 11);
+        let defect_vertices = vec![145, 146, 165, 166, 183, 185, 203, 204, 205, 225, 264];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, defect_vertices, 11);
     }
 
     /// panicked at 'dual node of edge should be none', src/dual_module_serial.rs:400:25
@@ -1380,8 +1380,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_11() {  // cargo test dual_module_parallel_debug_11 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_11.json");
-        let syndrome_vertices = vec![192, 193, 194, 212, 214, 232, 233];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 7);
+        let defect_vertices = vec![192, 193, 194, 212, 214, 232, 233];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, defect_vertices, 7);
     }
 
     /// panicked at 'no sync requests should arise here; make sure to deal with all sync requests before growing', src/dual_module_serial.rs:582:13
@@ -1389,8 +1389,8 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_12() {  // cargo test dual_module_parallel_debug_12 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_debug_12.json");
-        let syndrome_vertices = vec![197, 216, 235, 275, 296, 316];  // indices are before the reorder
-        dual_module_parallel_debug_planar_code_common(19, visualize_filename, syndrome_vertices, 5);
+        let defect_vertices = vec![197, 216, 235, 275, 296, 316];  // indices are before the reorder
+        dual_module_parallel_debug_planar_code_common(19, visualize_filename, defect_vertices, 5);
     }
 
     /// test rayon global thread pool

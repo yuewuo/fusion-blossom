@@ -21,8 +21,8 @@ pub enum DualNodeClass {
         nodes_circle: Vec<DualNodeWeak>,
         touching_children: Vec<(DualNodeWeak, DualNodeWeak)>,
     },
-    SyndromeVertex {
-        syndrome_index: VertexIndex,
+    DefectVertex {
+        defect_index: VertexIndex,
     },
 }
 
@@ -419,8 +419,8 @@ impl DualNodePtr {
                     node_ptr.upgrade_force().__get_all_vertices(pending_vec);
                 }
             },
-            DualNodeClass::SyndromeVertex { syndrome_index } => {
-                pending_vec.push(*syndrome_index);
+            DualNodeClass::DefectVertex { defect_index } => {
+                pending_vec.push(*defect_index);
             },
         };
     }
@@ -437,7 +437,7 @@ impl DualNodePtr {
         let dual_node = self.read_recursive();
         match &dual_node.class {
             DualNodeClass::Blossom { nodes_circle, .. } => nodes_circle[0].upgrade_force().get_representative_vertex(),
-            DualNodeClass::SyndromeVertex { syndrome_index } => *syndrome_index,
+            DualNodeClass::DefectVertex { defect_index } => *defect_index,
         }
     }
 
@@ -505,10 +505,10 @@ pub trait DualModuleImpl {
 
     #[inline(always)]
     /// helper function to specifically add a syndrome node
-    fn add_syndrome_node(&mut self, dual_node_ptr: &DualNodePtr) {
+    fn add_defect_node(&mut self, dual_node_ptr: &DualNodePtr) {
         debug_assert!({
             let node = dual_node_ptr.read_recursive();
-            matches!(node.class, DualNodeClass::SyndromeVertex{ .. })
+            matches!(node.class, DualNodeClass::DefectVertex{ .. })
         }, "node class mismatch");
         self.add_dual_node(dual_node_ptr)
     }
@@ -646,8 +646,8 @@ impl FusionVisualizer for DualModuleInterfacePtr {
                             (node_ptr_1.upgrade_force().read_recursive().index, node_ptr_2.upgrade_force().read_recursive().index)).collect::<Vec<(NodeIndex, NodeIndex)>>()),
                         _ => None,
                     },
-                    if abbrev { "s" } else { "syndrome_vertex" }: match &dual_node.class {
-                        DualNodeClass::SyndromeVertex { syndrome_index } => Some(syndrome_index),
+                    if abbrev { "s" } else { "defect_vertex" }: match &dual_node.class {
+                        DualNodeClass::DefectVertex { defect_index } => Some(defect_index),
                         _ => None,
                     },
                     if abbrev { "g" } else { "grow_state" }: match &dual_node.grow_state {
@@ -752,8 +752,8 @@ impl DualModuleInterfacePtr {
     }
 
     pub fn load(&self, syndrome_pattern: &SyndromePattern, dual_module_impl: &mut impl DualModuleImpl) {
-        for vertex_idx in syndrome_pattern.syndrome_vertices.iter() {
-            self.create_syndrome_node(*vertex_idx, dual_module_impl);
+        for vertex_idx in syndrome_pattern.defect_vertices.iter() {
+            self.create_defect_node(*vertex_idx, dual_module_impl);
         }
         if !syndrome_pattern.erasures.is_empty() {
             dual_module_impl.load_erasures(&syndrome_pattern.erasures);
@@ -794,7 +794,7 @@ impl DualModuleInterfacePtr {
         debug_assert_eq!(flattened_nodes.len() as NodeNum - flattened_nodes_length, interface.nodes_count());
     }
 
-    pub fn create_syndrome_node(&self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
+    pub fn create_defect_node(&self, vertex_idx: VertexIndex, dual_module_impl: &mut impl DualModuleImpl) -> DualNodePtr {
         let belonging = self.downgrade();
         let mut interface = self.write();
         interface.sum_grow_speed += 1;
@@ -805,8 +805,8 @@ impl DualModuleInterfacePtr {
             let node_ptr = interface.nodes[local_node_index].take().unwrap();
             let mut node = node_ptr.write();
             node.index = node_index;
-            node.class = DualNodeClass::SyndromeVertex {
-                syndrome_index: vertex_idx,
+            node.class = DualNodeClass::DefectVertex {
+                defect_index: vertex_idx,
             };
             node.grow_state = DualNodeGrowState::Grow;
             node.parent_blossom = None;
@@ -817,8 +817,8 @@ impl DualModuleInterfacePtr {
         } else {
             DualNodePtr::new_value(DualNode {
                 index: node_index,
-                class: DualNodeClass::SyndromeVertex {
-                    syndrome_index: vertex_idx,
+                class: DualNodeClass::DefectVertex {
+                    defect_index: vertex_idx,
                 },
                 grow_state: DualNodeGrowState::Grow,
                 parent_blossom: None,
@@ -833,7 +833,7 @@ impl DualModuleInterfacePtr {
         let cloned_node_ptr = node_ptr.clone();
         interface.nodes[local_node_index] = Some(node_ptr);  // feature `dangerous_pointer`: must push the owner
         drop(interface);
-        dual_module_impl.add_syndrome_node(&cloned_node_ptr);
+        dual_module_impl.add_defect_node(&cloned_node_ptr);
         cloned_node_ptr
     }
 
@@ -1130,7 +1130,7 @@ impl DualModuleInterfacePtr {
                             }
                             // check children belongings
                             let (child_weak_1, child_weak_2) = &touching_children[idx];
-                            if matches!(circle_node.class, DualNodeClass::SyndromeVertex{..}) {
+                            if matches!(circle_node.class, DualNodeClass::DefectVertex{..}) {
                                 if child_weak_1 != circle_node_weak { return Err(format!("touching child can only be syndrome node {}", circle_node.index)) }
                                 if child_weak_2 != circle_node_weak { return Err(format!("touching child can only be syndrome node {}", circle_node.index)) }
                             } else {
@@ -1144,9 +1144,9 @@ impl DualModuleInterfacePtr {
                             }
                         }
                     },
-                    DualNodeClass::SyndromeVertex { syndrome_index } => {
-                        if visited_syndrome.contains(syndrome_index) { return Err(format!("duplicate syndrome index: {}", syndrome_index)) }
-                        visited_syndrome.insert(*syndrome_index);
+                    DualNodeClass::DefectVertex { defect_index } => {
+                        if visited_syndrome.contains(defect_index) { return Err(format!("duplicate defect index: {}", defect_index)) }
+                        visited_syndrome.insert(*defect_index);
                     },
                 }
                 if let Some(parent_blossom_weak) = &dual_node.parent_blossom {
