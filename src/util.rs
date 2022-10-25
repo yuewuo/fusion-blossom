@@ -68,12 +68,22 @@ pub struct SyndromePattern {
     pub erasures: Vec<EdgeIndex>,
 }
 
+impl SyndromePattern {
+    pub fn new(defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
+        Self { defect_vertices, erasures }
+    }
+}
+
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
     #[cfg_attr(feature = "python_binding", new)]
     #[cfg_attr(feature = "python_binding", args(defect_vertices="vec![]", erasures="vec![]"))]
-    pub fn new(defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
+    pub fn py_new(mut defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>, syndrome_vertices: Option<Vec<VertexIndex>>) -> Self {
+        if let Some(syndrome_vertices) = syndrome_vertices {
+            assert!(defect_vertices.is_empty(), "do not pass both `syndrome_vertices` and `defect_vertices` since they're aliasing");
+            defect_vertices = syndrome_vertices;
+        }
         Self { defect_vertices, erasures }
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]
