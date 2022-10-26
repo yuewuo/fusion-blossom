@@ -29,6 +29,8 @@ Our idea comes from our study on the Union-Find (UF) decoder [[6]](#delfosse2021
 - From the UF decoder, we learnt to use a sparse decoding graph representation for fast speed
 - From the MWPM decoder, we learnt to find an exact minimum-weight perfect matching for high accuracy
 
+We shall note that Oscar Higgott and Craig Gidney independently reach the same approach of using sparse decoding graph to solve MWPM more efficiently in PyMatching V2 [[8]](#pymatchingv2). It's impressive to see that they have much better single-thread performance than fusion-blossom (about 5x-20x speedup). They use more optimizations like priority queue and single-tree strategy that appears in existing literature of blossom algorithms  (possibly some other novel techniques, looking forward to their paper!). Also, they use C++ language rather than Rust programming language. Rust enforces memory safety which adds some runtime overhead (like vector boundary check and unnecessary locks in parallel programming). We use `unsafe` Rust to improve the speed by 1.5x-3x but these features are not yet enabled in the Python library and only available when using the native Rust library. In fact, PyMatching V2's optimizations and fusion-blossom's parallel computation (fusion operation) are compatible with each other. With their impressive work, we're looking forward to another 5x-20x speed of the parallel MWPM decoder if combined together. For now, user should use PyMatching for better CPU efficiency in large-scale simulations, and use fusion-blossom library as an educational tool with [visualization tool](https://visualize.fusionblossom.com/?filename=primal_module_serial_basic_10.json) and [entry-level tutorials](https://tutorial.fusionblossom.com).
+
 ## Demo
 
 We highly suggest you watch through several demos here to get a sense of how the algorithm works. All our demos are captured from real algorithm execution. In fact, we're showing you the visualized debugger tool we wrote for fusion blossom. The demo is a 3D website and you can control the view point as you like.
@@ -142,3 +144,6 @@ This project is funded by [NSF MRI: Development of PARAGON: Control Instrument f
 <a id="delfosse2021almost">[6]</a> Delfosse, Nicolas, and Naomi H. Nickerson. "Almost-linear time decoding algorithm for topological codes." Quantum 5 (2021): 595.
 
 <a id="wu2022interpretation">[7]</a> Wu, Yue. APS 2022 March Meeting Talk "Interpretation of Union-Find Decoder on Weighted Graphs and Application to XZZX Surface Code". Slides: [https://us.wuyue98.cn/aps2022](https://us.wuyue98.cn/aps2022), Video: [https://youtu.be/BbhqUHKPdQk](https://youtu.be/BbhqUHKPdQk)
+
+<a id="pymatchingv2">[8]</a> Higgott, Oscar. PyMatching v2 https://github.com/oscarhiggott/PyMatching
+
