@@ -1030,7 +1030,7 @@ pub mod tests {
         println!("{defect_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
-            defect_vertices = translated_syndrome_to_reordered(reordered_vertices, &defect_vertices);
+            defect_vertices = translated_defect_to_reordered(reordered_vertices, &defect_vertices);
         }
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
@@ -1180,7 +1180,7 @@ pub mod tests {
         })()));
     }
 
-    /// split into 4, with 2 syndrome vertices on parent interfaces
+    /// split into 4, with 2 defect vertices on parent interfaces
     #[test]
     fn dual_module_parallel_basic_5() {  // cargo test dual_module_parallel_basic_5 -- --nocapture
         let visualize_filename = format!("dual_module_parallel_basic_5.json");

@@ -5,7 +5,7 @@ function cmd_data_source() {
 
 window.cmd = {
 
-    // report syndrome vertices
+    // report defect vertices
     get_defect_vertices() {
         let [fusion_data, snapshot_idx] = cmd_data_source()
         const snapshot = fusion_data.snapshots[snapshot_idx][1]

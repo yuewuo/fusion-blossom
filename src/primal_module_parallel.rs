@@ -360,7 +360,7 @@ impl PrimalModuleParallelUnitPtr {
         let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
         let mut dual_unit = dual_module_ptr.write();
         let partition_unit_info = &primal_unit.partition_info.units[primal_unit.unit_index];
-        let (owned_syndrome_range, _) = partitioned_syndrome_pattern.partition(partition_unit_info);
+        let (owned_defect_range, _) = partitioned_syndrome_pattern.partition(partition_unit_info);
         let interface_ptr = primal_unit.interface_ptr.clone();
         if let Some((left_child_weak, right_child_weak)) = primal_unit.children.as_ref() {
             {  // set children to inactive to avoid being solved twice
@@ -376,7 +376,7 @@ impl PrimalModuleParallelUnitPtr {
                 callback(&primal_unit.interface_ptr, &dual_unit, &primal_unit.serial_module, None);
             }
             primal_unit.break_matching_with_mirror(dual_unit.deref_mut());
-            for defect_index in owned_syndrome_range.whole_syndrome_range.iter() {
+            for defect_index in owned_defect_range.whole_defect_range.iter() {
                 let defect_vertex = partitioned_syndrome_pattern.syndrome_pattern.defect_vertices[defect_index as usize];
                 primal_unit.serial_module.load_defect(defect_vertex, &interface_ptr, dual_unit.deref_mut());
             }
@@ -391,7 +391,7 @@ impl PrimalModuleParallelUnitPtr {
             }
         } else {
             debug_assert!(primal_unit.is_active, "leaf must be active to be solved");
-            let syndrome_pattern = owned_syndrome_range.expand();
+            let syndrome_pattern = owned_defect_range.expand();
             primal_unit.serial_module.solve_step_callback(&interface_ptr, &syndrome_pattern, dual_unit.deref_mut()
                 , |interface, dual_module, primal_module, group_max_update_length| {
                     if let Some(callback) = callback.as_mut() {
@@ -517,7 +517,7 @@ pub mod tests {
         println!("{defect_vertices:?}");
         if let Some(reordered_vertices) = &reordered_vertices {
             code.reorder_vertices(reordered_vertices);
-            defect_vertices = translated_syndrome_to_reordered(reordered_vertices, &defect_vertices);
+            defect_vertices = translated_defect_to_reordered(reordered_vertices, &defect_vertices);
         }
         let mut visualizer = match visualize_filename.as_ref() {
             Some(visualize_filename) => {
@@ -665,7 +665,7 @@ pub mod tests {
         })()));
     }
 
-    /// split into 4, with 2 syndrome vertices on parent interfaces
+    /// split into 4, with 2 defect vertices on parent interfaces
     #[test]
     fn primal_module_parallel_basic_5() {  // cargo test primal_module_parallel_basic_5 -- --nocapture
         let visualize_filename = format!("primal_module_parallel_basic_5.json");

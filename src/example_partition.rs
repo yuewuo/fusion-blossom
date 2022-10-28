@@ -21,7 +21,7 @@ pub trait ExamplePartition {
 
     fn re_index_defect_vertices(&mut self, code: &dyn ExampleCode, defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
         if let Some(reordered_vertices) = self.build_reordered_vertices(code) {
-            translated_syndrome_to_reordered(&reordered_vertices, defect_vertices)
+            translated_defect_to_reordered(&reordered_vertices, defect_vertices)
         } else {
             defect_vertices.into()
         }
