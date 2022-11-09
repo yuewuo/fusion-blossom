@@ -64,13 +64,19 @@ const App = {
     },
     async mounted() {
         gui3d.root.style.setProperty('--control-visibility', 'visible')
+        let response = null
         try {
-            let response = await fetch('./data/' + filename, { cache: 'no-cache', })
-            fusion_data = await response.json()
-            // console.log(fusion_data)
+            response = await fetch('./data/' + filename, { cache: 'no-cache', })
         } catch (e) {
             this.error_message = "fetch file error"
             throw e
+        }
+        if (response.ok) {
+            fusion_data = await response.json()
+            // console.log(fusion_data)
+        } else {
+            this.error_message = `fetch file error ${response.status}: ${response.statusText}`
+            return
         }
         // hook primal div
         primal.initialize_primal_div()

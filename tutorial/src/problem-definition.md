@@ -100,4 +100,4 @@ The last term \\( \prod_{e}{(1-p_e)} \\) is a constant, so maximizing the probab
 
 Given a reasonable error rate \\( p_e \le \frac{1}{2} \\), we have \\( \frac{1-p_e}{p_e} \ge 1 \\) and \\( \ln \frac{1-p_e}{p_e} \ge 0 \\). We assign weight to each edge as \\( w_e = \ln \frac{1 - p_e}{p_e} \\), a non-negative number. Thus, maximizing the probability of an error pattern is equivalent to minimizing the value while satisfying the parity constrains.
 
-\\[ \min_{E} \sum_{e \in E} w_e = \min_{E} \sum_{e \in E}{\ln \frac{1-p_e}{p_e}} \ \ \textrm{, subject to}\ S(E) = S \\]
+\\[ \arg \min_{E} \sum_{e \in E} w_e = \arg \min_{E} \sum_{e \in E}{\ln \frac{1-p_e}{p_e}} \ \ \textrm{, subject to}\ S(E) = S \\]
