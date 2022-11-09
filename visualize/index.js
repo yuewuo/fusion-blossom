@@ -71,12 +71,12 @@ const App = {
             this.error_message = "fetch file error"
             throw e
         }
-        if (response.ok) {
+        if (response.ok || is_mock) {
             fusion_data = await response.json()
             // console.log(fusion_data)
         } else {
             this.error_message = `fetch file error ${response.status}: ${response.statusText}`
-            return
+            throw this.error_message
         }
         // hook primal div
         primal.initialize_primal_div()
@@ -376,10 +376,15 @@ if (!is_mock) {
 } else {
     global.Element = window.Element
     global.SVGElement = window.SVGElement  // https://github.com/jsdom/jsdom/issues/2734
+    App.template = "<div></div>"
     const app = Vue.createApp(App)
     window.app = app.mount("#app")
     while (!patch_done.value) {
         await sleep(50)
+    }
+    for (let i=0; i<10; ++i) {
+        await sleep(10)
+        await Vue.nextTick()
     }
     console.log("[rendering]")
     const pixels = await gui3d.nodejs_render_png()
