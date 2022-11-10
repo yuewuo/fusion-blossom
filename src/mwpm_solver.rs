@@ -115,14 +115,6 @@ impl LegacySolverSerial {
 
 }
 
-impl FusionVisualizer for SolverSerial {
-    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
-        let mut value = self.primal_module.snapshot(abbrev);
-        snapshot_combine_values(&mut value, self.dual_module.snapshot(abbrev), abbrev);
-        value
-    }
-}
-
 pub trait PrimalDualSolver {
     fn clear(&mut self);
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
@@ -223,6 +215,16 @@ pub struct SolverSerial {
     subgraph_builder: SubGraphBuilder,
 }
 
+bind_trait_fusion_visualizer!(SolverSerial);
+impl FusionVisualizer for SolverSerial {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        let mut value = self.primal_module.snapshot(abbrev);
+        snapshot_combine_values(&mut value, self.dual_module.snapshot(abbrev), abbrev);
+        snapshot_combine_values(&mut value, self.interface_ptr.snapshot(abbrev), abbrev);
+        value
+    }
+}
+
 #[cfg(feature="python_binding")]
 bind_trait_primal_dual_solver!{SolverSerial}
 
@@ -286,6 +288,16 @@ pub struct SolverDualParallel {
     primal_module: PrimalModuleSerialPtr,
     interface_ptr: DualModuleInterfacePtr,
     subgraph_builder: SubGraphBuilder,
+}
+
+bind_trait_fusion_visualizer!(SolverDualParallel);
+impl FusionVisualizer for SolverDualParallel {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        let mut value = self.primal_module.snapshot(abbrev);
+        snapshot_combine_values(&mut value, self.dual_module.snapshot(abbrev), abbrev);
+        snapshot_combine_values(&mut value, self.interface_ptr.snapshot(abbrev), abbrev);
+        value
+    }
 }
 
 #[cfg(feature="python_binding")]
@@ -359,6 +371,15 @@ pub struct SolverParallel {
     dual_module: DualModuleParallel<DualModuleSerial>,
     primal_module: PrimalModuleParallel,
     subgraph_builder: SubGraphBuilder,
+}
+
+bind_trait_fusion_visualizer!(SolverParallel);
+impl FusionVisualizer for SolverParallel {
+    fn snapshot(&self, abbrev: bool) -> serde_json::Value {
+        let mut value = self.primal_module.snapshot(abbrev);
+        snapshot_combine_values(&mut value, self.dual_module.snapshot(abbrev), abbrev);
+        value
+    }
 }
 
 #[cfg(feature="python_binding")]
