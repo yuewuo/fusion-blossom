@@ -837,3 +837,8 @@ export async function nodejs_render_png() {  // works only in nodejs
     context.readPixels(0, 0, context.drawingBufferWidth, context.drawingBufferHeight, context.RGBA, context.UNSIGNED_BYTE, pixels)
     return pixels
 }
+
+// wait several Vue ticks to make sure all changes have been applied
+export async function wait_changes() {
+    for (let i=0; i<5; ++i) await Vue.nextTick()
+}

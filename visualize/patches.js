@@ -32,7 +32,7 @@ export async function visualize_paper_weighted_union_find_decoder() {
     gui3d.controller.edge_opacity.setValue(0.05)
     gui3d.controller.vertex_radius_scale.setValue(0.7)
     gui3d.controller.edge_radius_scale.setValue(0.7)
-    await Vue.nextTick()  // make sure all changes have been applied
+    await gui3d.wait_changes()  // make sure all changes have been applied
     // adjust camera location (use `camera.value.position`, `camera.value.quaternion` and `camera.value.zoom` to update it here)
     gui3d.camera.value.position.set(498.95430264554204, 226.03495620714534, 836.631820123962)
     gui3d.camera.value.lookAt(0, 0, 0)
