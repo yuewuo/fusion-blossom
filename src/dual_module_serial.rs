@@ -36,7 +36,7 @@ pub struct DualModuleSerial {
     pub owning_range: VertexRange,
     /// module information when used as a component in the partitioned dual module
     pub unit_module_info: Option<UnitModuleInfo>,
-    /// maintain an active list to optimize for average cases: most syndrome vertices have already been matched, and we only need to work on a few remained;
+    /// maintain an active list to optimize for average cases: most defect vertices have already been matched, and we only need to work on a few remained;
     /// note that this list may contain deleted node as well as duplicate nodes
     pub active_list: Vec<DualNodeInternalWeak>,
     /// helps to deduplicate [`DualModuleSerial::active_list`]

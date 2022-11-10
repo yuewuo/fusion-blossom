@@ -6,9 +6,21 @@ import fs from 'fs'
 import Jimp from 'jimp'
 
 
+/*
+Examples:
+
+node index.js
+node index.js 'http://localhost:8066/?filename=visualize_paper_weighted_union_find_decoder.json' 1024 1024
+node index.js 'http://localhost:8066/?filename=visualize_paper_weighted_union_find_decoder.json&patch=visualize_paper_weighted_union_find_decoder' 1024 1024
+node index.js 'http://localhost:8066/?filename=primal_module_serial_basic_4.json' 1024 1024
+node index.js 'http://localhost:8066/?filename=primal_module_serial_basic_4.json&snapshot_idx=16' 1024 1024
+node index.js 'http://localhost:8066/?filename=visualize_rough_idea_fusion_blossom.json&patch=visualize_rough_idea_fusion_blossom&snapshot_idx=2' 1024 1024
+
+ */
+
 // read link from command line
 const parameters = process.argv.slice(2)
-let link = "http://localhost:8066?filename=default.json"
+let link = "http://localhost:8066?filename=visualizer.json"
 if (parameters.length >= 1) {
     link = parameters[0]
 }
@@ -16,10 +28,14 @@ if (parameters.length >= 1) {
 export var mock_canvas_width = 1024
 export var mock_canvas_height = 1024
 if (parameters.length >= 2) {
-    mock_canvas_width = parameters[1]
+    mock_canvas_width = parseInt(parameters[1])
 }
 if (parameters.length >= 3) {
-    mock_canvas_height = parameters[2]
+    mock_canvas_height = parseInt(parameters[2])
+}
+export var mocker_default_filename = "rendered"
+if (parameters.length >= 4) {
+    mocker_default_filename = parameters[3]
 }
 console.log(`[render] ${link}`)
 
@@ -63,7 +79,10 @@ export function save_data_uri(data_uri, filename) {
     fs.writeFileSync(filename + '.' + ext, buffer)
 }
 
-export async function save_pixels(pixels, filename) {
+export async function save_pixels(pixels, filename=null) {
+    if (filename == null) {
+        filename = mocker_default_filename
+    }
     let img = await new Jimp(mock_canvas_width, mock_canvas_height)
     for (let j=0; j<mock_canvas_height; ++j) {
         for (let i=0; i<mock_canvas_width; ++i) {

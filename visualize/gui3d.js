@@ -1,17 +1,14 @@
 // 3d related apis
 
 import * as THREE from 'three'
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/controls/OrbitControls.js'
-import { ConvexGeometry } from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/geometries/ConvexGeometry.js'
-import Stats from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/libs/stats.module.js'
-import GUI from 'https://cdn.jsdelivr.net/npm/three@0.139.2/examples/jsm/libs/lil-gui.module.min.js'
-// import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js'
-// import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
-// import Stats from './node_modules/three/examples/jsm/libs/stats.module.js'
-// import GUI from './node_modules/three/examples/jsm/libs/lil-gui.module.min.js'
+import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js'
+import { ConvexGeometry } from './node_modules/three/examples/jsm/geometries/ConvexGeometry.js'
+import Stats from './node_modules/three/examples/jsm/libs/stats.module.js'
+import GUI from './node_modules/three/examples/jsm/libs/lil-gui.module.min.js'
 
 
 if (typeof window === 'undefined' || typeof document === 'undefined') {
+    global.THREE = THREE
     global.mocker = await import('./mocker.js')
 }
 
@@ -67,6 +64,7 @@ if (is_mock) {
 }
 
 export const scene = new THREE.Scene()
+scene.background = new THREE.Color( 0xffffff )  // for better image output
 scene.add( new THREE.AmbientLight( 0xffffff ) )
 window.scene = scene
 export const perspective_camera = new THREE.PerspectiveCamera( 75, sizes.canvas_width / sizes.canvas_height, 0.1, 10000 )
@@ -117,6 +115,7 @@ export function reset_camera_position(direction="top") {
         camera.position.x = (direction == "left" ? -distance : 0)
         camera.position.y = (direction == "top" ? distance : 0)
         camera.position.z = (direction == "front" ? distance : 0)
+        camera.lookAt(0, 0, 0)
     }
 }
 reset_camera_position()
@@ -603,6 +602,7 @@ watch(sizes, () => {  // move render configuration GUI to 3D canvas
     gui.domElement.style.right = 0
 }, { immediate: true })
 const conf = {
+    scene_background: scene.background,
     defect_vertex_color: defect_vertex_material.color,
     defect_vertex_opacity: defect_vertex_material.opacity,
     disabled_mirror_vertex_color: disabled_mirror_vertex_material.color,
@@ -631,9 +631,10 @@ const conf = {
     edge_radius_scale: edge_radius_scale.value,
 }
 const side_options = { "FrontSide": THREE.FrontSide, "BackSide": THREE.BackSide, "DoubleSide": THREE.DoubleSide } 
-const vertex_folder = gui.addFolder( 'vertex' )
 export const controller = {}
 window.controller = controller
+controller.scene_background = gui.addColor( conf, 'scene_background' ).onChange( function ( value ) { scene.background = value } )
+const vertex_folder = gui.addFolder( 'vertex' )
 controller.defect_vertex_color = vertex_folder.addColor( conf, 'defect_vertex_color' ).onChange( function ( value ) { defect_vertex_material.color = value } )
 controller.defect_vertex_opacity = vertex_folder.add( conf, 'defect_vertex_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_material.opacity = Number(value) } )
 controller.disabled_mirror_vertex_color = vertex_folder.addColor( conf, 'disabled_mirror_vertex_color' ).onChange( function ( value ) { disabled_mirror_vertex_material.color = value } )
@@ -826,7 +827,7 @@ export function download_png(data_url) {
 }
 window.download_png = download_png
 
-export async function nodejs_render_png(filename = "rendered") {  // works only in nodejs
+export async function nodejs_render_png() {  // works only in nodejs
     let context = webgl_renderer_context()
     var pixels = new Uint8Array(context.drawingBufferWidth * context.drawingBufferHeight * 4)
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, preserveDrawingBuffer: true, context })
@@ -835,4 +836,9 @@ export async function nodejs_render_png(filename = "rendered") {  // works only 
     renderer.render( scene, camera.value )
     context.readPixels(0, 0, context.drawingBufferWidth, context.drawingBufferHeight, context.RGBA, context.UNSIGNED_BYTE, pixels)
     return pixels
+}
+
+// wait several Vue ticks to make sure all changes have been applied
+export async function wait_changes() {
+    for (let i=0; i<5; ++i) await Vue.nextTick()
 }

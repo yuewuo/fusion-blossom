@@ -64,7 +64,7 @@ enum Commands {
         /// the configuration of the code builder
         #[clap(long, default_value_t = json!({}))]
         code_config: serde_json::Value,
-        /// logging to the default visualizer file at visualize/data/static.json
+        /// logging to the default visualizer file at visualize/data/visualizer.json
         #[clap(long, action)]
         enable_visualizer: bool,
         /// print syndrome patterns

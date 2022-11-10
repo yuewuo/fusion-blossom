@@ -1,5 +1,5 @@
-const d3 = window.d3
 const { ref, reactive, watch, computed } = Vue
+import * as gui3d from './gui3d.js'
 
 var primal_div_control = {
     chart: null,
@@ -10,6 +10,10 @@ const unmatch_width = 3
 
 export const show_primal = ref(false)
 export async function show_snapshot(snapshot_idx, fusion_data) {
+    if (gui3d.is_mock) {
+        return // skip primal plot in mock mode
+    }
+
     let chart = primal_div_control.chart
     console.assert(chart != null, "chart should not be null when calling `show_snapshot`")
 
@@ -112,6 +116,11 @@ export async function show_snapshot(snapshot_idx, fusion_data) {
 // it took me an hour to realize this has to be initialized AFTER all vue things have been updated;
 // otherwise it won't be able to dynamically update the variables
 export function initialize_primal_div() {
+    if (gui3d.is_mock) {
+        return // skip primal plot in mock mode
+    }
+
+    const d3 = window.d3
 
     const width = 580
     const height = width

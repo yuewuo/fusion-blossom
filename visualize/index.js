@@ -10,6 +10,7 @@ window.gui3d = gui3d
 
 const is_mock = typeof mockgl !== 'undefined'
 if (is_mock) {
+    global.gui3d = gui3d
     global.mocker = await import('./mocker.js')
 }
 
@@ -21,7 +22,7 @@ const { ref, reactive, watch, computed } = Vue
 
 // fetch fusion blossom runtime data
 const urlParams = new URLSearchParams(window.location.search)
-const filename = urlParams.get('filename') || "default.json"
+const filename = urlParams.get('filename') || "visualizer.json"
 
 export var fusion_data
 var patch_done = ref(false)
@@ -64,13 +65,19 @@ const App = {
     },
     async mounted() {
         gui3d.root.style.setProperty('--control-visibility', 'visible')
+        let response = null
         try {
-            let response = await fetch('./data/' + filename, { cache: 'no-cache', })
-            fusion_data = await response.json()
-            // console.log(fusion_data)
+            response = await fetch('./data/' + filename, { cache: 'no-cache', })
         } catch (e) {
             this.error_message = "fetch file error"
             throw e
+        }
+        if (response.ok || is_mock) {
+            fusion_data = await response.json()
+            // console.log(fusion_data)
+        } else {
+            this.error_message = `fetch file error ${response.status}: ${response.statusText}`
+            throw this.error_message
         }
         // hook primal div
         primal.initialize_primal_div()
@@ -145,7 +152,17 @@ const App = {
                 console.log(`running patch ${patch_name}`)
                 const patch_function = patches[patch_name]
                 await patch_function.bind(this)()
-                patch_done.value = true
+            }
+            const patch_url = urlParams.get('patch_url')
+            if (patch_url != null) {
+                this.warning_message = `patching from external file: ${patch_url}`
+                let patch_module = await import(patch_url)
+                if (patch_module.patch == null) {
+                    this.error_message = "invalid patch file: `patch` function not found"
+                    throw "patch file error"
+                }
+                await patch_module.patch.bind(this)()
+                this.warning_message = null
             }
             patch_done.value = true
         }, 100);
@@ -363,6 +380,7 @@ const App = {
         },
     },
 }
+
 if (!is_mock) {
     const app = Vue.createApp(App)
     app.use(Quasar)
@@ -370,13 +388,18 @@ if (!is_mock) {
 } else {
     global.Element = window.Element
     global.SVGElement = window.SVGElement  // https://github.com/jsdom/jsdom/issues/2734
+    App.template = "<div></div>"
     const app = Vue.createApp(App)
     window.app = app.mount("#app")
     while (!patch_done.value) {
         await sleep(50)
     }
+    for (let i=0; i<10; ++i) {
+        await sleep(10)
+        await Vue.nextTick()
+    }
     console.log("[rendering]")
     const pixels = await gui3d.nodejs_render_png()
     console.log("[saving]")
-    mocker.save_pixels(pixels, "rendered")
+    mocker.save_pixels(pixels)
 }

@@ -13,7 +13,7 @@ positions = code.get_positions()  # the positions of vertices in the 3D visualiz
 # randomly generate a syndrome according to the error model
 syndrome = code.generate_random_errors(seed=1000)
 with fb.PyMut(syndrome, "defect_vertices") as defect_vertices:
-    defect_vertices.append(0)  # you can modify the syndrome vertices
+    defect_vertices.append(0)  # you can modify the defect vertices
 print(syndrome)
 
 # visualizer (optional for debugging)

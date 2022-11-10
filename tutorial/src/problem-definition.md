@@ -19,15 +19,15 @@ A normal stabilizer measurement means trivial measurement result (+1) and a defe
 This can be easily extended to multiple rounds of measurement, where a normal stabilizer measurement means the same result as the previous round, and a defect stabilizer stabilizer measurement means different result from the previous round.
 
 The syndrome Graph \\( (V_S, E_S) \\) is generated from the decoding graph.
-In the syndrome graph, \\( V_S \subseteq V_D \\), where real vertices with normal measurement results are discarded, and only syndrome vertices and some virtual vertices are preserved.
-Syndrome graph first constructs a complete graph for the syndrome vertices, meaning there are edges between any pair of syndrome vertices.
+In the syndrome graph, \\( V_S \subseteq V_D \\), where real vertices with normal measurement results are discarded, and only defect vertices and some virtual vertices are preserved.
+Syndrome graph first constructs a complete graph for the defect vertices, meaning there are edges between any pair of defect vertices.
 The weight of each edge in the syndrome graph \\( e = \langle u_S, v_S \rangle \in E_S \\) is calculated by finding the minimum-weight path between \\( u_S, v_S \in V_D \\) in the decoding graph.
 Apart from this complete graph, each vertex also connects to a virtual vertex if there exists a path towards any virtual vertex.
 For simplicity each real vertex only connects to one nearest virtual vertex.
 
 
 - white circle: real vertex \\( v \in V_D, v \notin V_S \\), a normal stabilizer measurement
-- red circle: syndrome vertex \\( v \in V_D, v \in V_S \\), a defect stabilizer measurement
+- red circle: defect vertex \\( v \in V_D, v \in V_S \\), a defect stabilizer measurement
 - yellow circle: virtual vertex  \\( v \in V_D \\), non-existing stabilizer that is only used to support physical errors on the boundary of an open-boundary QEC code
 - grey line: decoding graph edge \\( e \in E_D \\)
 - pink line: syndrome graph edge \\( e \in E_S \\)
@@ -49,8 +49,8 @@ On the decoding graph, however, it's no longer a perfect matching.
 We name it as a Minimum-Weight Parity Subgraph (MWPS) problem.
 The syndrome pattern essentially sets a parity constraint on the result subgraph (or subset of edges \\( M_D \subseteq E_D \\)): 
 
-- Each syndrome vertex is incident by edges in \\( M_D \\) with odd times (odd parity)
 - Each real vertex is incident by edges in \\( M_D \\) with even times (even parity)
+- Each defect vertex is incident by edges in \\( M_D \\) with odd times (odd parity)
 - Each virtual vertex can be incident by arbitrary times (arbitrary parity)
 
 <div style="display: flex; justify-content: center;">
@@ -87,7 +87,7 @@ mwpm = solver.perfect_matching()  # traditional MWPM decoder output
 ## How MWPM decoder works?
 
 MWPM decoder essentially tries to find the most likely error pattern that generates a syndrome \\( S \\).
-Such an error pattern must satisfy the parity constrains to generate the given syndrome \\( S \\), either in the decoding graph (each syndrome vertex is incident by odd times) or in the syndrome graph (each vertex belongs to exactly one matching).
+Such an error pattern must satisfy the parity constrains to generate the given syndrome \\( S \\), either in the decoding graph (each defect vertex is incident by odd times) or in the syndrome graph (each vertex belongs to exactly one matching).
 
 Suppose the aggregated probability for each edge is \\( p_e \\), independent from all other edges.
 An error pattern corresponds to a subset of edges \\( E \\), and the probability of this error pattern is
@@ -100,4 +100,4 @@ The last term \\( \prod_{e}{(1-p_e)} \\) is a constant, so maximizing the probab
 
 Given a reasonable error rate \\( p_e \le \frac{1}{2} \\), we have \\( \frac{1-p_e}{p_e} \ge 1 \\) and \\( \ln \frac{1-p_e}{p_e} \ge 0 \\). We assign weight to each edge as \\( w_e = \ln \frac{1 - p_e}{p_e} \\), a non-negative number. Thus, maximizing the probability of an error pattern is equivalent to minimizing the value while satisfying the parity constrains.
 
-\\[ \min_{E} \sum_{e \in E} w_e = \min_{E} \sum_{e \in E}{\ln \frac{1-p_e}{p_e}} \ \ \textrm{, subject to}\ S(E) = S \\]
+\\[ \arg \min_{E} \sum_{e \in E} w_e = \arg \min_{E} \sum_{e \in E}{\ln \frac{1-p_e}{p_e}} \ \ \textrm{, subject to}\ S(E) = S \\]

@@ -103,8 +103,8 @@ impl SyndromePattern {
 pub struct PartitionedSyndromePattern<'a> {
     /// the original syndrome pattern to be partitioned
     pub syndrome_pattern: &'a SyndromePattern,
-    /// the syndrome range of this partition: it must be continuous if the syndrome vertices are ordered
-    pub whole_syndrome_range: SyndromeRange,
+    /// the defect range of this partition: it must be continuous if the defect vertices are ordered
+    pub whole_defect_range: SyndromeRange,
 }
 
 impl<'a> PartitionedSyndromePattern<'a> {
@@ -115,7 +115,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
         a single range simply because the partition is vertex-based. need more consideration");
         Self {
             syndrome_pattern,
-            whole_syndrome_range: SyndromeRange::new(0, syndrome_pattern.defect_vertices.len() as SyndromeIndex),
+            whole_defect_range: SyndromeRange::new(0, syndrome_pattern.defect_vertices.len() as SyndromeIndex),
         }
     }
 
@@ -373,10 +373,10 @@ impl<'a> PartitionedSyndromePattern<'a> {
 
     /// partition the syndrome pattern into 2 partitioned syndrome pattern and my whole range
     pub fn partition(&self, partition_unit_info: &PartitionUnitInfo) -> (Self, (Self, Self)) {
-        // first binary search the start of owning syndrome vertices
+        // first binary search the start of owning defect vertices
         let owning_start_index = {
-            let mut left_index = self.whole_syndrome_range.start();
-            let mut right_index = self.whole_syndrome_range.end();
+            let mut left_index = self.whole_defect_range.start();
+            let mut right_index = self.whole_defect_range.end();
             while left_index != right_index {
                 let mid_index = (left_index + right_index) / 2;
                 let mid_defect_vertex = self.syndrome_pattern.defect_vertices[mid_index as usize];
@@ -388,10 +388,10 @@ impl<'a> PartitionedSyndromePattern<'a> {
             }
             left_index
         };
-        // second binary search the end of owning syndrome vertices
+        // second binary search the end of owning defect vertices
         let owning_end_index = {
-            let mut left_index = self.whole_syndrome_range.start();
-            let mut right_index = self.whole_syndrome_range.end();
+            let mut left_index = self.whole_defect_range.start();
+            let mut right_index = self.whole_defect_range.end();
             while left_index != right_index {
                 let mid_index = (left_index + right_index) / 2;
                 let mid_defect_vertex = self.syndrome_pattern.defect_vertices[mid_index as usize];
@@ -405,19 +405,19 @@ impl<'a> PartitionedSyndromePattern<'a> {
         };
         (Self {
             syndrome_pattern: self.syndrome_pattern,
-            whole_syndrome_range: SyndromeRange::new(owning_start_index, owning_end_index),
+            whole_defect_range: SyndromeRange::new(owning_start_index, owning_end_index),
         }, (Self {
             syndrome_pattern: self.syndrome_pattern,
-            whole_syndrome_range: SyndromeRange::new(self.whole_syndrome_range.start(), owning_start_index),
+            whole_defect_range: SyndromeRange::new(self.whole_defect_range.start(), owning_start_index),
         }, Self {
             syndrome_pattern: self.syndrome_pattern,
-            whole_syndrome_range: SyndromeRange::new(owning_end_index, self.whole_syndrome_range.end()),
+            whole_defect_range: SyndromeRange::new(owning_end_index, self.whole_defect_range.end()),
         }))
     }
 
     pub fn expand(&self) -> SyndromePattern {
-        let mut defect_vertices = Vec::with_capacity(self.whole_syndrome_range.len());
-        for defect_index in self.whole_syndrome_range.iter() {
+        let mut defect_vertices = Vec::with_capacity(self.whole_defect_range.len());
+        for defect_index in self.whole_defect_range.iter() {
             defect_vertices.push(self.syndrome_pattern.defect_vertices[defect_index as usize]);
         }
         SyndromePattern::new(defect_vertices, vec![])
@@ -488,8 +488,8 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<Ver
     old_to_new
 }
 
-/// translate syndrome vertices into the current new index given reordered_vertices
-pub fn translated_syndrome_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
+/// translate defect vertices into the current new index given reordered_vertices
+pub fn translated_defect_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
     old_defect_vertices.iter().map(|old_index| {
         old_to_new[*old_index as usize].unwrap()
@@ -809,12 +809,12 @@ pub mod tests {
             (vec![10, 11, 12, 71, 72, 73, 83, 84, 85, 111], SyndromeRange::new(4, 7)),
             (vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111], SyndromeRange::new(4, 6)),
         ];
-        for (defect_vertices, expected_syndrome_range) in tests.into_iter() {
+        for (defect_vertices, expected_defect_range) in tests.into_iter() {
             let syndrome_pattern = SyndromePattern::new(defect_vertices, vec![]);
             let partitioned_syndrome_pattern = PartitionedSyndromePattern::new(&syndrome_pattern);
             let (owned_partitioned, (_left_partitioned, _right_partitioned)) = partitioned_syndrome_pattern.partition(&partition_info.units[2]);
-            println!("syndrome_range: {:?}", owned_partitioned.whole_syndrome_range);
-            assert_eq!(owned_partitioned.whole_syndrome_range, expected_syndrome_range);
+            println!("defect_range: {:?}", owned_partitioned.whole_defect_range);
+            assert_eq!(owned_partitioned.whole_defect_range, expected_defect_range);
         }
     }
 

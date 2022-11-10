@@ -5,7 +5,7 @@
 ## Key Features
 
 - **Correctness**: This is an exact MWPM solver, verified against the [Blossom V library](https://pub.ist.ac.at/~vnk/software.html) with millions of randomized test cases.
-- **Linear Complexity**: The decoding time is roughly \\( O(N) \\) given small physical error rate, proportional to the number of syndrome vertices \\( N \\).
+- **Linear Complexity**: The decoding time is roughly \\( O(N) \\) given small physical error rate, proportional to the number of defect vertices \\( N \\).
 - **Parallelism**: A single MWPM decoding problem can be partitioned and solved in parallel, then *fused* together to find an **exact** global MWPM solution.
 - **Simple Interface**: The graph problem is abstracted and optimized for QEC decoders.
 

@@ -55,6 +55,9 @@ pub struct Visualizer {
     file: Option<File>,
     /// if waiting for the first snapshot
     empty_snapshot: bool,
+    /// names of the snapshots
+    #[cfg_attr(feature = "python_binding", pyo3(get))]
+    pub snapshots: Vec<String>,
 }
 
 pub fn snapshot_fix_missing_fields(value: &mut serde_json::Value, abbrev: bool) {
@@ -278,6 +281,7 @@ impl Visualizer {
         Ok(Self {
             file,
             empty_snapshot: true,
+            snapshots: vec![],
         })
     }
 
@@ -287,6 +291,7 @@ impl Visualizer {
 
     pub fn incremental_save(&mut self, name: String, value: serde_json::Value) -> std::io::Result<()> {
         if let Some(file) = self.file.as_mut() {
+            self.snapshots.push(name.clone());
             file.seek(SeekFrom::End(-2))?;  // move the cursor before the ending ]}
             if !self.empty_snapshot {
                 file.write_all(b",")?;

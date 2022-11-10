@@ -1,0 +1,6 @@
+*.svg
+*.icon
+
+local_renderer
+rendered.png
+*.json

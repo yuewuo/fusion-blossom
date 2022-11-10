@@ -214,17 +214,18 @@ macro_rules! include_visualize_file {
     ($mapping:ident, $filepath:expr) => {
         $mapping.insert($filepath.to_string(), include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/", $filepath)).to_string());
     };
+    ($mapping:ident, $filepath:expr, $($other_filepath:expr),+) => {
+        include_visualize_file!($mapping, $filepath);
+        include_visualize_file!($mapping, $($other_filepath),+);
+    };
 }
+
 #[cfg(feature="python_binding")]
 fn generate_visualizer_website(py: Python<'_>) -> &pyo3::types::PyDict {
     use pyo3::types::IntoPyDict;
     let mut mapping = std::collections::BTreeMap::<String, String>::new();
-    include_visualize_file!(mapping, "gui3d.js");
-    include_visualize_file!(mapping, "index.js");
-    include_visualize_file!(mapping, "patches.js");
-    include_visualize_file!(mapping, "primal.js");
-    include_visualize_file!(mapping, "cmd.js");
-    include_visualize_file!(mapping, "index.html");
-    include_visualize_file!(mapping, "partition-profile.html");
+    include_visualize_file!(mapping, "gui3d.js", "index.js", "patches.js", "primal.js", "cmd.js", "mocker.js");
+    include_visualize_file!(mapping, "index.html", "partition-profile.html", "icon.svg");
+    include_visualize_file!(mapping, "package.json", "package-lock.json");
     mapping.into_py_dict(py)
 }

@@ -27,7 +27,7 @@ Current available QEC codes and noise models are:
 
 The example QEC code object can simulate random errors, outputs a syndrome pattern.
 You can provide a seed for the internal pseudo random number generator, otherwise it will use system-level random number for the seed.
-A syndrome pattern includes syndrome vertices (non-trivial stabilizer measurements) and also erasures (known-position errors, given by edge indices).
+A syndrome pattern includes defect vertices (non-trivial stabilizer measurements) and also erasures (known-position errors, given by edge indices).
 Please check [Construct Syndrome Chapter](./construct-syndrome.md) for more details of constructing your own syndrome.
 
 ```python
@@ -113,7 +113,7 @@ print(f"             = vertices: {virtual_matching_vertices}")
 
 ## Clear Solver
 
-The solver is optimized to be repeatedly used, because the object construction is very expensive compared to solving the MWPS problem given usually a few syndrome vertices.
+The solver is optimized to be repeatedly used, because the object construction is very expensive compared to solving the MWPS problem given usually a few defect vertices.
 The clear operation is a constant time operation.
 
 ```python
