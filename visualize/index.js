@@ -21,7 +21,7 @@ const { ref, reactive, watch, computed } = Vue
 
 // fetch fusion blossom runtime data
 const urlParams = new URLSearchParams(window.location.search)
-const filename = urlParams.get('filename') || "default.json"
+const filename = urlParams.get('filename') || "static.json"
 
 export var fusion_data
 var patch_done = ref(false)
