@@ -273,7 +273,8 @@ impl Visualizer {
         if let Some(file) = file.as_mut() {
             file.set_len(0)?;  // truncate the file
             file.seek(SeekFrom::Start(0))?;  // move the cursor to the front
-            file.write_all(b"{\"positions\":")?;
+            file.write_all(format!("{{\"format\":\"fusion_blossom\",\"version\":\"{}\"", env!("CARGO_PKG_VERSION")).as_bytes())?;
+            file.write_all(b",\"positions\":")?;
             file.write_all(json!(positions).to_string().as_bytes())?;
             file.write_all(b",\"snapshots\":[]}")?;
             file.sync_all()?;
