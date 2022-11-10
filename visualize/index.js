@@ -389,5 +389,5 @@ if (!is_mock) {
     console.log("[rendering]")
     const pixels = await gui3d.nodejs_render_png()
     console.log("[saving]")
-    mocker.save_pixels(pixels, "rendered")
+    mocker.save_pixels(pixels)
 }

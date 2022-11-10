@@ -27,10 +27,14 @@ if (parameters.length >= 1) {
 export var mock_canvas_width = 1024
 export var mock_canvas_height = 1024
 if (parameters.length >= 2) {
-    mock_canvas_width = parameters[1]
+    mock_canvas_width = parseInt(parameters[1])
 }
 if (parameters.length >= 3) {
-    mock_canvas_height = parameters[2]
+    mock_canvas_height = parseInt(parameters[2])
+}
+export var mocker_default_filename = "rendered"
+if (parameters.length >= 4) {
+    mocker_default_filename = parameters[3]
 }
 console.log(`[render] ${link}`)
 
@@ -74,7 +78,10 @@ export function save_data_uri(data_uri, filename) {
     fs.writeFileSync(filename + '.' + ext, buffer)
 }
 
-export async function save_pixels(pixels, filename) {
+export async function save_pixels(pixels, filename=null) {
+    if (filename == null) {
+        filename = mocker_default_filename
+    }
     let img = await new Jimp(mock_canvas_width, mock_canvas_height)
     for (let j=0; j<mock_canvas_height; ++j) {
         for (let i=0; i<mock_canvas_width; ++i) {
