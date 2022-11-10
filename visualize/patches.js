@@ -1,6 +1,5 @@
 import * as gui3d from './gui3d.js'
 import * as THREE from 'three'
-import * as index from './index.js'
 const { ref, reactive, watch, computed } = Vue
 
 // https://www.npmjs.com/package/base64-arraybuffer
@@ -152,7 +151,7 @@ export async function visualize_paper_weighted_union_find_decoder() {
 }
 
 function retain_only_indices_smaller_than(snapshot_select, retain_index) {
-    const snapshot = index.fusion_data.snapshots[snapshot_select][1]
+    const snapshot = gui3d.active_fusion_data.value.snapshots[snapshot_select][1]
     let vertices = []
     for (let [i, vertex] of snapshot.vertices.entries()) {
         if (i < retain_index) {
@@ -187,17 +186,17 @@ function retain_only_indices_smaller_than(snapshot_select, retain_index) {
 
 function shift_all_positions_upward(shift_t = null) {
     if (shift_t == null) {
-        shift_t = index.fusion_data.positions[0].t
+        shift_t = gui3d.active_fusion_data.value.positions[0].t
     }
-    for (let position of index.fusion_data.positions) {
+    for (let position of gui3d.active_fusion_data.value.positions) {
         position.t -= shift_t
     }
 }
 
 export async function visualize_rough_idea_fusion_blossom() {
     // select changed
-    watch(index.snapshot_select, () => {
-        // console.log(index.snapshot_select.value)
+    watch(gui3d.active_snapshot_idx, () => {
+        // console.log(gui3d.active_snapshot_idx.value)
     })
     // shift all positions upwards so that the lowest t = 0
     shift_all_positions_upward()
@@ -213,6 +212,6 @@ export async function visualize_rough_idea_fusion_blossom() {
     for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 7)
     for (const _ of Array(1).keys()) retain_only_indices_smaller_than(layer_counter++, layer_amount * 8)
     // updated the fusion data, redraw
-    window.app.show_snapshot(index.snapshot_select.value)
+    this.show_snapshot(gui3d.active_snapshot_idx.value)
     gui3d.refresh_snapshot_data()
 }

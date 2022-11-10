@@ -14,12 +14,13 @@ node index.js 'http://localhost:8066/?filename=visualize_paper_weighted_union_fi
 node index.js 'http://localhost:8066/?filename=visualize_paper_weighted_union_find_decoder.json&patch=visualize_paper_weighted_union_find_decoder' 1024 1024
 node index.js 'http://localhost:8066/?filename=primal_module_serial_basic_4.json' 1024 1024
 node index.js 'http://localhost:8066/?filename=primal_module_serial_basic_4.json&snapshot_idx=16' 1024 1024
+node index.js 'http://localhost:8066/?filename=visualize_rough_idea_fusion_blossom.json&patch=visualize_rough_idea_fusion_blossom&snapshot_idx=2' 1024 1024
 
  */
 
 // read link from command line
 const parameters = process.argv.slice(2)
-let link = "http://localhost:8066?filename=static.json"
+let link = "http://localhost:8066?filename=visualizer.json"
 if (parameters.length >= 1) {
     link = parameters[0]
 }

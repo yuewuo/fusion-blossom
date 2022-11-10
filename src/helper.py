@@ -73,7 +73,7 @@ def peek_code(code, host='localhost', port=51667, data_folder=".", open_browser=
     solver.perfect_matching(visualizer)
     fb.helper.open_visualizer(visualize_filename, host=host, port=port, data_folder=data_folder, open_browser=open_browser)
 
-def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_to_stdout=False, cwd=None):
+def run_command_get_stdout(command, no_stdout=True, use_tmp_out=False, stderr_to_stdout=False, cwd=None):
     env = os.environ.copy()
     stdout = subprocess.PIPE
     if use_tmp_out:
@@ -98,7 +98,9 @@ render a visualizer image just like a browser does, but locally and save to file
 note that we'll run node.js in `renderer_folder`, which generates a lot of files in `renderer_folder`/node_modules.
 this is necessary because some dependencies require local environment to compile native code.
 """
-def local_render_visualizer(filename, image_filename="rendered", renderer_folder="./local_renderer", width=1024, height=1024, data_folder=".", snapshot_idx=0):
+def local_render_visualizer(
+        filename, image_filename="rendered", renderer_folder="./local_renderer", width=1024, height=1024
+        , data_folder=".", snapshot_idx=0, patch_script=None):
     if not os.path.exists(renderer_folder):
         os.makedirs(renderer_folder)
     global visualizer_website
@@ -109,13 +111,18 @@ def local_render_visualizer(filename, image_filename="rendered", renderer_folder
             f.write(visualizer_website[website_filename])
     if not os.path.exists(os.path.join(renderer_folder, "node_modules")):
         run_command_get_stdout(["npm", "install"], cwd=renderer_folder)
+    if patch_script is not None:
+        patch_filename = f"{filename}.patch.js"
+        with open(os.path.join(renderer_folder, patch_filename), "w", encoding="utf8") as f:
+            f.write(patch_script)
     renderer_data_folder = os.path.join(renderer_folder, "data")
     if not os.path.exists(renderer_data_folder):
         os.makedirs(renderer_data_folder)
     shutil.copy2(os.path.join(data_folder, filename), renderer_data_folder)
     domain = "http://localhost"  # doesn't matter, won't use in the local renderer
-    commands = ["node", "index.js", f"{domain}?filename={filename}&snapshot_idx={snapshot_idx}", f"{width}", f"{height}", image_filename]
+    url = f"{domain}?filename={filename}&snapshot_idx={snapshot_idx}"
+    if patch_script is not None:
+        url += f"&patch_url=./{patch_filename}"
+    commands = ["node", "index.js", url, f"{width}", f"{height}", image_filename]
     print(f"[run] {commands}")
     run_command_get_stdout(commands, cwd=renderer_folder)
-    print(renderer_folder)
-    print(image_filename)

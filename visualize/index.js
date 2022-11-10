@@ -10,6 +10,7 @@ window.gui3d = gui3d
 
 const is_mock = typeof mockgl !== 'undefined'
 if (is_mock) {
+    global.gui3d = gui3d
     global.mocker = await import('./mocker.js')
 }
 
@@ -21,7 +22,7 @@ const { ref, reactive, watch, computed } = Vue
 
 // fetch fusion blossom runtime data
 const urlParams = new URLSearchParams(window.location.search)
-const filename = urlParams.get('filename') || "static.json"
+const filename = urlParams.get('filename') || "visualizer.json"
 
 export var fusion_data
 var patch_done = ref(false)
@@ -151,7 +152,17 @@ const App = {
                 console.log(`running patch ${patch_name}`)
                 const patch_function = patches[patch_name]
                 await patch_function.bind(this)()
-                patch_done.value = true
+            }
+            const patch_url = urlParams.get('patch_url')
+            if (patch_url != null) {
+                this.warning_message = `patching from external file: ${patch_url}`
+                let patch_module = await import(patch_url)
+                if (patch_module.patch == null) {
+                    this.error_message = "invalid patch file: `patch` function not found"
+                    throw "patch file error"
+                }
+                await patch_module.patch.bind(this)()
+                this.warning_message = null
             }
             patch_done.value = true
         }, 100);
@@ -369,6 +380,7 @@ const App = {
         },
     },
 }
+
 if (!is_mock) {
     const app = Vue.createApp(App)
     app.use(Quasar)
