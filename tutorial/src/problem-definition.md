@@ -78,8 +78,8 @@ solver.solve(syndrome)
 mwps = solver.subgraph()  # preferred for simplicity
 
 # mwpm: {
-#     peer_matchings: Vec<(SyndromeIndex, SyndromeIndex)>,
-#     virtual_matchings: Vec<(SyndromeIndex, VertexIndex)>,
+#     peer_matchings: Vec<(DefectIndex, DefectIndex)>,
+#     virtual_matchings: Vec<(DefectIndex, VertexIndex)>,
 # }
 mwpm = solver.perfect_matching()  # traditional MWPM decoder output
 ```

@@ -87,10 +87,10 @@ An example output is: `Minimum Weight Parity Subgraph (MWPS): [14, 24, 26, 34, 6
 For a traditional decoder implementation, it may want to take perfect matching as input.
 We also provide a method to get the minimum-weight perfect matching, grouped into two parts:
 
-- `peer_matchings: Vec<(SyndromeIndex, SyndromeIndex)>`: list of matched syndrome pairs
-- `virtual_matchings: Vec<SyndromeIndex, VertexIndex>`: list of syndrome matched to virtual vertices.
+- `peer_matchings: Vec<(DefectIndex, DefectIndex)>`: list of matched syndrome pairs
+- `virtual_matchings: Vec<DefectIndex, VertexIndex>`: list of syndrome matched to virtual vertices.
 
-Note that type `SyndromeIndex` means the index applies to the syndrome list (usually used in a traditional decoder implementation).
+Note that type `DefectIndex` means the index applies to the syndrome list (usually used in a traditional decoder implementation).
 In order to get the matched syndrome vertex indices, simply use the `syndrome.defect_vertices` list.
 
 ```python

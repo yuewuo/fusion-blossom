@@ -707,9 +707,9 @@ mod tests {
         //                        0   1   2   3   4   5   6   7   8    9
         //                        A  vA   B  vB   C  vC   D  vD   E   vE
         let kept_vertices = vec![39, 47, 52, 59, 63, 71, 90, 94, 100, 107];  // including some virtual vertices
-        let mut old_to_new = std::collections::BTreeMap::<SyndromeIndex, SyndromeIndex>::new();
+        let mut old_to_new = std::collections::BTreeMap::<DefectIndex, DefectIndex>::new();
         for (new_index, defect_vertex) in kept_vertices.iter().enumerate() {
-            old_to_new.insert(*defect_vertex, new_index as SyndromeIndex);
+            old_to_new.insert(*defect_vertex, new_index as DefectIndex);
         }
         println!("{old_to_new:?}");
         let d = 11;

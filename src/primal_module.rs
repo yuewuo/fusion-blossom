@@ -265,7 +265,7 @@ impl PerfectMatching {
     }
 
     /// this interface is not very optimized, but is compatible with blossom V algorithm's result
-    pub fn legacy_get_mwpm_result(&self, defect_vertices: Vec<VertexIndex>) -> Vec<SyndromeIndex> {
+    pub fn legacy_get_mwpm_result(&self, defect_vertices: Vec<VertexIndex>) -> Vec<DefectIndex> {
         let mut peer_matching_maps = BTreeMap::<VertexIndex, VertexIndex>::new();
         for (ptr_1, ptr_2) in self.peer_matchings.iter() {
             let a_vid = {

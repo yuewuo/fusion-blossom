@@ -26,16 +26,16 @@ cfg_if::cfg_if! {
         pub type EdgeIndex = u32;
         pub type VertexIndex = u32;  // the vertex index in the decoding graph
         pub type NodeIndex = VertexIndex;
-        pub type SyndromeIndex = VertexIndex;
-        pub type VertexNodeIndex = VertexIndex;  // must be same as VertexIndex, NodeIndex, SyndromeIndex
+        pub type DefectIndex = VertexIndex;
+        pub type VertexNodeIndex = VertexIndex;  // must be same as VertexIndex, NodeIndex, DefectIndex
         pub type VertexNum = VertexIndex;
         pub type NodeNum = VertexIndex;
     } else {
         pub type EdgeIndex = usize;
         pub type VertexIndex = usize;
         pub type NodeIndex = VertexIndex;
-        pub type SyndromeIndex = VertexIndex;
-        pub type VertexNodeIndex = VertexIndex;  // must be same as VertexIndex, NodeIndex, SyndromeIndex
+        pub type DefectIndex = VertexIndex;
+        pub type VertexNodeIndex = VertexIndex;  // must be same as VertexIndex, NodeIndex, DefectIndex
         pub type VertexNum = VertexIndex;
         pub type NodeNum = VertexIndex;
     }
@@ -104,7 +104,7 @@ pub struct PartitionedSyndromePattern<'a> {
     /// the original syndrome pattern to be partitioned
     pub syndrome_pattern: &'a SyndromePattern,
     /// the defect range of this partition: it must be continuous if the defect vertices are ordered
-    pub whole_defect_range: SyndromeRange,
+    pub whole_defect_range: DefectRange,
 }
 
 impl<'a> PartitionedSyndromePattern<'a> {
@@ -115,7 +115,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
         a single range simply because the partition is vertex-based. need more consideration");
         Self {
             syndrome_pattern,
-            whole_defect_range: SyndromeRange::new(0, syndrome_pattern.defect_vertices.len() as SyndromeIndex),
+            whole_defect_range: DefectRange::new(0, syndrome_pattern.defect_vertices.len() as DefectIndex),
         }
     }
 
@@ -132,7 +132,7 @@ pub struct IndexRange {
 // just to distinguish them in code, essentially nothing different
 pub type VertexRange = IndexRange;
 pub type NodeRange = IndexRange;
-pub type SyndromeRange = IndexRange;
+pub type DefectRange = IndexRange;
 
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
@@ -405,13 +405,13 @@ impl<'a> PartitionedSyndromePattern<'a> {
         };
         (Self {
             syndrome_pattern: self.syndrome_pattern,
-            whole_defect_range: SyndromeRange::new(owning_start_index, owning_end_index),
+            whole_defect_range: DefectRange::new(owning_start_index, owning_end_index),
         }, (Self {
             syndrome_pattern: self.syndrome_pattern,
-            whole_defect_range: SyndromeRange::new(self.whole_defect_range.start(), owning_start_index),
+            whole_defect_range: DefectRange::new(self.whole_defect_range.start(), owning_start_index),
         }, Self {
             syndrome_pattern: self.syndrome_pattern,
-            whole_defect_range: SyndromeRange::new(owning_end_index, self.whole_defect_range.end()),
+            whole_defect_range: DefectRange::new(owning_end_index, self.whole_defect_range.end()),
         }))
     }
 
@@ -782,7 +782,8 @@ pub(crate) fn register(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     use crate::pyo3::PyTypeInfo;
     // m.add_class::<IndexRange>()?;
     m.add("VertexRange", VertexRange::type_object(py))?;
-    m.add("SyndromeRange", SyndromeRange::type_object(py))?;
+    m.add("DefectRange", DefectRange::type_object(py))?;
+    m.add("SyndromeRange", DefectRange::type_object(py))?;  // backward compatibility
     m.add("NodeRange", NodeRange::type_object(py))?;
     Ok(())
 }
@@ -804,10 +805,10 @@ pub mod tests {
         ];
         let partition_info = partition_config.info();
         let tests = vec![
-            (vec![10, 11, 12, 71, 72, 73, 84, 85, 111], SyndromeRange::new(4, 6)),
-            (vec![10, 11, 12, 13, 71, 72, 73, 84, 85, 111], SyndromeRange::new(5, 7)),
-            (vec![10, 11, 12, 71, 72, 73, 83, 84, 85, 111], SyndromeRange::new(4, 7)),
-            (vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111], SyndromeRange::new(4, 6)),
+            (vec![10, 11, 12, 71, 72, 73, 84, 85, 111], DefectRange::new(4, 6)),
+            (vec![10, 11, 12, 13, 71, 72, 73, 84, 85, 111], DefectRange::new(5, 7)),
+            (vec![10, 11, 12, 71, 72, 73, 83, 84, 85, 111], DefectRange::new(4, 7)),
+            (vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111], DefectRange::new(4, 6)),
         ];
         for (defect_vertices, expected_defect_range) in tests.into_iter() {
             let syndrome_pattern = SyndromePattern::new(defect_vertices, vec![]);

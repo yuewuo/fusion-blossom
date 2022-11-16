@@ -26,9 +26,9 @@ solver = fb.SolverSerial(initializer)
 solver.solve(syndrome, visualizer)  # enable visualizer for debugging
 perfect_matching = solver.perfect_matching()
 print(f"\n\nMinimum Weight Perfect Matching (MWPM):")
-print(f"    - peer_matchings: {perfect_matching.peer_matchings}")  # Vec<(SyndromeIndex, SyndromeIndex)>
+print(f"    - peer_matchings: {perfect_matching.peer_matchings}")  # Vec<(DefectIndex, DefectIndex)>
 print(f"          = vertices: {[(defect_vertices[a], defect_vertices[b]) for a, b in perfect_matching.peer_matchings]}")
-print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")  # Vec<(SyndromeIndex, VertexIndex)>
+print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")  # Vec<(DefectIndex, VertexIndex)>
 print(f"             = vertices: {[(defect_vertices[a], b) for a, b in perfect_matching.virtual_matchings]}")
 subgraph = solver.subgraph(visualizer)
 print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}\n\n")  # Vec<EdgeIndex>
