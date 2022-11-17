@@ -10,7 +10,7 @@ code = fb.CodeCapacityPlanarCode(d=11, p=0.05, max_half_weight=500)
 initializer = code.get_initializer()  # the decoding graph structure (you can easily construct your own)
 positions = code.get_positions()  # the positions of vertices in the 3D visualizer, optional
 
-# randomly generate a syndrome according to the error model
+# randomly generate a syndrome according to the noise model
 syndrome = code.generate_random_errors(seed=1000)
 with fb.PyMut(syndrome, "defect_vertices") as defect_vertices:
     defect_vertices.append(0)  # you can modify the defect vertices

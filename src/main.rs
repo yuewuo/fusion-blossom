@@ -163,13 +163,13 @@ enum TestCommands {
 pub enum ExampleCodeType {
     /// quantum repetition code with perfect stabilizer measurement
     CodeCapacityRepetitionCode,
-    /// quantum repetition code with phenomenological error model
+    /// quantum repetition code with phenomenological noise model
     PhenomenologicalRepetitionCode,
     /// quantum repetition code with circuit-level noise model
     CircuitLevelRepetitionCode,
     /// planar surface code with perfect stabilizer measurement
     CodeCapacityPlanarCode,
-    /// planar surface code with phenomenological error model
+    /// planar surface code with phenomenological noise model
     PhenomenologicalPlanarCode,
     /// parallel version
     PhenomenologicalPlanarCodeParallel,

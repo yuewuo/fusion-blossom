@@ -1,8 +1,8 @@
 //! Example Decoding
 //! 
 //! This module contains several abstract decoding graph and it's randomized simulator utilities.
-//! This helps to debug, but it doesn't corresponds to real error model, nor it's capable of simulating circuit-level noise model.
-//! For complex error model and simulator functionality, please see <https://github.com/yuewuo/QEC-Playground>
+//! This helps to debug, but it doesn't corresponds to real noise model, nor it's capable of simulating circuit-level noise model.
+//! For complex noise model and simulator functionality, please see <https://github.com/yuewuo/QEC-Playground>
 //! 
 //! Note that these examples are not optimized for cache coherency for simplicity.
 //! To maximize code efficiency, user should design how to group vertices such that memory coherency is preserved for arbitrary large code distance.
