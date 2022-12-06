@@ -27,6 +27,10 @@ extern crate rand;
 extern crate core_affinity;
 #[cfg(feature="python_binding")]
 extern crate pyo3;
+#[cfg(feature="distributed")]
+extern crate mpi;
+extern crate clap;
+extern crate pbr;
 
 pub mod blossom_v;
 pub mod util;
@@ -43,8 +47,11 @@ pub mod dual_module_parallel;
 pub mod primal_module_parallel;
 pub mod example_partition;
 pub mod pointers;
+pub mod cli;
 #[cfg(feature="python_binding")]
 use pyo3::prelude::*;
+#[cfg(feature="distributed")]
+pub mod primal_module_distributed;
 
 use util::*;
 use complete_graph::*;
