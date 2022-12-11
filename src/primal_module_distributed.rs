@@ -10,9 +10,14 @@
 //!
 
 use crate::mpi;
-use crate::mpi::traits::*;
+use mpi::traits::*;
+use mpi::environment::Universe;
+use parking_lot::RwLock;
 
-
+lazy_static! {
+    /// This is an example for using doc comment attributes
+    pub static ref UNIVERSE: RwLock<Option<Universe>> = RwLock::new(None);
+}
 
 #[cfg(test)]
 pub mod tests {

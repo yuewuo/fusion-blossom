@@ -305,7 +305,8 @@ impl Cli {
                         let config = distributed_config.as_object_mut().expect("distributed_config must be an object");
                         // config.remove("some_key").map(|value| some_key = value.as_f64().expect("f64"));
                         if !config.is_empty() { panic!("unknown keys: {:?}", config.keys().collect::<Vec<&String>>()); }
-                        world.barrier();
+                        world.barrier();  // make sure everybody already initialize their universe
+                        *super::primal_module_distributed::UNIVERSE.write() = Some(universe);
                         if rank == 0 {
                             // manager process initiate the benchmark
                             let manager_cli = Cli { command: Commands::Benchmark(parameters.clone()) };

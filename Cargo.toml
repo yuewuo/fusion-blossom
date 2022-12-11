@@ -71,6 +71,7 @@ rand = "0.8.5"
 core_affinity = "0.7.2"
 pyo3 = { version =  "0.17.2", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
 mpi = { version = "0.6", optional = true }
+lazy_static = "1.4.0"
 
 [build-dependencies]
 cc = "1.0.66"

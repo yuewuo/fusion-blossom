@@ -4,8 +4,8 @@
 //! This helps to debug, but it doesn't corresponds to real noise model, nor it's capable of simulating circuit-level noise model.
 //! For complex noise model and simulator functionality, please see <https://github.com/yuewuo/QEC-Playground>
 //! 
-//! Note that these examples are not optimized for cache coherency for simplicity.
-//! To maximize code efficiency, user should design how to group vertices such that memory coherency is preserved for arbitrary large code distance.
+//! Note that these examples are not optimized for cache for simplicity.
+//! To maximize code efficiency, user should design how to group vertices such that memory speed is constant for arbitrary large code distance.
 //! 
 
 use super::visualize::*;

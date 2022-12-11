@@ -347,12 +347,6 @@ export async function refresh_snapshot_data() {
             })
         }
         // draw vertices
-        let subgraph_set = {}
-        if (snapshot.subgraph != null) {
-            for (let edge_index of snapshot.subgraph) {
-                subgraph_set[edge_index] = true
-            }
-        }
         for (let [i, vertex] of snapshot.vertices.entries()) {
             if (vertex == null) {
                 if (i < vertex_meshes.length) {  // hide
@@ -388,6 +382,12 @@ export async function refresh_snapshot_data() {
             vertex_meshes[i].visible = false
         }
         // draw edges
+        let subgraph_set = {}
+        if (snapshot.subgraph != null) {
+            for (let edge_index of snapshot.subgraph) {
+                subgraph_set[edge_index] = true
+            }
+        }
         let edge_offset = 0
         if (scaled_edge_radius.value < scaled_vertex_outline_radius.value) {
             edge_offset = Math.sqrt(Math.pow(scaled_vertex_outline_radius.value, 2) - Math.pow(scaled_edge_radius.value, 2))
@@ -644,10 +644,10 @@ controller.real_vertex_opacity = vertex_folder.add( conf, 'real_vertex_opacity',
 controller.virtual_vertex_color = vertex_folder.addColor( conf, 'virtual_vertex_color' ).onChange( function ( value ) { virtual_vertex_material.color = value } )
 controller.virtual_vertex_opacity = vertex_folder.add( conf, 'virtual_vertex_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_material.opacity = Number(value) } )
 const vertex_outline_folder = gui.addFolder( 'vertex outline' )
-controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'defect_vertex_outline_color' ).onChange( function ( value ) { defect_vertex_outline_material.color = value } )
-controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'defect_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_outline_material.opacity = Number(value) } )
-controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'real_vertex_outline_color' ).onChange( function ( value ) { real_vertex_outline_material.color = value } )
-controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'real_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_outline_material.opacity = Number(value) } )
+controller.defect_vertex_outline_color = vertex_outline_folder.addColor( conf, 'defect_vertex_outline_color' ).onChange( function ( value ) { defect_vertex_outline_material.color = value } )
+controller.defect_vertex_outline_opacity = vertex_outline_folder.add( conf, 'defect_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_outline_material.opacity = Number(value) } )
+controller.real_vertex_outline_color = vertex_outline_folder.addColor( conf, 'real_vertex_outline_color' ).onChange( function ( value ) { real_vertex_outline_material.color = value } )
+controller.real_vertex_outline_opacity = vertex_outline_folder.add( conf, 'real_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_outline_material.opacity = Number(value) } )
 controller.virtual_vertex_outline_color = vertex_outline_folder.addColor( conf, 'virtual_vertex_outline_color' ).onChange( function ( value ) { virtual_vertex_outline_material.color = value } )
 controller.virtual_vertex_outline_opacity = vertex_outline_folder.add( conf, 'virtual_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_outline_material.opacity = Number(value) } )
 const edge_folder = gui.addFolder( 'edge' )

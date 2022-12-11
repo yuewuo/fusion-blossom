@@ -31,6 +31,8 @@ extern crate pyo3;
 extern crate mpi;
 extern crate clap;
 extern crate pbr;
+#[macro_use]
+extern crate lazy_static;
 
 pub mod blossom_v;
 pub mod util;
