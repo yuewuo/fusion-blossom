@@ -1405,6 +1405,14 @@ pub mod tests {
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 9);
     }
 
+    /// test the error pattern in the paper
+    #[test]
+    fn primal_module_serial_default_example() {  // cargo test primal_module_serial_default_example -- --nocapture
+        let visualize_filename = static_visualize_data_filename();
+        let defect_vertices = vec![39, 52, 63, 90, 100];
+        primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 9);
+    }
+
     /// debug a case of deadlock after changing the strategy of detecting conflicts around VertexShrinkStop;
     /// reason: forget to check whether conflicting nodes are growing: only growing one should be reported
     #[test]

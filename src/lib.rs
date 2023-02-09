@@ -31,6 +31,7 @@ extern crate pyo3;
 extern crate mpi;
 extern crate clap;
 extern crate pbr;
+#[cfg(feature="distributed")]
 #[macro_use]
 extern crate lazy_static;
 

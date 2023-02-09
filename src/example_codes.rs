@@ -988,6 +988,13 @@ mod tests {
     }
 
     #[test]
+    fn example_large_phenomenological_planar_code() {  // cargo test example_large_phenomenological_planar_code -- --nocapture
+        let mut code = PhenomenologicalPlanarCode::new(7, 30, 0.01, 500);
+        code.sanity_check().unwrap();
+        visualize_code(&mut code, format!("example_large_phenomenological_planar_code.json"));
+    }
+
+    #[test]
     fn example_circuit_level_planar_code() {  // cargo test example_circuit_level_planar_code -- --nocapture
         let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, 500);
         code.sanity_check().unwrap();

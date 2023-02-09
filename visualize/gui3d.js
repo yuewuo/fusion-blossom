@@ -509,67 +509,69 @@ export async function refresh_snapshot_data() {
             vertex_outline_meshes[i].visible = false
         }
         // draw convex
-        for (let blossom_convex_mesh of blossom_convex_meshes) {
-            scene.remove( blossom_convex_mesh )
-            blossom_convex_mesh.geometry.dispose()
-        }
-        for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
-            if (dual_node == null) { continue }
-            if (snapshot.subgraph != null) { continue }  // do not display convex if subgraph is displayed
-            // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
-            let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
-            if (display_node) {  // no parent and (positive dual variable or it's a blossom)
-                let points = []
-                if (dual_node.b != null) {
-                    for (let [is_left, edge_index] of dual_node.b) {
-                        let cached_position = edge_caches[edge_index].position
-                        const edge = snapshot.edges[edge_index]
-                        if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
-                            continue  // do not draw this edge, this is an internal edge
-                        }
-                        if (is_left) {
-                            if (edge.lg == edge.w) {
-                                points.push(vertex_caches[edge.r].position.center.clone())
-                            } else if (edge.lg == 0) {
-                                points.push(vertex_caches[edge.l].position.center.clone())
-                            } else {
-                                points.push(cached_position.left_end.clone())
+        if (snapshot.dual_nodes != null) {
+            for (let blossom_convex_mesh of blossom_convex_meshes) {
+                scene.remove( blossom_convex_mesh )
+                blossom_convex_mesh.geometry.dispose()
+            }
+            for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
+                if (dual_node == null) { continue }
+                if (snapshot.subgraph != null) { continue }  // do not display convex if subgraph is displayed
+                // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
+                let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
+                if (display_node) {  // no parent and (positive dual variable or it's a blossom)
+                    let points = []
+                    if (dual_node.b != null) {
+                        for (let [is_left, edge_index] of dual_node.b) {
+                            let cached_position = edge_caches[edge_index].position
+                            const edge = snapshot.edges[edge_index]
+                            if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
+                                continue  // do not draw this edge, this is an internal edge
                             }
-                        } else {
-                            if (edge.rg == edge.w) {
-                                points.push(vertex_caches[edge.l].position.center.clone())
-                            } else if (edge.rg == 0) {
-                                points.push(vertex_caches[edge.r].position.center.clone())
+                            if (is_left) {
+                                if (edge.lg == edge.w) {
+                                    points.push(vertex_caches[edge.r].position.center.clone())
+                                } else if (edge.lg == 0) {
+                                    points.push(vertex_caches[edge.l].position.center.clone())
+                                } else {
+                                    points.push(cached_position.left_end.clone())
+                                }
                             } else {
-                                points.push(cached_position.right_end.clone())
+                                if (edge.rg == edge.w) {
+                                    points.push(vertex_caches[edge.l].position.center.clone())
+                                } else if (edge.rg == 0) {
+                                    points.push(vertex_caches[edge.r].position.center.clone())
+                                } else {
+                                    points.push(cached_position.right_end.clone())
+                                }
                             }
                         }
                     }
-                }
-                if (points.length >= 3) {  // only display if points is more than 3
-                    if (window.is_vertices_2d_plane) {
-                        // special optimization for 2D points, because ConvexGeometry doesn't work well on them
-                        const points_2d = []
-                        for (let point of points) {
-                            points_2d.push([ point.x, point.z ])
+                    if (points.length >= 3) {  // only display if points is more than 3
+                        if (window.is_vertices_2d_plane) {
+                            // special optimization for 2D points, because ConvexGeometry doesn't work well on them
+                            const points_2d = []
+                            for (let point of points) {
+                                points_2d.push([ point.x, point.z ])
+                            }
+                            const hull_points = hull(points_2d, 1)
+                            const shape_points = []
+                            for (let hull_point of hull_points) {
+                                shape_points.push( new THREE.Vector2( hull_point[0], hull_point[1] ) );
+                            }
+                            const shape = new THREE.Shape( shape_points )
+                            const geometry = new THREE.ShapeGeometry( shape )
+                            const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material_2d )
+                            blossom_convex_mesh.position.set( 0, -0.2, 0 )  // place the plane to slightly below the vertices for better viz
+                            blossom_convex_mesh.rotation.set( Math.PI / 2, 0, 0 );
+                            scene.add( blossom_convex_mesh )
+                            blossom_convex_meshes.push(blossom_convex_mesh)
+                        } else {
+                            const geometry = new ConvexGeometry( points )
+                            const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
+                            scene.add( blossom_convex_mesh )
+                            blossom_convex_meshes.push(blossom_convex_mesh)
                         }
-                        const hull_points = hull(points_2d, 1)
-                        const shape_points = []
-                        for (let hull_point of hull_points) {
-                            shape_points.push( new THREE.Vector2( hull_point[0], hull_point[1] ) );
-                        }
-                        const shape = new THREE.Shape( shape_points )
-                        const geometry = new THREE.ShapeGeometry( shape )
-                        const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material_2d )
-                        blossom_convex_mesh.position.set( 0, -0.2, 0 )  // place the plane to slightly below the vertices for better viz
-                        blossom_convex_mesh.rotation.set( Math.PI / 2, 0, 0 );
-                        scene.add( blossom_convex_mesh )
-                        blossom_convex_meshes.push(blossom_convex_mesh)
-                    } else {
-                        const geometry = new ConvexGeometry( points )
-                        const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
-                        scene.add( blossom_convex_mesh )
-                        blossom_convex_meshes.push(blossom_convex_mesh)
                     }
                 }
             }
