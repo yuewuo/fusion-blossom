@@ -75,6 +75,10 @@ const App = {
         if (response.ok || is_mock) {
             fusion_data = await response.json()
             // console.log(fusion_data)
+            if (fusion_data.format != "fusion_blossom") {
+                this.error_message = `visualization file format error, get "${fusion_data.format}" expected "fusion_data"`
+                throw this.error_message
+            }
         } else {
             this.error_message = `fetch file error ${response.status}: ${response.statusText}`
             throw this.error_message

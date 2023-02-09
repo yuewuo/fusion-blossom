@@ -6,7 +6,7 @@ def main():
     dir = os.path.dirname(__file__)
     draw(os.path.join(dir, f"F.svg"), "F", "#7743DB", "#FFFFFF")
     draw(os.path.join(dir, f"Q.svg"), "Q", "#7D8F69", "#FFFFFF")
-    draw(os.path.join(dir, f"M.svg"), "M", "#9F73AB", "#FFFFFF")
+    draw(os.path.join(dir, f"M.svg"), "M", "#F49D1A", "#FFFFFF")
 
 def draw(filepath, letter, background_color, text_color):
     width = 1000

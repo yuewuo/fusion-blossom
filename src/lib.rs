@@ -27,6 +27,13 @@ extern crate rand;
 extern crate core_affinity;
 #[cfg(feature="python_binding")]
 extern crate pyo3;
+#[cfg(feature="distributed")]
+extern crate mpi;
+extern crate clap;
+extern crate pbr;
+#[cfg(feature="distributed")]
+#[macro_use]
+extern crate lazy_static;
 
 pub mod blossom_v;
 pub mod util;
@@ -43,8 +50,11 @@ pub mod dual_module_parallel;
 pub mod primal_module_parallel;
 pub mod example_partition;
 pub mod pointers;
+pub mod cli;
 #[cfg(feature="python_binding")]
 use pyo3::prelude::*;
+#[cfg(feature="distributed")]
+pub mod primal_module_distributed;
 
 use util::*;
 use complete_graph::*;
@@ -171,17 +181,17 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
 #[derive(Debug, Clone)]
 pub struct DetailedMatching {
     /// must be a real vertex
-    pub a: SyndromeIndex,
+    pub a: DefectIndex,
     /// might be a virtual vertex, but if it's a real vertex, then b > a stands
-    pub b: SyndromeIndex,
+    pub b: DefectIndex,
     /// every vertex in between this pair, in the order `a -> path[0].0 -> path[1].0 -> .... -> path[-1].0` and it's guaranteed that path[-1].0 = b; might be empty if a and b are adjacent
-    pub path: Vec<(SyndromeIndex, Weight)>,
+    pub path: Vec<(DefectIndex, Weight)>,
     /// the overall weight of this path
     pub weight: Weight,
 }
 
 /// compute detailed matching information, note that the output will not include duplicated matched pairs
-pub fn detailed_matching(initializer: &SolverInitializer, defect_vertices: &Vec<SyndromeIndex>, mwpm_result: &Vec<SyndromeIndex>) -> Vec<DetailedMatching> {
+pub fn detailed_matching(initializer: &SolverInitializer, defect_vertices: &Vec<DefectIndex>, mwpm_result: &Vec<DefectIndex>) -> Vec<DetailedMatching> {
     let defect_num = defect_vertices.len();
     let mut is_defect: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &defect_vertex in defect_vertices.iter() {

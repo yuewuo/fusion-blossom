@@ -347,12 +347,6 @@ export async function refresh_snapshot_data() {
             })
         }
         // draw vertices
-        let subgraph_set = {}
-        if (snapshot.subgraph != null) {
-            for (let edge_index of snapshot.subgraph) {
-                subgraph_set[edge_index] = true
-            }
-        }
         for (let [i, vertex] of snapshot.vertices.entries()) {
             if (vertex == null) {
                 if (i < vertex_meshes.length) {  // hide
@@ -388,6 +382,12 @@ export async function refresh_snapshot_data() {
             vertex_meshes[i].visible = false
         }
         // draw edges
+        let subgraph_set = {}
+        if (snapshot.subgraph != null) {
+            for (let edge_index of snapshot.subgraph) {
+                subgraph_set[edge_index] = true
+            }
+        }
         let edge_offset = 0
         if (scaled_edge_radius.value < scaled_vertex_outline_radius.value) {
             edge_offset = Math.sqrt(Math.pow(scaled_vertex_outline_radius.value, 2) - Math.pow(scaled_edge_radius.value, 2))
@@ -509,67 +509,69 @@ export async function refresh_snapshot_data() {
             vertex_outline_meshes[i].visible = false
         }
         // draw convex
-        for (let blossom_convex_mesh of blossom_convex_meshes) {
-            scene.remove( blossom_convex_mesh )
-            blossom_convex_mesh.geometry.dispose()
-        }
-        for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
-            if (dual_node == null) { continue }
-            if (snapshot.subgraph != null) { continue }  // do not display convex if subgraph is displayed
-            // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
-            let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
-            if (display_node) {  // no parent and (positive dual variable or it's a blossom)
-                let points = []
-                if (dual_node.b != null) {
-                    for (let [is_left, edge_index] of dual_node.b) {
-                        let cached_position = edge_caches[edge_index].position
-                        const edge = snapshot.edges[edge_index]
-                        if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
-                            continue  // do not draw this edge, this is an internal edge
-                        }
-                        if (is_left) {
-                            if (edge.lg == edge.w) {
-                                points.push(vertex_caches[edge.r].position.center.clone())
-                            } else if (edge.lg == 0) {
-                                points.push(vertex_caches[edge.l].position.center.clone())
-                            } else {
-                                points.push(cached_position.left_end.clone())
+        if (snapshot.dual_nodes != null) {
+            for (let blossom_convex_mesh of blossom_convex_meshes) {
+                scene.remove( blossom_convex_mesh )
+                blossom_convex_mesh.geometry.dispose()
+            }
+            for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
+                if (dual_node == null) { continue }
+                if (snapshot.subgraph != null) { continue }  // do not display convex if subgraph is displayed
+                // for child node in a blossom, this will not display properly; we should avoid plotting child nodes
+                let display_node = dual_node.p == null && (dual_node.d > 0 || dual_node.o != null)
+                if (display_node) {  // no parent and (positive dual variable or it's a blossom)
+                    let points = []
+                    if (dual_node.b != null) {
+                        for (let [is_left, edge_index] of dual_node.b) {
+                            let cached_position = edge_caches[edge_index].position
+                            const edge = snapshot.edges[edge_index]
+                            if (edge.ld == edge.rd && edge.lg + edge.rg >= edge.w) {
+                                continue  // do not draw this edge, this is an internal edge
                             }
-                        } else {
-                            if (edge.rg == edge.w) {
-                                points.push(vertex_caches[edge.l].position.center.clone())
-                            } else if (edge.rg == 0) {
-                                points.push(vertex_caches[edge.r].position.center.clone())
+                            if (is_left) {
+                                if (edge.lg == edge.w) {
+                                    points.push(vertex_caches[edge.r].position.center.clone())
+                                } else if (edge.lg == 0) {
+                                    points.push(vertex_caches[edge.l].position.center.clone())
+                                } else {
+                                    points.push(cached_position.left_end.clone())
+                                }
                             } else {
-                                points.push(cached_position.right_end.clone())
+                                if (edge.rg == edge.w) {
+                                    points.push(vertex_caches[edge.l].position.center.clone())
+                                } else if (edge.rg == 0) {
+                                    points.push(vertex_caches[edge.r].position.center.clone())
+                                } else {
+                                    points.push(cached_position.right_end.clone())
+                                }
                             }
                         }
                     }
-                }
-                if (points.length >= 3) {  // only display if points is more than 3
-                    if (window.is_vertices_2d_plane) {
-                        // special optimization for 2D points, because ConvexGeometry doesn't work well on them
-                        const points_2d = []
-                        for (let point of points) {
-                            points_2d.push([ point.x, point.z ])
+                    if (points.length >= 3) {  // only display if points is more than 3
+                        if (window.is_vertices_2d_plane) {
+                            // special optimization for 2D points, because ConvexGeometry doesn't work well on them
+                            const points_2d = []
+                            for (let point of points) {
+                                points_2d.push([ point.x, point.z ])
+                            }
+                            const hull_points = hull(points_2d, 1)
+                            const shape_points = []
+                            for (let hull_point of hull_points) {
+                                shape_points.push( new THREE.Vector2( hull_point[0], hull_point[1] ) );
+                            }
+                            const shape = new THREE.Shape( shape_points )
+                            const geometry = new THREE.ShapeGeometry( shape )
+                            const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material_2d )
+                            blossom_convex_mesh.position.set( 0, -0.2, 0 )  // place the plane to slightly below the vertices for better viz
+                            blossom_convex_mesh.rotation.set( Math.PI / 2, 0, 0 );
+                            scene.add( blossom_convex_mesh )
+                            blossom_convex_meshes.push(blossom_convex_mesh)
+                        } else {
+                            const geometry = new ConvexGeometry( points )
+                            const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
+                            scene.add( blossom_convex_mesh )
+                            blossom_convex_meshes.push(blossom_convex_mesh)
                         }
-                        const hull_points = hull(points_2d, 1)
-                        const shape_points = []
-                        for (let hull_point of hull_points) {
-                            shape_points.push( new THREE.Vector2( hull_point[0], hull_point[1] ) );
-                        }
-                        const shape = new THREE.Shape( shape_points )
-                        const geometry = new THREE.ShapeGeometry( shape )
-                        const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material_2d )
-                        blossom_convex_mesh.position.set( 0, -0.2, 0 )  // place the plane to slightly below the vertices for better viz
-                        blossom_convex_mesh.rotation.set( Math.PI / 2, 0, 0 );
-                        scene.add( blossom_convex_mesh )
-                        blossom_convex_meshes.push(blossom_convex_mesh)
-                    } else {
-                        const geometry = new ConvexGeometry( points )
-                        const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
-                        scene.add( blossom_convex_mesh )
-                        blossom_convex_meshes.push(blossom_convex_mesh)
                     }
                 }
             }
@@ -644,10 +646,10 @@ controller.real_vertex_opacity = vertex_folder.add( conf, 'real_vertex_opacity',
 controller.virtual_vertex_color = vertex_folder.addColor( conf, 'virtual_vertex_color' ).onChange( function ( value ) { virtual_vertex_material.color = value } )
 controller.virtual_vertex_opacity = vertex_folder.add( conf, 'virtual_vertex_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_material.opacity = Number(value) } )
 const vertex_outline_folder = gui.addFolder( 'vertex outline' )
-controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'defect_vertex_outline_color' ).onChange( function ( value ) { defect_vertex_outline_material.color = value } )
-controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'defect_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_outline_material.opacity = Number(value) } )
-controller.vertex_outline_color = vertex_outline_folder.addColor( conf, 'real_vertex_outline_color' ).onChange( function ( value ) { real_vertex_outline_material.color = value } )
-controller.vertex_outline_opacity = vertex_outline_folder.add( conf, 'real_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_outline_material.opacity = Number(value) } )
+controller.defect_vertex_outline_color = vertex_outline_folder.addColor( conf, 'defect_vertex_outline_color' ).onChange( function ( value ) { defect_vertex_outline_material.color = value } )
+controller.defect_vertex_outline_opacity = vertex_outline_folder.add( conf, 'defect_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_outline_material.opacity = Number(value) } )
+controller.real_vertex_outline_color = vertex_outline_folder.addColor( conf, 'real_vertex_outline_color' ).onChange( function ( value ) { real_vertex_outline_material.color = value } )
+controller.real_vertex_outline_opacity = vertex_outline_folder.add( conf, 'real_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_outline_material.opacity = Number(value) } )
 controller.virtual_vertex_outline_color = vertex_outline_folder.addColor( conf, 'virtual_vertex_outline_color' ).onChange( function ( value ) { virtual_vertex_outline_material.color = value } )
 controller.virtual_vertex_outline_opacity = vertex_outline_folder.add( conf, 'virtual_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_outline_material.opacity = Number(value) } )
 const edge_folder = gui.addFolder( 'edge' )
@@ -841,4 +843,23 @@ export async function nodejs_render_png() {  // works only in nodejs
 // wait several Vue ticks to make sure all changes have been applied
 export async function wait_changes() {
     for (let i=0; i<5; ++i) await Vue.nextTick()
+}
+
+// https://www.npmjs.com/package/base64-arraybuffer
+var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+export function base64_encode (arraybuffer) {
+    var bytes = new Uint8Array(arraybuffer), i, len = bytes.length, base64 = ''
+    for (i = 0; i < len; i += 3) {
+        base64 += chars[bytes[i] >> 2]
+        base64 += chars[((bytes[i] & 3) << 4) | (bytes[i + 1] >> 4)]
+        base64 += chars[((bytes[i + 1] & 15) << 2) | (bytes[i + 2] >> 6)]
+        base64 += chars[bytes[i + 2] & 63]
+    }
+    if (len % 3 === 2) {
+        base64 = base64.substring(0, base64.length - 1) + '='
+    }
+    else if (len % 3 === 1) {
+        base64 = base64.substring(0, base64.length - 2) + '=='
+    }
+    return base64;
 }

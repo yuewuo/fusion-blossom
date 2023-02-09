@@ -11,12 +11,29 @@ use crate::chrono::Local;
 use crate::urlencoding;
 #[cfg(feature="python_binding")]
 use pyo3::prelude::*;
+#[cfg(feature="python_binding")]
+use crate::util::*;
 
 
 pub trait FusionVisualizer {
     /// take a snapshot, set `abbrev` to true to save space
     fn snapshot(&self, abbrev: bool) -> serde_json::Value;
 }
+
+#[macro_export]
+macro_rules! bind_trait_fusion_visualizer {
+    ($struct_name:ident) => {
+        #[cfg(feature="python_binding")]
+        #[pymethods]
+        impl $struct_name {
+            #[pyo3(name = "snapshot")]
+            #[args(abbrev = "true")]
+            fn trait_snapshot(&self, abbrev: bool) -> PyObject { json_to_pyobject(self.snapshot(abbrev)) }
+        }
+    };
+}
+#[allow(unused_imports)] pub use bind_trait_fusion_visualizer;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "python_binding", cfg_eval)]
@@ -273,7 +290,8 @@ impl Visualizer {
         if let Some(file) = file.as_mut() {
             file.set_len(0)?;  // truncate the file
             file.seek(SeekFrom::Start(0))?;  // move the cursor to the front
-            file.write_all(b"{\"positions\":")?;
+            file.write_all(format!("{{\"format\":\"fusion_blossom\",\"version\":\"{}\"", env!("CARGO_PKG_VERSION")).as_bytes())?;
+            file.write_all(b",\"positions\":")?;
             file.write_all(json!(positions).to_string().as_bytes())?;
             file.write_all(b",\"snapshots\":[]}")?;
             file.sync_all()?;
@@ -283,6 +301,51 @@ impl Visualizer {
             empty_snapshot: true,
             snapshots: vec![],
         })
+    }
+
+    #[cfg(feature = "python_binding")]
+    #[pyo3(name = "snapshot_combined")]
+    pub fn snapshot_combined_py(&mut self, name: String, object_pys: Vec<&PyAny>) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
+        let mut values = Vec::<serde_json::Value>::with_capacity(object_pys.len());
+        for object_py in object_pys.into_iter() {
+            values.push(pyobject_to_json(object_py.call_method0("snapshot")?.extract::<PyObject>()?));
+        }
+        self.snapshot_combined_value(name, values)
+    }
+
+    #[cfg(feature = "python_binding")]
+    #[pyo3(name = "snapshot")]
+    pub fn snapshot_py(&mut self, name: String, object_py: &PyAny) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
+        let value = pyobject_to_json(object_py.call_method0("snapshot")?.extract::<PyObject>()?);
+        self.snapshot_value(name, value)
+    }
+
+    #[cfg(feature = "python_binding")]
+    #[pyo3(name = "snapshot_combined_value")]
+    pub fn snapshot_combined_value_py(&mut self, name: String, value_pys: Vec<PyObject>) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
+        let values: Vec<_> = value_pys.into_iter().map(|value_py| {
+            pyobject_to_json(value_py)
+        }).collect();
+        self.snapshot_combined_value(name, values)
+    }
+
+    #[cfg(feature = "python_binding")]
+    #[pyo3(name = "snapshot_value")]
+    pub fn snapshot_value_py(&mut self, name: String, value_py: PyObject) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
+        let value = pyobject_to_json(value_py);
+        self.snapshot_value(name, value)
     }
 
 }
@@ -327,6 +390,30 @@ impl Visualizer {
         }
         let abbrev = true;
         let mut value = fusion_algorithm.snapshot(abbrev);
+        snapshot_fix_missing_fields(&mut value, abbrev);
+        self.incremental_save(name, value)?;
+        Ok(())
+    }
+
+    pub fn snapshot_combined_value(&mut self, name: String, values: Vec<serde_json::Value>) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
+        let abbrev = true;
+        let mut value = json!({});
+        for value_2 in values.into_iter() {
+            snapshot_combine_values(&mut value, value_2, abbrev);
+        }
+        snapshot_fix_missing_fields(&mut value, abbrev);
+        self.incremental_save(name, value)?;
+        Ok(())
+    }
+
+    pub fn snapshot_value(&mut self, name: String, mut value: serde_json::Value) -> std::io::Result<()> {
+        if cfg!(feature = "disable_visualizer") {
+            return Ok(())
+        }
+        let abbrev = true;
         snapshot_fix_missing_fields(&mut value, abbrev);
         self.incremental_save(name, value)?;
         Ok(())
@@ -620,9 +707,9 @@ mod tests {
         //                        0   1   2   3   4   5   6   7   8    9
         //                        A  vA   B  vB   C  vC   D  vD   E   vE
         let kept_vertices = vec![39, 47, 52, 59, 63, 71, 90, 94, 100, 107];  // including some virtual vertices
-        let mut old_to_new = std::collections::BTreeMap::<SyndromeIndex, SyndromeIndex>::new();
+        let mut old_to_new = std::collections::BTreeMap::<DefectIndex, DefectIndex>::new();
         for (new_index, defect_vertex) in kept_vertices.iter().enumerate() {
-            old_to_new.insert(*defect_vertex, new_index as SyndromeIndex);
+            old_to_new.insert(*defect_vertex, new_index as DefectIndex);
         }
         println!("{old_to_new:?}");
         let d = 11;
