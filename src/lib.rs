@@ -34,6 +34,8 @@ extern crate pbr;
 #[cfg(feature="distributed")]
 #[macro_use]
 extern crate lazy_static;
+#[cfg(test)]
+extern crate petgraph;
 
 pub mod blossom_v;
 pub mod util;

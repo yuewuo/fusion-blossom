@@ -76,6 +76,9 @@ lazy_static = "1.4.0"
 [build-dependencies]
 cc = "1.0.66"
 
+[dev-dependencies]
+petgraph = "0.6.3"
+
 [package.metadata.docs.rs]
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]
 # to run locally: `RUSTDOCFLAGS="--html-in-header katex-header.html" cargo doc --no-deps`
