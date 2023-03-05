@@ -1,0 +1,2 @@
+<average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>
+1.89755e+00 1.89754e-05 1.56821e-06
