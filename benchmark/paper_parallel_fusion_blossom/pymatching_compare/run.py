@@ -1,0 +1,114 @@
+import numpy as np
+from scipy.sparse import csc_matrix
+import pymatching
+import os, sys, time
+import subprocess
+from msgspec.json import decode
+from msgspec import Struct
+
+# the same parameter as `thread_pool_size_partition_2k`, except for there is no partition
+d = 21
+p = 0.005
+total_rounds = 100
+noisy_measurements = 100000
+noisy_measurements = 40  # small-scale debug
+
+# first generate graph
+git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
+    , shell=True, check=True, capture_output=True).stdout.decode(sys.stdout.encoding).strip(" \r\n")
+# useful folders
+rust_dir = git_root_dir
+benchmark_dir = os.path.join(git_root_dir, "benchmark")
+script_dir = os.path.dirname(__file__)
+tmp_dir = os.path.join(script_dir, "tmp")
+os.makedirs(tmp_dir, exist_ok=True)  # make sure tmp directory exists
+sys.path.insert(0, benchmark_dir)
+import util
+from util import *
+compile_code_if_necessary()
+syndrome_file_path = os.path.join(tmp_dir, "generated.syndromes")
+if os.path.exists(syndrome_file_path):
+    print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
+else:
+    command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
+    command += ["--code-type", "phenomenological-planar-code"]
+    command += ["--primal-dual-type", "error-pattern-logger"]
+    command += ["--verifier", "none"]
+    command += ["--primal-dual-config", f'{{"filename":"{syndrome_file_path}"}}']
+    print(command)
+    stdout, returncode = run_command_get_stdout(command)
+    print("\n" + stdout)
+    assert returncode == 0, "command fails..."
+
+# load the generated graph and syndrome
+class SolverInitializer(Struct):
+    vertex_num: int
+    weighted_edges: list[list[int]]
+    virtual_vertices: list[int]
+class SyndromePattern(Struct):
+    defect_vertices: list[int]
+    erasures: list[int]
+syndromes = []
+defect_nums = []
+with open(syndrome_file_path, "r", encoding='utf8') as f:
+    head = f.readline()
+    assert head.startswith("Syndrome Pattern v1.0 ")
+    # Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*
+    initializer = decode(f.readline(), type=SolverInitializer)
+    assert initializer.vertex_num == (noisy_measurements + 1) * d * (d+1)
+    positions = f.readline()  # don't care
+    line = f.readline()
+    while line != "":
+        syndrome_pattern = decode(line, type=SyndromePattern)
+        syndrome = np.full(initializer.vertex_num, 0, dtype=np.int8)
+        for defect_vertex in syndrome_pattern.defect_vertices:
+            syndrome[defect_vertex] = 1
+        syndromes.append(syndrome)
+        defect_nums.append(len(syndrome_pattern.defect_vertices))
+        line = f.readline()
+    assert len(syndromes) == total_rounds
+
+# construct the binary parity check matrix
+is_virtual = np.full(initializer.vertex_num, False, dtype=bool)
+for virtual_vertex in initializer.virtual_vertices:
+    is_virtual[virtual_vertex] = True
+H = csc_matrix((initializer.vertex_num, len(initializer.weighted_edges)), dtype=np.int8).toarray()
+weights = np.full(len(initializer.weighted_edges), 0, dtype=np.int32)
+for i, [v1, v2, weight] in enumerate(initializer.weighted_edges):
+    if not is_virtual[v1]:
+        H[v1,i] = 1
+    if not is_virtual[v2]:
+        H[v2,i] = 1
+    weights[i] = weight
+matching = pymatching.Matching(H, weights=weights)
+
+# run simulation
+raw_time_file = os.path.join(script_dir, "raw_time.txt")
+with open(raw_time_file, "w", encoding="utf8") as f:
+    for i in range(total_rounds):
+        syndrome = syndromes[i]
+        # start timer
+        start = time.perf_counter()
+        prediction = matching.decode(syndromes[i])
+        end = time.perf_counter()
+        f.write(f"{end - start} {defect_nums[i]}\n")
+
+with open(raw_time_file, "r", encoding="utf8") as f:
+    lines = f.readlines()
+    assert len(lines) == total_rounds
+    lines = lines[20:]  # like our profiling, skip the first 20 records to remove the effect of cold start
+    raw_data = [line.split(" ") for line in lines]
+    decoding_time_vec = [float(data[0]) for data in raw_data]
+    defect_num_vec = [int(data[1]) for data in raw_data]
+
+data_file = os.path.join(script_dir, "data.txt")
+with open(data_file, "w", encoding="utf8") as f:
+    f.write("<average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
+    average_decoding_time = sum(decoding_time_vec) / len(decoding_time_vec)
+    average_decoding_time_per_round = average_decoding_time / (noisy_measurements + 1)
+    average_decoding_time_per_defect = average_decoding_time / (sum(defect_num_vec) / len(defect_num_vec))
+    f.write("%.5e %.5e %.5e\n" % (
+        average_decoding_time,
+        average_decoding_time_per_round,
+        average_decoding_time_per_defect
+    ))
