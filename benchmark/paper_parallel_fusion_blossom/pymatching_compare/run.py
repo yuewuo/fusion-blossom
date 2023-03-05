@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.sparse import csc_matrix
+from scipy.sparse import csc_matrix, lil_matrix
 import pymatching
 import os, sys, time
 import subprocess
@@ -11,7 +11,7 @@ d = 21
 p = 0.005
 total_rounds = 100
 noisy_measurements = 100000
-noisy_measurements = 40  # small-scale debug
+# noisy_measurements = 100  # small-scale debug
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
@@ -41,10 +41,11 @@ else:
     assert returncode == 0, "command fails..."
 
 # load the generated graph and syndrome
-class SolverInitializer(Struct):
-    vertex_num: int
-    weighted_edges: list[list[int]]
-    virtual_vertices: list[int]
+class SolverInitializer:
+    def __init__(self, vertex_num, weighted_edges, virtual_vertices):
+        self.vertex_num = vertex_num
+        self.weighted_edges = weighted_edges
+        self.virtual_vertices = virtual_vertices
 class SyndromePattern(Struct):
     defect_vertices: list[int]
     erasures: list[int]
@@ -54,7 +55,26 @@ with open(syndrome_file_path, "r", encoding='utf8') as f:
     head = f.readline()
     assert head.startswith("Syndrome Pattern v1.0 ")
     # Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*
-    initializer = decode(f.readline(), type=SolverInitializer)
+    initializer_str = f.readline()
+    vertex_num_start = initializer_str.find("vertex_num") + 12
+    vertex_num_end = initializer_str.find(",", vertex_num_start)
+    vertex_num = int(initializer_str[vertex_num_start:vertex_num_end])
+    weighted_edges_start = initializer_str.find("weighted_edges") + 18
+    weighted_edges_end = initializer_str.find("]]", weighted_edges_start)
+    weighted_edges_vec = initializer_str[weighted_edges_start:weighted_edges_end].split("],[")
+    weighted_edges = np.ndarray((len(weighted_edges_vec), 3), dtype=np.int32)
+    for i, weighted_edges_str in enumerate(weighted_edges_vec):
+        [v1, v2, weight] = weighted_edges_str.split(",")
+        weighted_edges[i,0] = int(v1)
+        weighted_edges[i,1] = int(v2)
+        weighted_edges[i,2] = int(weight)
+    virtual_vertices_start = initializer_str.find("virtual_vertices") + 19
+    virtual_vertices_end = initializer_str.find("]", virtual_vertices_start)
+    virtual_vertices_vec = initializer_str[virtual_vertices_start:virtual_vertices_end].split(",")
+    virtual_vertices = np.empty(len(virtual_vertices_vec), dtype=np.int32)
+    for i, virtual_vertex_str in enumerate(virtual_vertices_vec):
+        virtual_vertices[i] = int(virtual_vertex_str)
+    initializer = SolverInitializer(vertex_num=vertex_num, weighted_edges=weighted_edges, virtual_vertices=virtual_vertices)
     assert initializer.vertex_num == (noisy_measurements + 1) * d * (d+1)
     positions = f.readline()  # don't care
     line = f.readline()
@@ -67,12 +87,13 @@ with open(syndrome_file_path, "r", encoding='utf8') as f:
         defect_nums.append(len(syndrome_pattern.defect_vertices))
         line = f.readline()
     assert len(syndromes) == total_rounds
+print("initializer loaded")
 
 # construct the binary parity check matrix
 is_virtual = np.full(initializer.vertex_num, False, dtype=bool)
 for virtual_vertex in initializer.virtual_vertices:
     is_virtual[virtual_vertex] = True
-H = csc_matrix((initializer.vertex_num, len(initializer.weighted_edges)), dtype=np.int8).toarray()
+H = lil_matrix((initializer.vertex_num, len(initializer.weighted_edges)), dtype=np.int8)
 weights = np.full(len(initializer.weighted_edges), 0, dtype=np.int32)
 for i, [v1, v2, weight] in enumerate(initializer.weighted_edges):
     if not is_virtual[v1]:
@@ -80,7 +101,10 @@ for i, [v1, v2, weight] in enumerate(initializer.weighted_edges):
     if not is_virtual[v2]:
         H[v2,i] = 1
     weights[i] = weight
+H = H.tocsc()
+print("initializer created")
 matching = pymatching.Matching(H, weights=weights)
+print("matching initialized")
 
 # run simulation
 raw_time_file = os.path.join(script_dir, "raw_time.txt")
