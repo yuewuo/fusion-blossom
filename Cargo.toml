@@ -50,7 +50,6 @@ disable_visualizer = []  # disable all visualizer behavior
 unsafe_pointer = []  # use raw pointers to access data without lock when appropriate; fusion blossom requires very little synchronization
 dangerous_pointer = ["unsafe_pointer"]  # use raw pointers instead of Arc and Weak, require "unsafe_pointer" feature
 python_binding = ["pyo3"]  # bind to Python
-distributed = ["mpi"]  # only when enabled will the distributed fusion blossom been compiled
 
 [dependencies]
 rand_xoshiro = "0.6.0"
@@ -70,7 +69,6 @@ weak-table = "0.3.2"
 rand = "0.8.5"
 core_affinity = "0.7.2"
 pyo3 = { version =  "0.17.2", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
-mpi = { version = "0.6", optional = true }
 lazy_static = "1.4.0"
 
 [build-dependencies]

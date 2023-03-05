@@ -9,11 +9,9 @@ from msgspec import Struct
 d = 21
 p = 0.005
 total_rounds = 100
-small_T_vec = [i for i in range(1, 11)]
-noisy_measurements_vec = small_T_vec + [10, 20, 30, 40, 50, 100, 300, 1000, 3000, 10000, 30000, 100000]
-noisy_measurements_vec = small_T_vec + [10, 20, 30, 40, 50, 100, 300, 1000, 3000]  # small-scale debug
-
-PYMATCHING_BATCH_DECODING = False
+small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
+noisy_measurements_vec = small_T_vec + [300, 1000, 3000, 10000, 30000, 100000]
+noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +25,7 @@ os.makedirs(tmp_dir, exist_ok=True)  # make sure tmp directory exists
 sys.path.insert(0, benchmark_dir)
 import util
 from util import *
+util.FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True  # better performance, still safe
 compile_code_if_necessary()
 
 data_file = os.path.join(script_dir, "data_fusion.txt")

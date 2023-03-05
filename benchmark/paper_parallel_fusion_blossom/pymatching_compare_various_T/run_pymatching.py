@@ -10,11 +10,11 @@ from msgspec import Struct
 d = 21
 p = 0.005
 total_rounds = 100
-small_T_vec = [i for i in range(1, 11)]
-noisy_measurements_vec = small_T_vec + [10, 20, 30, 40, 50, 100, 300, 1000, 3000, 10000, 30000, 100000]
-noisy_measurements_vec = small_T_vec + [10, 20, 30, 40, 50, 100, 300, 1000, 3000]  # small-scale debug
+small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
+noisy_measurements_vec = small_T_vec + [300, 1000, 3000, 10000, 30000, 100000]
+noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
 
-PYMATCHING_BATCH_DECODING = False
+PYMATCHING_BATCH_DECODING = True
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
@@ -144,6 +144,8 @@ with open(data_file, "w", encoding="utf8") as data_f:
 
         average_decoding_time = sum(decoding_time_vec) / len(decoding_time_vec)
         average_decoding_time_per_round = average_decoding_time / (noisy_measurements + 1)
+        if PYMATCHING_BATCH_DECODING:
+            average_decoding_time_per_round /= (total_rounds - 20)
         average_decoding_time_per_defect = average_decoding_time / (sum(defect_num_vec) / len(defect_num_vec))
         data_f.write("%d %.5e %.5e %.5e\n" % (
             noisy_measurements,

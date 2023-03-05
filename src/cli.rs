@@ -7,10 +7,6 @@ use super::example_partition;
 use super::mwpm_solver::*;
 use pbr::ProgressBar;
 use rand::{Rng, thread_rng};
-#[cfg(feature="distributed")]
-use crate::mpi;
-#[cfg(feature="distributed")]
-use crate::mpi::traits::*;
 
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
@@ -91,9 +87,6 @@ pub struct BenchmarkParameters {
     /// skip some iterations, useful when debugging
     #[clap(long, default_value_t = 0)]
     starting_iteration: usize,
-    /// only applicable when using distributed fusion blossom
-    #[clap(long, default_value_t = json!({}))]
-    distributed_config: serde_json::Value,
 }
 
 #[derive(Subcommand, Clone)]
@@ -101,8 +94,6 @@ pub struct BenchmarkParameters {
 enum Commands {
     /// benchmark the speed (and also correctness if enabled)
     Benchmark(BenchmarkParameters),
-    /// benchmark distributed fusion-blossom using MPI
-    BenchmarkDistributed(BenchmarkParameters),
     /// built-in tests
     Test {
         #[clap(subcommand)]
@@ -205,8 +196,6 @@ pub enum PrimalDualType {
     DualParallel,
     /// parallel primal and dual
     Parallel,
-    /// distributed primal and dual
-    Distributed,
     /// log error into a file for later fetch
     ErrorPatternLogger,
 }
@@ -288,36 +277,6 @@ impl Cli {
                 } else {
                     if let Some(pb) = pb.as_mut() { pb.finish() }
                     println!();
-                }
-            },
-            // cargo build --release --features=distributed
-            // mpirun -n 5 --oversubscribe target/release/fusion_blossom benchmark-distributed 5 0.01
-            Commands::BenchmarkDistributed(parameters) => {
-                assert!(matches!(parameters.primal_dual_type, PrimalDualType::Distributed), "only intended to benchmark the distributed version");
-                cfg_if::cfg_if! {
-                    if #[cfg(feature="distributed")] {
-                        let universe = mpi::initialize().unwrap();
-                        let world = universe.world();
-                        let size = world.size();
-                        let rank = world.rank();
-                        println!("size: {}, rank: {}", size, rank);
-                        let mut distributed_config = parameters.distributed_config.clone();
-                        let config = distributed_config.as_object_mut().expect("distributed_config must be an object");
-                        // config.remove("some_key").map(|value| some_key = value.as_f64().expect("f64"));
-                        if !config.is_empty() { panic!("unknown keys: {:?}", config.keys().collect::<Vec<&String>>()); }
-                        world.barrier();  // make sure everybody already initialize their universe
-                        *super::primal_module_distributed::UNIVERSE.write() = Some(universe);
-                        if rank == 0 {
-                            // manager process initiate the benchmark
-                            let manager_cli = Cli { command: Commands::Benchmark(parameters.clone()) };
-                            manager_cli.run();
-                        } else {
-                            // all the other worker processes runs as a server waiting for commands
-
-                        }
-                    } else {
-                        panic!("benchmark-distributed unavailable because feature `distributed` is not enabled, distributed_config: {:?}", parameters.distributed_config)
-                    }
                 }
             },
             Commands::Test { command } => {
@@ -611,9 +570,6 @@ impl PrimalDualType {
             },
             Self::Parallel => {
                 Box::new(SolverParallel::new(initializer, partition_info, primal_dual_config))
-            },
-            Self::Distributed => {
-                unimplemented!()
             },
             Self::ErrorPatternLogger => {
                 Box::new(SolverErrorPatternLogger::new(initializer, code, primal_dual_config))

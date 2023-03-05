@@ -1,3 +1,5 @@
+assert False, "use new script at `pymatching_compare_various_T` and data from there"
+
 import numpy as np
 from scipy.sparse import csc_matrix, lil_matrix
 import pymatching

@@ -21,12 +21,12 @@ set output "pymatching_compare.eps"
 
 pymatching_per_defect = "`head -2 data.txt | tail -1 | awk '{print $3}'`"
 
-plot "data_fusion.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Fusion Blossom",\
-    3.42598e-06 / x with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 title "(linear speedup)",\
+plot "../thread_pool_size_partition_2k/data.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Fusion Blossom",\
+    3.42598e-06 / x with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 title "linear speedup",\
     pymatching_per_defect + 0 * x with lines lt rgb "blue" linewidth 3 title "PyMatching V2"
 
 
 
 system("ps2pdf -dEPSCrop pymatching_compare.eps pymatching_compare.pdf")
 
-system("pdf2svg pymatching_compare.pdf pymatching_compare.svg")
+# system("pdf2svg pymatching_compare.pdf pymatching_compare.svg")
