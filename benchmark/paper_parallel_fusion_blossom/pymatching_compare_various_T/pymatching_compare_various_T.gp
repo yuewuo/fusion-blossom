@@ -23,3 +23,5 @@ plot "data_pymatching.txt" using 1:4 with linespoints lt rgb "blue" linewidth 3 
     "data_fusion.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Fusion Blossom"
 
 system("ps2pdf -dEPSCrop pymatching_compare_various_T.eps pymatching_compare_various_T.pdf")
+
+system("pdf2svg pymatching_compare_various_T.pdf pymatching_compare_various_T.svg")
