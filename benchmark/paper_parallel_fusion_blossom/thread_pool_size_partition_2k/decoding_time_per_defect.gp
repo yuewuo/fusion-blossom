@@ -17,11 +17,17 @@ set key outside horizontal top center font "Arial, 24"
 set style fill transparent solid 0.2 noborder
 set key samplen 4
 
-set arrow from 64, graph 0 to 64, graph 1 nohead lc rgb "blue"
+set arrow from 64, graph 0 to 64, graph 1 nohead lc rgb "purple"
 
 set output "decoding_time_per_defect.eps"
 
-plot 3.42598e-06 / x notitle with lines dashtype 2 lt rgb "#e41a1c" linewidth 3,\
-    "data.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 notitle
+pymatching_per_defect = "`head -2 ../pymatching_compare/data.txt | tail -1 | awk '{print $3}'`"
+
+plot "data.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Fusion Blossom",\
+    3.42598e-06 / x with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 title "linear speedup",\
+    pymatching_per_defect + 0 * x with lines lt rgb "blue" linewidth 3 title "PyMatching V2",\
+    20 with lines lt rgb "purple" linewidth 3 title "64-core CPU"
 
 system("ps2pdf -dEPSCrop decoding_time_per_defect.eps decoding_time_per_defect.pdf")
+
+system("pdf2svg decoding_time_per_defect.pdf decoding_time_per_defect.svg")
