@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Wu"
+  given-names: "Yue"
+  orcid: "https://orcid.org/0000-0002-1400-0402"
+title: "fusion-blossom"
+version: 0.2.2
+date-released: 2023-02-10
+url: "https://github.com/yuewuo/fusion-blossom"
