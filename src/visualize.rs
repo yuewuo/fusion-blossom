@@ -980,7 +980,7 @@ mod tests {
         let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
         let min_paths = get_min_paths(&code);
         let (vertices, edges) = code.immutable_vertices_edges();
-        let defect_vertices = vec![ 14, 3, 21, 25, 18, 13, 6 ];
+        let defect_vertices: Vec<VertexIndex> = vec![ 14, 3, 21, 25, 18, 13, 6 ];
         assert_eq!(defect_vertices.iter().cloned().collect::<BTreeSet<_>>(), 
             APS2023_EXAMPLE_DEFECT_VERTICES.iter().cloned().collect::<BTreeSet<_>>());
         // construct paths for each defect vertices
@@ -996,8 +996,8 @@ mod tests {
                     // find next nearest vertex
                     let mut next_nearest = current_vertex;
                     let mut min_path_weight = *min_paths.get(&(peer_vertex, current_vertex)).unwrap();
-                    for &edge_index in vertices[current_vertex].neighbor_edges.iter() {
-                        let edge = &edges[edge_index];
+                    for &edge_index in vertices[current_vertex as usize].neighbor_edges.iter() {
+                        let edge = &edges[edge_index as usize];
                         let (v1, v2) = edge.vertices;
                         let neighbor_vertex = if v1 == current_vertex { v2 } else { v1 };
                         if neighbor_vertex == peer_vertex {
@@ -1019,8 +1019,8 @@ mod tests {
             // construct path to nearest virtual boundary
             let mut current_virtual = 0;
             let mut min_path_weight = Weight::MAX;
-            for vertex_index in 0..vertices.len() {
-                let vertex = &vertices[vertex_index];
+            for vertex_index in 0..vertices.len() as VertexIndex {
+                let vertex = &vertices[vertex_index as usize];
                 if vertex.is_virtual {
                     let path_weight = *min_paths.get(&(defect_vertex, vertex_index)).unwrap();
                     if path_weight < min_path_weight {
@@ -1037,8 +1037,8 @@ mod tests {
                 // find next nearest vertex
                 let mut next_nearest = current_vertex;
                 let mut min_path_weight = *min_paths.get(&(peer_vertex, current_vertex)).unwrap();
-                for &edge_index in vertices[current_vertex].neighbor_edges.iter() {
-                    let edge = &edges[edge_index];
+                for &edge_index in vertices[current_vertex as usize].neighbor_edges.iter() {
+                    let edge = &edges[edge_index as usize];
                     let (v1, v2) = edge.vertices;
                     let neighbor_vertex = if v1 == current_vertex { v2 } else { v1 };
                     if neighbor_vertex == peer_vertex {
