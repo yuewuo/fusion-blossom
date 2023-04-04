@@ -799,6 +799,208 @@ impl CircuitLevelPlanarCode {
 
 }
 
+/// CSS surface code (the rotated one) with X-type stabilizers
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
+pub struct CodeCapacityRotatedCode {
+    /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub vertices: Vec<CodeVertex>,
+    /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub edges: Vec<CodeEdge>,
+}
+
+impl ExampleCode for CodeCapacityRotatedCode {
+    fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
+    fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
+}
+
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{CodeCapacityRotatedCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
+impl CodeCapacityRotatedCode {
+
+    #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
+        let mut code = Self::create_code(d);
+        code.set_probability(p);
+        code.compute_weights(max_half_weight);
+        code
+    }
+
+    #[cfg_attr(feature = "python_binding", staticmethod)]
+    pub fn create_code(d: VertexNum) -> Self {
+        assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
+        let row_vertex_num = (d-1) / 2 + 1;  // a virtual node at either left or right
+        let vertex_num = row_vertex_num * (d+1);  // d+1 rows
+        // create edges
+        let mut edges = Vec::new();
+        for row in 0..d {
+            let bias = row * row_vertex_num;
+            if row % 2 == 0 {
+                for i in 0..d {
+                    if i % 2 == 0 {
+                        edges.push(CodeEdge::new(bias + i / 2, bias + row_vertex_num + i / 2));
+                    } else {
+                        edges.push(CodeEdge::new(bias + (i - 1) / 2, bias + row_vertex_num + (i + 1) / 2));
+                    }
+                }
+            } else {
+                for i in 0..d {
+                    if i % 2 == 0 {
+                        edges.push(CodeEdge::new(bias + i / 2, bias + row_vertex_num + i / 2));
+                    } else {
+                        edges.push(CodeEdge::new(bias + (i + 1) / 2, bias + row_vertex_num + (i - 1) / 2));
+                    }
+                }
+            }
+        }
+        let mut code = Self {
+            vertices: Vec::new(),
+            edges,
+        };
+        // create vertices
+        code.fill_vertices(vertex_num);
+        for row in 0..d+1 {
+            let bias = row * row_vertex_num;
+            if row % 2 == 0 {
+                code.vertices[(bias + row_vertex_num - 1) as usize].is_virtual = true;
+            } else {
+                code.vertices[(bias) as usize].is_virtual = true;
+            }
+        }
+        let mut positions = Vec::new();
+        for row in 0..d+1 {
+            let pos_i = row as f64;
+            for i in 0..row_vertex_num {
+                let pos_bias = if row % 2 == 0 { 1 } else { 0 };
+                positions.push(VisualizePosition::new(pos_i, (i * 2 + pos_bias) as f64, 0.));
+            }
+        }
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
+        }
+        code
+    }
+
+}
+
+/// CSS surface code (the rotated one) with X-type stabilizers
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
+pub struct PhenomenologicalRotatedCode {
+    /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub vertices: Vec<CodeVertex>,
+    /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub edges: Vec<CodeEdge>,
+}
+
+impl ExampleCode for PhenomenologicalRotatedCode {
+    fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
+    fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
+}
+
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{PhenomenologicalRotatedCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
+impl PhenomenologicalRotatedCode {
+
+    #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    pub fn new(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight) -> Self {
+        let mut code = Self::create_code(d, noisy_measurements);
+        code.set_probability(p);
+        code.compute_weights(max_half_weight);
+        code
+    }
+
+    #[cfg_attr(feature = "python_binding", staticmethod)]
+    pub fn create_code(d: VertexNum, noisy_measurements: VertexNum) -> Self {
+        assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
+        let row_vertex_num = (d-1) / 2 + 1;  // a virtual node at either left or right
+        let t_vertex_num = row_vertex_num * (d+1);  // d+1 rows
+        let td = noisy_measurements + 1;  // a perfect measurement round is capped at the end
+        let vertex_num = t_vertex_num * td;  // `td` layers
+        // create edges
+        let mut edges = Vec::new();
+        for t in 0..td {
+            let t_bias = t * t_vertex_num;
+            for row in 0..d {
+                let bias = t_bias + row * row_vertex_num;
+                if row % 2 == 0 {
+                    for i in 0..d {
+                        if i % 2 == 0 {
+                            edges.push(CodeEdge::new(bias + i / 2, bias + row_vertex_num + i / 2));
+                        } else {
+                            edges.push(CodeEdge::new(bias + (i - 1) / 2, bias + row_vertex_num + (i + 1) / 2));
+                        }
+                    }
+                } else {
+                    for i in 0..d {
+                        if i % 2 == 0 {
+                            edges.push(CodeEdge::new(bias + i / 2, bias + row_vertex_num + i / 2));
+                        } else {
+                            edges.push(CodeEdge::new(bias + (i + 1) / 2, bias + row_vertex_num + (i - 1) / 2));
+                        }
+                    }
+                }
+            }
+            // inter-layer connection
+            if t + 1 < td {
+                for row in 0..d+1 {
+                    let bias = t_bias + row * row_vertex_num;
+                    for i in 0..row_vertex_num {
+                        edges.push(CodeEdge::new(bias + i, bias + i + t_vertex_num));
+                    }
+                }
+            }
+        }
+        let mut code = Self {
+            vertices: Vec::new(),
+            edges,
+        };
+        // create vertices
+        code.fill_vertices(vertex_num);
+        for t in 0..td {
+            let t_bias = t * t_vertex_num;
+            for row in 0..d+1 {
+                let bias = t_bias + row * row_vertex_num;
+                if row % 2 == 0 {
+                    code.vertices[(bias + row_vertex_num - 1) as usize].is_virtual = true;
+                } else {
+                    code.vertices[(bias) as usize].is_virtual = true;
+                }
+            }
+        }
+        let mut positions = Vec::new();
+        for t in 0..td {
+            let pos_t = t as f64 * 2f64.sqrt();
+            for row in 0..d+1 {
+                let pos_i = row as f64;
+                for i in 0..row_vertex_num {
+                    let pos_bias = if row % 2 == 0 { 1 } else { 0 };
+                    positions.push(VisualizePosition::new(pos_i, (i * 2 + pos_bias) as f64, pos_t));
+                }
+            }
+        }
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
+        }
+        code
+    }
+
+}
+
 /// read from file, including the error patterns;
 /// the point is to avoid bad cache performance, because generating random error requires iterating over a large memory space,
 /// invalidating all cache. also, this can reduce the time of decoding by prepare the data before hand and could be shared between
@@ -999,6 +1201,20 @@ mod tests {
         let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, format!("example_circuit_level_planar_code.json"));
+    }
+
+    #[test]
+    fn example_code_capacity_rotated_code() {  // cargo test example_code_capacity_rotated_code -- --nocapture
+        let mut code = CodeCapacityRotatedCode::new(5, 0.1, 500);
+        code.sanity_check().unwrap();
+        visualize_code(&mut code, format!("example_code_capacity_rotated_code.json"));
+    }
+
+    #[test]
+    fn example_code_phenomenological_rotated_code() {  // cargo test example_code_phenomenological_rotated_code -- --nocapture
+        let mut code = PhenomenologicalRotatedCode::new(5, 5, 0.01, 500);
+        code.sanity_check().unwrap();
+        visualize_code(&mut code, format!("example_code_phenomenological_rotated_code.json"));
     }
 
 }

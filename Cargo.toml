@@ -70,12 +70,12 @@ rand = "0.8.5"
 core_affinity = "0.7.2"
 pyo3 = { version =  "0.17.2", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
 lazy_static = "1.4.0"
+petgraph = "0.6.3"
 
 [build-dependencies]
 cc = "1.0.66"
 
 [dev-dependencies]
-petgraph = "0.6.3"
 
 [package.metadata.docs.rs]
 rustdoc-args = [ "--html-in-header", "katex-header.html" ]

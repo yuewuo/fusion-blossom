@@ -87,6 +87,38 @@ impl ExamplePartition for CodeCapacityPlanarCodeVerticalPartitionHalf {
     }
 }
 
+/// partition into top half and bottom half
+#[derive(Default)]
+pub struct CodeCapacityRotatedCodeVerticalPartitionHalf {
+    d: VertexNum,
+    /// the row of splitting: in the visualization tool, the top row is the 1st row, the bottom row is the d-th row
+    partition_row: VertexNum,
+}
+
+impl CodeCapacityRotatedCodeVerticalPartitionHalf {
+    pub fn new(d: VertexNum, partition_row: VertexNum) -> Self {
+        Self { d, partition_row }
+    }
+}
+
+impl ExamplePartition for CodeCapacityRotatedCodeVerticalPartitionHalf {
+    fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
+        let (d, partition_row) = (self.d, self.partition_row);
+        let row_vertex_num = (d-1) / 2 + 1;
+        assert_eq!(code.vertex_num(), row_vertex_num * (d + 1), "code size incompatible");
+        let mut config = PartitionConfig::new(code.vertex_num());
+        assert!(partition_row >= 1 && partition_row < d);
+        config.partitions = vec![
+            VertexRange::new(0, partition_row * row_vertex_num),
+            VertexRange::new((partition_row + 1) * row_vertex_num, row_vertex_num * (d + 1)),
+        ];
+        config.fusions = vec![
+            (0, 1),
+        ];
+        config
+    }
+}
+
 /// partition into 4 pieces: top left and right, bottom left and right
 #[derive(Default)]
 pub struct CodeCapacityPlanarCodeVerticalPartitionFour {
@@ -238,6 +270,123 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
     fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
         let (d, noisy_measurements, partition_num) = (self.d, self.noisy_measurements, self.partition_num);
         let round_vertex_num = d * (d + 1);
+        let vertex_num = round_vertex_num * (noisy_measurements + 1);
+        assert_eq!(code.vertex_num(), vertex_num, "code size incompatible");
+        assert!(partition_num >= 1 && partition_num <= noisy_measurements as usize + 1);
+        // do not use fixed partition_length, because it would introduce super long partition; do it on the fly
+        let mut config = PartitionConfig::new(vertex_num);
+        config.partitions.clear();
+        for partition_index in 0..partition_num as VertexIndex {
+            let start_round_index = partition_index * (noisy_measurements + 1) / partition_num as VertexNum;
+            let end_round_index = (partition_index + 1) * (noisy_measurements + 1) / partition_num as VertexNum;
+            assert!(end_round_index > start_round_index, "empty partition occurs");
+            if partition_index == 0 {
+                config.partitions.push(VertexRange::new(start_round_index * round_vertex_num, end_round_index * round_vertex_num));
+            } else {
+                config.partitions.push(VertexRange::new((start_round_index + 1) * round_vertex_num, end_round_index * round_vertex_num));
+            }
+        }
+        config.fusions.clear();
+        if !self.enable_tree_fusion || self.maximum_tree_leaf_size == 1 {
+            for unit_index in partition_num..(2 * partition_num - 1) {
+                if unit_index == partition_num {
+                    config.fusions.push((0, 1));
+                } else {
+                    config.fusions.push((unit_index as usize - 1, unit_index - partition_num + 1));
+                }
+            }
+        } else {
+            let mut whole_ranges = vec![];
+            let mut left_right_leaf = vec![];
+            for (unit_index, partition) in config.partitions.iter().enumerate() {
+                assert!(partition.end() <= vertex_num, "invalid vertex index {} in partitions", partition.end());
+                whole_ranges.push(*partition);
+                left_right_leaf.push((unit_index, unit_index));
+            }
+            // first cut into multiple regions
+            let region_count = if config.partitions.len() <= self.maximum_tree_leaf_size {
+                1
+            } else {
+                (config.partitions.len() + self.maximum_tree_leaf_size - 1) / self.maximum_tree_leaf_size
+            };
+            let mut last_sequential_unit: Option<usize> = None;
+            for region_index in 0..region_count {
+                let region_start = region_index * self.maximum_tree_leaf_size;
+                let region_end = std::cmp::min((region_index + 1) * self.maximum_tree_leaf_size, config.partitions.len());
+                // build the local tree
+                let mut pending_fusion = VecDeque::new();
+                for unit_index in region_start..region_end {
+                    pending_fusion.push_back(unit_index);
+                }
+                let local_fusion_start_index = whole_ranges.len();
+                for unit_index in local_fusion_start_index..(local_fusion_start_index + region_end - region_start - 1) {
+                    let mut unit_index_1 = pending_fusion.pop_front().unwrap();
+                    // iterate over all pending fusions to find a neighboring one
+                    for i in 0..pending_fusion.len() {
+                        let mut unit_index_2 = pending_fusion[i];
+                        let is_neighbor = left_right_leaf[unit_index_1].0 == left_right_leaf[unit_index_2].1 + 1
+                            || left_right_leaf[unit_index_2].0 == left_right_leaf[unit_index_1].1 + 1;
+                        if is_neighbor {
+                            pending_fusion.remove(i);
+                            if whole_ranges[unit_index_1].start() > whole_ranges[unit_index_2].start() {
+                                (unit_index_1, unit_index_2) = (unit_index_2, unit_index_1);  // only lower range can fuse higher range
+                            }
+                            config.fusions.push((unit_index_1, unit_index_2));
+                            pending_fusion.push_back(unit_index);
+                            // println!("unit_index_1: {unit_index_1} {:?}, unit_index_2: {unit_index_2} {:?}", whole_ranges[unit_index_1], whole_ranges[unit_index_2]);
+                            let (whole_range, _) = whole_ranges[unit_index_1].fuse(&whole_ranges[unit_index_2]);
+                            whole_ranges.push(whole_range);
+                            left_right_leaf.push((left_right_leaf[unit_index_1].0, left_right_leaf[unit_index_2].1));
+                            break
+                        }
+                        assert!(i != pending_fusion.len() - 1, "unreachable: cannot find a neighbor");
+                    }
+                }
+                assert!(pending_fusion.len() == 1, "only the final unit is left");
+                let tree_root_unit_index = pending_fusion.pop_front().unwrap();
+                if let Some(last_sequential_unit) = last_sequential_unit.as_mut() {
+                    config.fusions.push((*last_sequential_unit, tree_root_unit_index));
+                    let (whole_range, _) = whole_ranges[*last_sequential_unit].fuse(&whole_ranges[tree_root_unit_index]);
+                    whole_ranges.push(whole_range);
+                    left_right_leaf.push((left_right_leaf[*last_sequential_unit].0, left_right_leaf[tree_root_unit_index].1));
+                    *last_sequential_unit = tree_root_unit_index + 1;
+                } else {
+                    last_sequential_unit = Some(tree_root_unit_index);
+                }
+            }
+        }
+        config
+    }
+}
+
+
+/// evenly partition along the time axis
+pub struct PhenomenologicalRotatedCodeTimePartition {
+    d: VertexNum,
+    noisy_measurements: VertexNum,
+    /// the number of partition
+    partition_num: usize,
+    /// enable tree fusion (to minimize latency but incur log(partition_num) more memory copy)
+    enable_tree_fusion: bool,
+    /// maximum amount of tree leaf; if the total partition is greater than this, it will be cut into multiple regions and each region is a separate tree;
+    /// those trees are then fused sequentially
+    maximum_tree_leaf_size: usize,
+}
+
+impl PhenomenologicalRotatedCodeTimePartition {
+    pub fn new_tree(d: VertexNum, noisy_measurements: VertexNum, partition_num: usize, enable_tree_fusion: bool, maximum_tree_leaf_size: usize) -> Self {
+        Self { d, noisy_measurements, partition_num, enable_tree_fusion, maximum_tree_leaf_size }
+    }
+    pub fn new(d: VertexNum, noisy_measurements: VertexNum, partition_num: usize) -> Self {
+        Self::new_tree(d, noisy_measurements, partition_num, false, usize::MAX)
+    }
+}
+
+impl ExamplePartition for PhenomenologicalRotatedCodeTimePartition {
+    fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
+        let (d, noisy_measurements, partition_num) = (self.d, self.noisy_measurements, self.partition_num);
+        let row_vertex_num = (d-1) / 2 + 1;
+        let round_vertex_num = row_vertex_num * (d + 1);
         let vertex_num = round_vertex_num * (noisy_measurements + 1);
         assert_eq!(code.vertex_num(), vertex_num, "code size incompatible");
         assert!(partition_num >= 1 && partition_num <= noisy_measurements as usize + 1);
