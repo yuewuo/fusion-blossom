@@ -21,7 +21,7 @@ First generate syndrome data under this folder
 """
 
 d_vec = [3, 5, 7]  # for debugging script
-# d_vec = [3, 5, 7, 9, 11, 13, 17, 19, 23, 27, 33, 39, 47, 57, 67, 81, 97]
+d_vec = [3, 5, 7, 9, 11, 13, 17, 19, 23, 27, 33, 39, 47, 57, 67, 81, 97]
 p = 0.005
 total_rounds = 1000
 
