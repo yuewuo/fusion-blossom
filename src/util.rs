@@ -606,7 +606,7 @@ impl BenchmarkProfiler {
         let total = self.sum_round_time / (self.records.len() as f64);
         let per_round = total / (1. + self.noisy_measurements as f64);
         let per_defect = self.sum_round_time / (self.sum_syndrome as f64);
-        format!("total: {total:.3e}, round: {per_round:.3e}, syndrome: {per_defect:.3e},")
+        format!("total: {total:.3e}, round: {per_round:.3e}, defect: {per_defect:.3e},")
     }
 }
 

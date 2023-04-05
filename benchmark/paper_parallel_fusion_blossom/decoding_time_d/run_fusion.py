@@ -71,7 +71,7 @@ for d in d_vec:
 Gather useful data
 """
 
-data_file = os.path.join(script_dir, "data.txt")
+data_file = os.path.join(script_dir, "data_fusion.txt")
 with open(data_file, "w", encoding="utf8") as f:
     f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
     for idx, d in enumerate(d_vec):
