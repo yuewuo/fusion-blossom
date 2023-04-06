@@ -28,7 +28,7 @@ from util import *
 util.FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True  # better performance, still safe
 compile_code_if_necessary()
 
-data_file = os.path.join(script_dir, "data_fusion.txt")
+data_file = os.path.join(script_dir, "data_parity.txt")
 with open(data_file, "w", encoding="utf8") as data_f:
     data_f.write("<noisy_measurements> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>\n")
 
@@ -48,7 +48,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             assert returncode == 0, "command fails..."
 
         # run simulation
-        benchmark_profile_path = os.path.join(tmp_dir, f"T{noisy_measurements}.profile")
+        benchmark_profile_path = os.path.join(tmp_dir, f"T{noisy_measurements}.parity.profile")
         if os.path.exists(benchmark_profile_path):
             print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
         else:

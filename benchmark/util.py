@@ -1,4 +1,4 @@
-import json, subprocess, os, sys, tempfile, math
+import json, subprocess, os, sys, tempfile, math, scipy
 
 
 class Profile:
@@ -159,3 +159,27 @@ def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_t
             stdout = f.read()
         os.remove(out_filename)
     return stdout, process.returncode
+
+
+class GnuplotData:
+    def __init__(self, filename):
+        assert isinstance(filename, str)
+        with open(filename, "r", encoding="utf8") as f:
+            lines = f.readlines()
+        self.titles = []
+        if lines[0].startswith("<"):  # title line
+            line = lines[0].strip("\r\n ")
+            titles = line.split(" ")
+            for title in titles:
+                assert title.startswith("<") and title.endswith(">")
+                self.titles.append(title[1:-1])
+            lines = lines[1:]
+        self.data = []
+        for line in lines:
+            line = line.strip("\r\n ")
+            self.data.append(line.split(" "))
+    def fit(self, x_column, y_column, x_func=lambda x:float(x), y_func=lambda y:float(y), starting_row=0, ending_row=None):
+        X = [x_func(line[x_column]) for line in self.data[starting_row:ending_row]]
+        Y = [y_func(line[y_column]) for line in self.data[starting_row:ending_row]]
+        slope, intercept, r, _, _ = scipy.stats.linregress(X, Y)
+        return slope, intercept, r
