@@ -73,7 +73,7 @@ Gather useful data
 
 data_file = os.path.join(script_dir, "data_fusion.txt")
 with open(data_file, "w", encoding="utf8") as f:
-    f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
+    f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>\n")
     for idx, d in enumerate(d_vec):
         benchmark_profile_path = benchmark_profile_path_vec[idx]
         print(benchmark_profile_path)
@@ -83,9 +83,11 @@ with open(data_file, "w", encoding="utf8") as f:
         print("    average_decoding_time_per_round:", profile.average_decoding_time() / (d + 1))
         print("    average_decoding_time_per_defect:", profile.average_decoding_time_per_defect())
         print("    average_defect_per_measurement:", profile.sum_defect_num() / (d + 1) / len(profile.entries))
-        f.write("%d %.5e %.5e %.5e\n" % (
+        print("    decoding_time_relative_dev:", profile.decoding_time_relative_dev())
+        f.write("%d %.5e %.5e %.5e %.3e\n" % (
             d,
             profile.average_decoding_time(),
             profile.average_decoding_time() / (d + 1),
             profile.average_decoding_time_per_defect(),
+            profile.decoding_time_relative_dev(),
         ))
