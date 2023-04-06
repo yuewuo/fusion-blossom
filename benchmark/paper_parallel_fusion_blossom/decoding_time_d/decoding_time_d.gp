@@ -20,7 +20,8 @@ set key samplen 4
 set output "decoding_time_d.eps"
 
 plot 3.42598e-06 / x notitle with lines dashtype 2 lt rgb "#e41a1c" linewidth 3,\
-    "data.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 notitle
+    "data_fusion.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Parity Blossom",\
+    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Sparse Blossom"
 
 system("ps2pdf -dEPSCrop decoding_time_d.eps decoding_time_d.pdf")
 

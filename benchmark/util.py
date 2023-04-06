@@ -1,4 +1,4 @@
-import json, subprocess, os, sys, tempfile
+import json, subprocess, os, sys, tempfile, math
 
 
 class Profile:
@@ -34,6 +34,12 @@ class Profile:
         for entry in self.entries:
             decoding_time += entry["events"]["decoded"]
         return decoding_time
+    def decoding_time_relative_dev(self):
+        dev_sum = 0
+        avr_decoding_time = self.average_decoding_time()
+        for entry in self.entries:
+            dev_sum += (entry["events"]["decoded"] - avr_decoding_time) ** 2
+        return math.sqrt(dev_sum / len(self.entries)) / avr_decoding_time
     def average_decoding_time(self):
         return self.sum_decoding_time() / len(self.entries)
     def sum_defect_num(self):

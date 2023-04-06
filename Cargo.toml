@@ -16,6 +16,7 @@ exclude = [
     "visualize/data/persist/*",
     ".github/*",
 ]
+default-run = "fusion_blossom"
 
 # see https://doc.rust-lang.org/1.39.0/cargo/reference/manifest.html#the-documentation-field-optional
 [badges]

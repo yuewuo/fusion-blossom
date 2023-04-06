@@ -35,6 +35,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
     data_f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
 
     for d in d_vec:
+        print(f"d = {d}")
         syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
 
         # load the generated graph and syndrome
