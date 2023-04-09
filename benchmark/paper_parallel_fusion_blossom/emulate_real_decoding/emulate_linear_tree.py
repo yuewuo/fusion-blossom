@@ -25,11 +25,11 @@ compile_code_if_necessary()
 d = 21
 p = 0.005
 total_rounds = 100
-noisy_measurements = 800
-partition_num = 16
+noisy_measurements = 1600
+partition_num = 32
 thread_pool_size = 4
 benchmark_profile_path = os.path.join(visualize_data_dir, f"emulate_linear_tree.profile")
-measure_interval = 200e-6
+measure_interval = 300e-6
 interleaving_base_fusion = thread_pool_size + 1
 
 
