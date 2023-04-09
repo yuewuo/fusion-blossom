@@ -34,10 +34,10 @@ for entry in profile.entries:
 
 with open("linear_tree.txt", "w", encoding="utf-8") as f:
     MAX_SAMPLE_COUNT = 100
-    CHILDREN_COUNT_INTERVAL = 100
+    EXPECT_CHILDREN_COUNTS = [16, 32, 64, 128, 256, 512, 1024, 2000]
     f.write(f"<children_count> <average_time> <stddev_time> <list of samples (maximum of {MAX_SAMPLE_COUNT})>\n")
     for children_count in range(1, max_children_count+1):
-        if len(time_vec[children_count]) > 0 and (children_count <=10 or children_count % CHILDREN_COUNT_INTERVAL == 0):
+        if len(time_vec[children_count]) > 0 and (children_count <= 8 or children_count in EXPECT_CHILDREN_COUNTS):
             average_time = sum(time_vec[children_count]) / len(time_vec[children_count])
             stddev_time = math.sqrt(sum([(time - average_time) ** 2 for time in time_vec[children_count]]) / len(time_vec[children_count]))
             samples = time_vec[children_count] if len(time_vec[children_count]) < MAX_SAMPLE_COUNT else random.sample(time_vec[children_count], MAX_SAMPLE_COUNT)

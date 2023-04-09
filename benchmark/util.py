@@ -73,6 +73,8 @@ class VertexRange:
         self.range = (start, end)
     def __repr__(self):
         return f"[{self.range[0]}, {self.range[1]}]"
+    def length(self):
+        return self.range[1] - self.range[0]
 
 class PartitionConfig:
     def __init__(self, vertex_num):
