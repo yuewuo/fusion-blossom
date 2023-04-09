@@ -65,10 +65,10 @@ derivative = "2.2.0"
 urlencoding = "2.1.0"
 clap = { version = "3.2.22", features = ["cargo", "derive"] }
 pbr = "1.0.4"
-rayon = "1.5.3"
+rayon = "1.7.0"
 weak-table = "0.3.2"
 rand = "0.8.5"
-core_affinity = "0.7.2"
+core_affinity = "0.8.0"
 pyo3 = { version =  "0.17.2", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
 lazy_static = "1.4.0"
 petgraph = "0.6.3"

@@ -28,7 +28,9 @@ total_rounds = 100
 noisy_measurements = 800
 partition_num = 16
 thread_pool_size = 4
-benchmark_profile_path = os.path.join(visualize_data_dir, f"emulate_batch.profile")
+benchmark_profile_path = os.path.join(visualize_data_dir, f"emulate_linear_tree.profile")
+measure_interval = 200e-6
+interleaving_base_fusion = thread_pool_size + 1
 
 
 syndrome_file_path = os.path.join(tmp_dir, "generated.syndromes")
@@ -45,20 +47,17 @@ else:
     print("\n" + stdout)
     assert returncode == 0, "command fails..."
 
-if os.path.exists(benchmark_profile_path):
-    print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
-else:
-    command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
-    command += ["--code-type", "error-pattern-reader"]
-    command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
-    command += ["--primal-dual-type", "parallel"]
-    command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size},"pin_threads_to_cores":true}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
-    command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
-    # use `maximum_tree_leaf_size` to make sure fusion jobs are distributed to multiple cores while limiting the size of tree
-    command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true}}']
-    command += ["--verifier", "none"]
-    command += ["--benchmark-profiler-output", benchmark_profile_path]
-    print(command)
-    stdout, returncode = run_command_get_stdout(command)
-    print("\n" + stdout)
-    assert returncode == 0, "command fails..."
+command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
+command += ["--code-type", "error-pattern-reader"]
+command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
+command += ["--primal-dual-type", "parallel"]
+command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size},"pin_threads_to_cores":true,"streaming_decode_mock_measure_interval":{measure_interval},"interleaving_base_fusion":{interleaving_base_fusion}}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
+command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
+# use `maximum_tree_leaf_size` to make sure fusion jobs are distributed to multiple cores while limiting the size of tree
+command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":false}}']
+command += ["--verifier", "none"]
+command += ["--benchmark-profiler-output", benchmark_profile_path]
+print(command)
+stdout, returncode = run_command_get_stdout(command)
+print("\n" + stdout)
+assert returncode == 0, "command fails..."
