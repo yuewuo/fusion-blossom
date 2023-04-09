@@ -26,13 +26,13 @@ total_rounds = 100
 noisy_measurements = 100000
 partition_num = 2000
 thread_pool_size = 64
-
-measure_interval_vec = [0.5e-6 * (1.3 ** i) for i in range(20)]
+maximum_tree_leaf_size = 64  # see maximum_tree_leaf_size_64_threads
+#measure_interval_vec = [0.5e-6 * (1.3 ** i) for i in range(20)]
+measure_interval_vec = [0.2e-6 * (1.1 ** i) for i in range(20)]
 # print(measure_interval_vec)
 
 
-measure_interval = 300e-6
-interleaving_base_fusion = thread_pool_size + 1
+interleaving_base_fusion = 4 * thread_pool_size + 1
 
 
 syndrome_file_path = os.path.join(tmp_dir, "generated.syndromes")
@@ -55,10 +55,10 @@ for idx, measure_interval in enumerate(measure_interval_vec):
     command += ["--code-type", "error-pattern-reader"]
     command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
     command += ["--primal-dual-type", "parallel"]
-    command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size},"pin_threads_to_cores":true,"streaming_decode_mock_measure_interval":{measure_interval},"interleaving_base_fusion":{interleaving_base_fusion}}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
+    command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size},"pin_threads_to_cores":true,"streaming_decode_mock_measure_interval":{50*measure_interval},"interleaving_base_fusion":{interleaving_base_fusion}}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
     command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
     # use `maximum_tree_leaf_size` to make sure fusion jobs are distributed to multiple cores while limiting the size of tree
-    command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":false}}']
+    command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true,"maximum_tree_leaf_size":{maximum_tree_leaf_size}}}']
     command += ["--verifier", "none"]
     command += ["--benchmark-profiler-output", benchmark_profile_path]
     print(command)
