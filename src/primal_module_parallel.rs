@@ -392,8 +392,10 @@ impl PrimalModuleParallelUnitPtr {
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
         let mut primal_unit = self.write();
         if let Some(mocker) = &primal_unit.streaming_decode_mocker {
-            while primal_module_parallel.last_solve_start_time.read_recursive().elapsed() < mocker.bias {
-                std::thread::sleep(mocker.bias - primal_module_parallel.last_solve_start_time.read_recursive().elapsed());
+            let mut elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
+            while elapsed < mocker.bias {
+                std::thread::sleep(mocker.bias - elapsed);
+                elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
             }
         }
         let mut event_time = PrimalModuleParallelUnitEventTime::new();
