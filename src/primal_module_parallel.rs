@@ -111,8 +111,11 @@ pub struct PrimalModuleParallelConfig {
     /// pin threads to cores sequentially
     #[serde(default = "primal_module_parallel_default_configs::pin_threads_to_cores")]
     pub pin_threads_to_cores: bool,
-    /// streaming_decode_mocker
+    /// streaming decode mocker
     pub streaming_decode_mock_measure_interval: Option<f64>,
+    /// streaming decoder using spin lock instead of threads.sleep to avoid context switch
+    #[serde(default = "primal_module_parallel_default_configs::streaming_decode_use_spin_lock")]
+    pub streaming_decode_use_spin_lock: bool,
 }
 
 impl Default for PrimalModuleParallelConfig {
@@ -126,6 +129,7 @@ pub mod primal_module_parallel_default_configs {
     pub fn pin_threads_to_cores() -> bool { false }  // pin threads to cores to achieve most stable results
     pub fn prioritize_base_partition() -> bool { true }  // by default enable because this is faster by placing time-consuming tasks in the front
     pub fn interleaving_base_fusion() -> usize { usize::MAX }  // starts interleaving base and fusion after this unit_index
+    pub fn streaming_decode_use_spin_lock() -> bool { false }  // by default use threads.sleep; enable only when benchmarking latency
 }
 
 pub struct StreamingDecodeMocker {
@@ -392,10 +396,14 @@ impl PrimalModuleParallelUnitPtr {
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
         let mut primal_unit = self.write();
         if let Some(mocker) = &primal_unit.streaming_decode_mocker {
-            let mut elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
-            while elapsed < mocker.bias {
-                std::thread::sleep(mocker.bias - elapsed);
-                elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
+            if primal_module_parallel.config.streaming_decode_use_spin_lock {
+                while primal_module_parallel.last_solve_start_time.read_recursive().elapsed() < mocker.bias { }  // spin to avoid context switch
+            } else {
+                let mut elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
+                while elapsed < mocker.bias {
+                    std::thread::sleep(mocker.bias - elapsed);
+                    elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
+                }
             }
         }
         let mut event_time = PrimalModuleParallelUnitEventTime::new();
