@@ -12,7 +12,7 @@ p = 0.005
 total_rounds = 100
 small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
 noisy_measurements_vec = small_T_vec + [300, 1000, 3000, 10000, 30000, 100000]
-noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
+# noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
 
 PYMATCHING_BATCH_DECODING = True
 

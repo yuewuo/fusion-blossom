@@ -36,6 +36,6 @@ as expected, fusion time doesn't change with delta T
 ## pending
 
 need 64 cores machine
+- [ ] decoding_throughput_threads64(p=0.005,d=33,35)
 - [ ] thread_pool_size_partition_1k
 - [ ] emulate_decoding_d21_threads64
-- [ ] decoding_throughput_threads64

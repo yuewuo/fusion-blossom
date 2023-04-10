@@ -36,5 +36,3 @@ plot "data_fusion.txt" using 1:3 with linespoints lt rgb "#9400D3" linewidth 3 p
     "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom"
 
 system("ps2pdf -dEPSCrop pymatching_compare_various_T.eps pymatching_compare_various_T.pdf")
-
-system("pdf2svg pymatching_compare_various_T.pdf pymatching_compare_various_T.svg")
