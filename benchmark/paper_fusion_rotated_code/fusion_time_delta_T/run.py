@@ -6,11 +6,21 @@ import subprocess
 from msgspec.json import decode
 from msgspec import Struct
 
-d_vec = [3, 5, 7, 9, 11, 13, 17, 19, 23, 27, 33, 39, 47, 57, 67, 81, 97, 115, 139, 165, 199, 239, 285, 343, 411, 493, 591]
+d = 21
 p = 0.005
 total_rounds = 100
+delta_T_vec = [1, 2, 3, 4, 5, 6, 7, 9, 11, 13, 15, 18, 22, 27, 32, 38, 46, 55, 66, 79, 95, 114, 137, 165, 198, 237, 285, 342, 410, 492, 591, 709, 851, 1021]
 
-# d_vec = d_vec[:3]  # small-scale debug
+# last_T = 0
+# for i in range(100):
+#     T = round(1.2 ** i)
+#     if T != last_T:
+#         delta_T_vec.append(T)
+#         last_T = T
+#     if T > 2000:
+#         break
+
+# delta_T_vec = delta_T_vec[:10]  # small-scale debug
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
@@ -29,18 +39,17 @@ compile_code_if_necessary()
 
 data_file = os.path.join(script_dir, "data.txt")
 with open(data_file, "w", encoding="utf8") as data_f:
-    data_f.write("<d> <average_fusion_time> <stddev_time> <samples>\n")
+    data_f.write("<delta_T> <average_fusion_time> <stddev_time> <samples>\n")
 
-    for d in d_vec:
-        delta_T = 50
-        partition_num = 2
+    for delta_T in delta_T_vec:
+        partition_num = 32
         noisy_measurements = partition_num * (delta_T + 1) - 2
-        syndrome_file_path = os.path.join(tmp_dir, f"generated.d{d}.syndromes")
+        syndrome_file_path = os.path.join(tmp_dir, f"generated.T{noisy_measurements}.syndromes")
         if os.path.exists(syndrome_file_path):
             print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
         else:
             command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
-            command += ["--code-type", "phenomenological-planar-code"]
+            command += ["--code-type", "phenomenological-rotated-code"]
             command += ["--primal-dual-type", "error-pattern-logger"]
             command += ["--verifier", "none"]
             command += ["--primal-dual-config", f'{{"filename":"{syndrome_file_path}"}}']
@@ -56,7 +65,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
         command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
         command += ["--primal-dual-type", "parallel"]
         command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":1,"pin_threads_to_cores":true}},"dual":{{"thread_pool_size":1}}}}']
-        command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
+        command += ["--partition-strategy", "phenomenological-rotated-code-time-partition"]
         command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true}}']
         command += ["--verifier", "none"]
         command += ["--benchmark-profiler-output", benchmark_profile_path]
@@ -79,9 +88,9 @@ with open(data_file, "w", encoding="utf8") as data_f:
         average_time = sum(fusion_time_vec) / len(fusion_time_vec)
         stddev_time = math.sqrt(sum([(time - average_time) ** 2 for time in fusion_time_vec]) / len(fusion_time_vec))
         samples_str = ["%.3e" % time for time in fusion_time_vec]
-        print(f"d {d}: average {average_time}, stddev {stddev_time}")
+        print(f"delta_T {delta_T}: average {average_time}, stddev {stddev_time}")
         data_f.write("%d %.5e %.3e %s\n" % (
-            d,
+            delta_T,
             average_time,
             stddev_time,
             "[" + ",".join(samples_str) + "]",

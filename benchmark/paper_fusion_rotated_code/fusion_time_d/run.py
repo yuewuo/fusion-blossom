@@ -40,7 +40,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
         else:
             command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
-            command += ["--code-type", "phenomenological-planar-code"]
+            command += ["--code-type", "phenomenological-rotated-code"]
             command += ["--primal-dual-type", "error-pattern-logger"]
             command += ["--verifier", "none"]
             command += ["--primal-dual-config", f'{{"filename":"{syndrome_file_path}"}}']
@@ -56,7 +56,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
         command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
         command += ["--primal-dual-type", "parallel"]
         command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":1,"pin_threads_to_cores":true}},"dual":{{"thread_pool_size":1}}}}']
-        command += ["--partition-strategy", "phenomenological-planar-code-time-partition"]
+        command += ["--partition-strategy", "phenomenological-rotated-code-time-partition"]
         command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true}}']
         command += ["--verifier", "none"]
         command += ["--benchmark-profiler-output", benchmark_profile_path]
