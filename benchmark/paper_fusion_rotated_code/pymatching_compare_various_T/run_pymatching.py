@@ -40,7 +40,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
         else:
             command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
-            command += ["--code-type", "phenomenological-planar-code"]
+            command += ["--code-type", "phenomenological-rotated-code"]
             command += ["--primal-dual-type", "error-pattern-logger"]
             command += ["--verifier", "none"]
             command += ["--primal-dual-config", f'{{"filename":"{syndrome_file_path}"}}']
@@ -84,7 +84,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             for i, virtual_vertex_str in enumerate(virtual_vertices_vec):
                 virtual_vertices[i] = int(virtual_vertex_str)
             initializer = SolverInitializer(vertex_num=vertex_num, weighted_edges=weighted_edges, virtual_vertices=virtual_vertices)
-            assert initializer.vertex_num == (noisy_measurements + 1) * d * (d+1)
+            assert initializer.vertex_num == (noisy_measurements + 1) * (d+1) * (d+1) // 2
             positions = f.readline()  # don't care
             line = f.readline()
             while line != "":

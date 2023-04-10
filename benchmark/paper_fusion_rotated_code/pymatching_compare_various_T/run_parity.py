@@ -38,7 +38,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
         else:
             command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
-            command += ["--code-type", "phenomenological-planar-code"]
+            command += ["--code-type", "phenomenological-rotated-code"]
             command += ["--primal-dual-type", "error-pattern-logger"]
             command += ["--verifier", "none"]
             command += ["--primal-dual-config", f'{{"filename":"{syndrome_file_path}"}}']

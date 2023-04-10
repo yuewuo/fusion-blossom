@@ -27,6 +27,7 @@ as expected, 2x faster fusion because 2x fewer boundary vertices
 
 ## fusion_time_delta_T
 
+as expected, fusion time doesn't change with delta T
 
 ## pending
 
