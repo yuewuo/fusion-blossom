@@ -73,7 +73,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             for i, virtual_vertex_str in enumerate(virtual_vertices_vec):
                 virtual_vertices[i] = int(virtual_vertex_str)
             initializer = SolverInitializer(vertex_num=vertex_num, weighted_edges=weighted_edges, virtual_vertices=virtual_vertices)
-            assert initializer.vertex_num == (d + 1) * d * (d+1)
+            assert initializer.vertex_num == (d + 1) * ((d+1) * (d+1) / 2)
             positions = f.readline()  # don't care
             line = f.readline()
             while line != "":
