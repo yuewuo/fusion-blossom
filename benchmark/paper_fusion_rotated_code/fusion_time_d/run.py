@@ -68,7 +68,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
         profile = Profile(benchmark_profile_path)
         config = profile.partition_config
         for i in range(partition_num):  # check partition is indeed delta_T height
-            assert config.partitions[i].length() == d * (d+1) * delta_T
+            assert config.partitions[i].length() == (d+1) * (d+1) // 2 * delta_T
         fusion_time_vec = []
         for entry in profile.entries:
             event_time_vec = entry["solver_profile"]["primal"]["event_time_vec"]

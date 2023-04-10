@@ -14,8 +14,6 @@ script_dir = os.path.dirname(__file__)
 tmp_dir = os.path.join(script_dir, "tmp")
 os.makedirs(tmp_dir, exist_ok=True)  # make sure tmp directory exists
 sys.path.insert(0, benchmark_dir)
-visualize_data_dir = os.path.join(git_root_dir, "visualize", "data", "emulate_real_decoding")
-os.makedirs(visualize_data_dir, exist_ok=True) 
 
 import util
 from util import *
@@ -25,11 +23,11 @@ compile_code_if_necessary()
 d = 21
 p = 0.005
 total_rounds = 100
-noisy_measurements = 1600
+noisy_measurements = 3200
 partition_num = 32
 thread_pool_size = 4
-benchmark_profile_path = os.path.join(visualize_data_dir, f"emulate_linear_tree.profile")
-measure_interval = 300e-6
+benchmark_profile_path = os.path.join(tmp_dir, f"emulate_linear_tree.profile")
+measure_interval = 350e-6
 interleaving_base_fusion = thread_pool_size + 1
 
 
