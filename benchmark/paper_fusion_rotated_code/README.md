@@ -29,10 +29,13 @@ as expected, 2x faster fusion because 2x fewer boundary vertices
 
 as expected, fusion time doesn't change with delta T
 
+## pymatching_compare_various_T
+
+## fusion_time_children_count
+
 ## pending
 
-- [ ] pymatching_compare_various_T/run_parity.py
-- [ ] pymatching_compare_various_T/run_fusion.py
-- [ ] pymatching_compare_various_T/run_pymatching.py
-- [ ] fusion_time_children_count/linear_tree_fusion/run_fusion.py
-- [ ] fusion_time_children_count
+need 64 cores machine
+- [ ] thread_pool_size_partition_1k
+- [ ] emulate_decoding_d21_threads64
+- [ ] decoding_throughput_threads64

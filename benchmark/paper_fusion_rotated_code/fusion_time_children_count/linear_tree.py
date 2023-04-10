@@ -34,7 +34,7 @@ for entry in profile.entries:
 
 with open("linear_tree.txt", "w", encoding="utf-8") as f:
     MAX_SAMPLE_COUNT = 100
-    EXPECT_CHILDREN_COUNTS = [16, 32, 64, 128, 256, 512, 1024, 2000]
+    EXPECT_CHILDREN_COUNTS = [16, 32, 64, 128, 256, 512, 1000]
     f.write(f"<children_count> <average_time> <stddev_time> <list of samples (maximum of {MAX_SAMPLE_COUNT})>\n")
     for children_count in range(1, max_children_count+1):
         if len(time_vec[children_count]) > 0 and (children_count <= 8 or children_count in EXPECT_CHILDREN_COUNTS):
