@@ -287,8 +287,9 @@ impl PrimalModuleParallel {
                         , parallel_dual_module, &mut Some(&mut callback));
                 }
             } else {
+                use std::sync::atomic::{AtomicUsize, Ordering};
                 let ready_vec: Vec<_> = {
-                    (0..self.partition_info.units.len()).map(|_| Arc::new((Mutex::new(false), Condvar::new()))).collect()
+                    (0..self.partition_info.units.len()).map(|_| Arc::new((Mutex::new(false), Condvar::new(), Arc::new(AtomicUsize::new(0))))).collect()
                 };
                 thread_pool.scope_fifo(|s| {
                     let issue_unit = |unit_index: usize| {
@@ -297,27 +298,47 @@ impl PrimalModuleParallel {
                         let partition_info = &self.partition_info;
                         let parallel_unit = &self;
                         let parallel_dual_module = &parallel_dual_module;
+                        let streaming_decode_use_spin_lock = self.config.streaming_decode_use_spin_lock;
                         s.spawn_fifo(move |_| {
                             let ready_pair = ready_vec[unit_index].clone();
-                            let &(ref ready, ref condvar) = &*ready_pair;
-                            let mut is_ready = ready.lock().unwrap();
-                            let unit_ptr = units[unit_index].clone();
-                            if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
-                                let fusion_index = unit_index - partition_info.config.partitions.len();
-                                let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
-                                for child_unit_index in [left_unit_index, right_unit_index] {
-                                    let child_ready_pair = ready_vec[child_unit_index].clone();
-                                    let &(ref child_ready, ref child_condvar) = &*child_ready_pair;
-                                    let mut child_is_ready = child_ready.lock().unwrap();
-                                    while !*child_is_ready {  // hopefully this asserts false at the beginning
-                                        child_is_ready = child_condvar.wait(child_is_ready).unwrap();
+                            let &(ref ready, ref condvar, ref spin_ready) = &*ready_pair;
+                            if streaming_decode_use_spin_lock {
+                                let unit_ptr = units[unit_index].clone();
+                                if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
+                                    let fusion_index = unit_index - partition_info.config.partitions.len();
+                                    let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
+                                    for child_unit_index in [left_unit_index, right_unit_index] {
+                                        let child_ready_pair = ready_vec[child_unit_index].clone();
+                                        let &(_, _, ref child_spin_ready) = &*child_ready_pair;
+                                        while child_spin_ready.load(Ordering::SeqCst) != 1 {  // hopefully this asserts false at the beginning
+                                            std::hint::spin_loop();
+                                            // println!("spin_loop");
+                                        }
                                     }
                                 }
+                                unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
+                                    , parallel_dual_module, &mut None);
+                                spin_ready.store(1, Ordering::SeqCst);
+                            } else {
+                                let mut is_ready = ready.lock().unwrap();
+                                let unit_ptr = units[unit_index].clone();
+                                if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
+                                    let fusion_index = unit_index - partition_info.config.partitions.len();
+                                    let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
+                                    for child_unit_index in [left_unit_index, right_unit_index] {
+                                        let child_ready_pair = ready_vec[child_unit_index].clone();
+                                        let &(ref child_ready, ref child_condvar, _) = &*child_ready_pair;
+                                        let mut child_is_ready = child_ready.lock().unwrap();
+                                        while !*child_is_ready {  // hopefully this asserts false at the beginning
+                                            child_is_ready = child_condvar.wait(child_is_ready).unwrap();
+                                        }
+                                    }
+                                }
+                                unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
+                                    , parallel_dual_module, &mut None);
+                                *is_ready = true;
+                                condvar.notify_one();
                             }
-                            unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
-                                , parallel_dual_module, &mut None);
-                            *is_ready = true;
-                            condvar.notify_one();
                         })
                     };
                     if self.config.interleaving_base_fusion >= self.partition_info.config.fusions.len() {
