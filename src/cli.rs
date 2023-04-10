@@ -172,6 +172,10 @@ pub enum ExampleCodeType {
     CircuitLevelPlanarCodeParallel,
     /// read from error pattern file, generated using option `--primal-dual-type error-pattern-logger`
     ErrorPatternReader,
+    /// rotated surface code with perfect stabilizer measurement
+    CodeCapacityRotatedCode,
+    /// rotated surface code with phenomenological noise model
+    PhenomenologicalRotatedCode,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -507,6 +511,14 @@ impl ExampleCodeType {
             },
             Self::ErrorPatternReader => {
                 Box::new(ErrorPatternReader::new(code_config))
+            },
+            Self::CodeCapacityRotatedCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(CodeCapacityRotatedCode::new(d, p, max_half_weight))
+            },
+            Self::PhenomenologicalRotatedCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(PhenomenologicalRotatedCode::new(d, noisy_measurements, p, max_half_weight))
             },
             _ => unimplemented!()
         }
