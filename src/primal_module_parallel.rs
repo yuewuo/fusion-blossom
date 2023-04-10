@@ -418,7 +418,9 @@ impl PrimalModuleParallelUnitPtr {
         let mut primal_unit = self.write();
         if let Some(mocker) = &primal_unit.streaming_decode_mocker {
             if primal_module_parallel.config.streaming_decode_use_spin_lock {
-                while primal_module_parallel.last_solve_start_time.read_recursive().elapsed() < mocker.bias { }  // spin to avoid context switch
+                while primal_module_parallel.last_solve_start_time.read_recursive().elapsed() < mocker.bias {
+                    std::hint::spin_loop();  // spin to avoid context switch
+                }
             } else {
                 let mut elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
                 while elapsed < mocker.bias {
