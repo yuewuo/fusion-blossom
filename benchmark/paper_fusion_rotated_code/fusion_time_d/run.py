@@ -50,7 +50,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             assert returncode == 0, "command fails..."
 
         # run simulation
-        benchmark_profile_path = os.path.join(tmp_dir, f"T{noisy_measurements}.parity.profile")
+        benchmark_profile_path = os.path.join(tmp_dir, f"d{d}.parity.profile")
         command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
         command += ["--code-type", "error-pattern-reader"]
         command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']

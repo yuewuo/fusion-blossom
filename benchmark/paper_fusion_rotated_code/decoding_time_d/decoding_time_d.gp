@@ -28,11 +28,11 @@ set key box top left Left reverse width -3.5 height 0.5 opaque font default_font
 
 set output "decoding_time_d.eps"
 
-plot 8.35022947447152e-09 * (x ** 2.4426612892172344) with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 notitle,\
-    8.846425100412221e-10 * (x ** 2.780442671378392) with lines dashtype 2 lt rgb "#279627" linewidth 3 notitle,\
+plot 4.695208442096201e-09 * (x ** 2.4402116227640254) with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 notitle,\
+    1.739749377951471e-09 * (x ** 2.4816802371806093) with lines dashtype 2 lt rgb "#279627" linewidth 3 notitle,\
     "data_fusion.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Parity Blossom, {/Symbol \265} N^{1.22}",\
     "" using 1:3:($3*(1-$5)):($3*(1+$5)) with errorbars lt rgb "#e41a1c" linewidth 4 pointtype point_type_parity pointsize default_point_size notitle,\
-    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom, {/Symbol \265} N^{1.39}"
+    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom, {/Symbol \265} N^{1.24}"
 
 system("ps2pdf -dEPSCrop decoding_time_d.eps decoding_time_d.pdf")
 

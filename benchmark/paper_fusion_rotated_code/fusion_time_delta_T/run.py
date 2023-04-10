@@ -44,7 +44,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
     for delta_T in delta_T_vec:
         partition_num = 32
         noisy_measurements = partition_num * (delta_T + 1) - 2
-        syndrome_file_path = os.path.join(tmp_dir, f"generated.T{noisy_measurements}.syndromes")
+        syndrome_file_path = os.path.join(tmp_dir, f"generated.dT{delta_T}.syndromes")
         if os.path.exists(syndrome_file_path):
             print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
         else:
