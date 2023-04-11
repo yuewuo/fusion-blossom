@@ -21,7 +21,7 @@ set arrow from 64, graph 0 to 64, graph 1 nohead lc rgb "purple"
 
 set output "decoding_time_per_defect.eps"
 
-pymatching_per_defect = "`head -2 ../pymatching_compare/data.txt | tail -1 | awk '{print $3}'`"
+pymatching_per_defect = "`head -2 ../pymatching_compare_various_T/data_pymatching.txt | tail -1 | awk '{print $3}'`"
 
 plot "data.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype 7 pointsize 1.3 title "Fusion Blossom",\
     3.42598e-06 / x with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 title "linear speedup",\
@@ -30,4 +30,4 @@ plot "data.txt" using 1:4 with linespoints lt rgb "#e41a1c" linewidth 3 pointtyp
 
 system("ps2pdf -dEPSCrop decoding_time_per_defect.eps decoding_time_per_defect.pdf")
 
-system("pdf2svg decoding_time_per_defect.pdf decoding_time_per_defect.svg")
+# system("pdf2svg decoding_time_per_defect.pdf decoding_time_per_defect.svg")

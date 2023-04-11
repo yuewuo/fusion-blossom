@@ -62,6 +62,8 @@ for delta_T in delta_T_vec:
         f.write("<measure_interval> <median_latency> <average_latency> <stddev_latency> <sample_latency>\n")
 
         for idx, measure_interval in enumerate(measure_interval_vec):
+            partition_num = noisy_measurements // delta_T
+
             benchmark_profile_path = os.path.join(tmp_dir, f"deltaT{delta_T}_{'%.3e' % measure_interval}.profile")
             command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
             command += ["--code-type", "error-pattern-reader"]
@@ -70,7 +72,6 @@ for delta_T in delta_T_vec:
             command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":{thread_pool_size},"pin_threads_to_cores":true,"streaming_decode_mock_measure_interval":{delta_T*measure_interval},"streaming_decode_use_spin_lock":true,"interleaving_base_fusion":{interleaving_base_fusion}}},"dual":{{"thread_pool_size":{thread_pool_size}}}}}']
             command += ["--partition-strategy", "phenomenological-rotated-code-time-partition"]
             # use `maximum_tree_leaf_size` to make sure fusion jobs are distributed to multiple cores while limiting the size of tree
-            partition_num = noisy_measurements // delta_T
             command += ["--partition-config", f'{{"partition_num":{partition_num},"enable_tree_fusion":true,"maximum_tree_leaf_size":{maximum_tree_leaf_size}}}']
             command += ["--verifier", "none"]
             command += ["--benchmark-profiler-output", benchmark_profile_path]
@@ -81,7 +82,7 @@ for delta_T in delta_T_vec:
 
             profile = Profile(benchmark_profile_path)
             latency_vec = []
-            syndrome_ready_time = measure_interval * (noisy_measurements + 1)
+            syndrome_ready_time = delta_T*measure_interval * (partition_num + 1)
             for entry in profile.entries:
                 latency = entry["events"]["decoded"] - syndrome_ready_time
                 latency_vec.append(latency)

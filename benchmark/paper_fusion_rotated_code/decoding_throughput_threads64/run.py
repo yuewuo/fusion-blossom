@@ -20,7 +20,7 @@ from util import *
 util.FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True  # better performance, still safe
 compile_code_if_necessary()
 
-d_vec = [11, 13, 15, 17, 19, 21, 23, 25, 27, 31]
+d_vec = [11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
 p_vec = [0.005, 0.01, 0.02]
 total_rounds = 100
 noisy_measurements = 100000
