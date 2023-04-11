@@ -26,8 +26,7 @@ p = 0.005
 total_rounds = 100
 noisy_measurements = 100000
 thread_pool_size = 64
-maximum_tree_leaf_size = 64  # see maximum_tree_leaf_size_64_threads
-#measure_interval_vec = [0.5e-6 * (1.3 ** i) for i in range(20)]
+maximum_tree_leaf_size = 100  # see ./study_fusion_tree_latency
 measure_interval_vec = [0.2e-6 * (1.15 ** i) for i in range(20)]
 # print(measure_interval_vec)
 delta_T_vec = [100, 50, 20, 10]
@@ -84,7 +83,9 @@ for delta_T in delta_T_vec:
             latency_vec = []
             syndrome_ready_time = delta_T*measure_interval * (partition_num + 1)
             for entry in profile.entries:
-                latency = entry["events"]["decoded"] - syndrome_ready_time
+                event_time_vec = entry["solver_profile"]["primal"]["event_time_vec"]
+                last_fusion_finished = event_time_vec[-1]["end"]
+                latency = last_fusion_finished - syndrome_ready_time
                 latency_vec.append(latency)
             median_latency = np.median(latency_vec)
             average_latency = sum(latency_vec) / len(latency_vec)

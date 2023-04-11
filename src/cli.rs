@@ -49,8 +49,8 @@ pub struct BenchmarkParameters {
     #[clap(short = 'c', long, value_enum, default_value_t = ExampleCodeType::CodeCapacityPlanarCode)]
     code_type: ExampleCodeType,
     /// the configuration of the code builder
-    #[clap(long, default_value_t = json!({}))]
-    code_config: serde_json::Value,
+    #[clap(long, default_value_t = ("{}").to_string())]
+    code_config: String,
     /// logging to the default visualizer file at visualize/data/visualizer.json
     #[clap(long, action)]
     enable_visualizer: bool,
@@ -67,14 +67,14 @@ pub struct BenchmarkParameters {
     #[clap(short = 'p', long, value_enum, default_value_t = PrimalDualType::Serial)]
     primal_dual_type: PrimalDualType,
     /// the configuration of primal and dual module
-    #[clap(long, default_value_t = json!({}))]
-    primal_dual_config: serde_json::Value,
+    #[clap(long, default_value_t = ("{}").to_string())]
+    primal_dual_config: String,
     /// partition strategy
     #[clap(long, value_enum, default_value_t = PartitionStrategy::None)]
     partition_strategy: PartitionStrategy,
     /// the configuration of the partition strategy
-    #[clap(long, default_value_t = json!({}))]
-    partition_config: serde_json::Value,
+    #[clap(long, default_value_t = ("{}").to_string())]
+    partition_config: String,
     /// message on the progress bar
     #[clap(long, default_value_t = format!(""))]
     pb_message: String,
@@ -222,6 +222,9 @@ impl Cli {
             Commands::Benchmark( BenchmarkParameters { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
                     , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
                     , benchmark_profiler_output, print_syndrome_pattern, starting_iteration, .. }) => {
+                let code_config: serde_json::Value = serde_json::from_str(&code_config).unwrap();
+                let primal_dual_config: serde_json::Value = serde_json::from_str(&primal_dual_config).unwrap();
+                let partition_config: serde_json::Value = serde_json::from_str(&partition_config).unwrap();
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
                     panic!("need blossom V library, see README.md")

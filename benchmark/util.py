@@ -81,6 +81,7 @@ class PartitionConfig:
         self.vertex_num = vertex_num
         self.partitions = [VertexRange(0, vertex_num)]
         self.fusions = []
+        self.parents = [None]
     def __repr__(self):
         return f"PartitionConfig {{ vertex_num: {self.vertex_num}, partitions: {self.partitions}, fusions: {self.fusions} }}"
     @staticmethod
@@ -88,11 +89,33 @@ class PartitionConfig:
         vertex_num = value['vertex_num']
         config = PartitionConfig(vertex_num)
         config.partitions.clear()
-        for range in value['partitions']:
-            config.partitions.append(VertexRange(range[0], range[1]))
+        for vertex_range in value['partitions']:
+            config.partitions.append(VertexRange(vertex_range[0], vertex_range[1]))
         for pair in value['fusions']:
             config.fusions.append((pair[0], pair[1]))
+        assert len(config.partitions) == len(config.fusions) + 1
+        unit_count = len(config.partitions) * 2 - 1
+        # build parent references
+        parents = [None] * unit_count
+        for fusion_index, (left_index, right_index) in enumerate(config.fusions):
+            unit_index = fusion_index + len(config.partitions)
+            assert left_index < unit_index
+            assert right_index < unit_index
+            assert parents[left_index] is None
+            assert parents[right_index] is None
+            parents[left_index] = unit_index
+            parents[right_index] = unit_index
+        for unit_index in range(unit_count - 1):
+            assert parents[unit_index] is not None
+        assert parents[unit_count - 1] is None
+        config.parents = parents
         return config
+    def unit_depth(self, unit_index):
+        depth = 0
+        while self.parents[unit_index] is not None:
+            unit_index = self.parents[unit_index]
+            depth += 1
+        return depth
 
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
     , shell=True, check=True, capture_output=True).stdout.decode(sys.stdout.encoding).strip(" \r\n")
@@ -131,6 +154,11 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
         command += ["-n", f"{noisy_measurements}"]
     elif n is not None:
         command += ["-n", f"{n}"]
+    return command
+
+def fusion_blossom_bin_command(bin):
+    fusion_path = os.path.join(rust_dir, "target", "release", bin)
+    command = [fusion_path]
     return command
 
 FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = False
@@ -173,7 +201,7 @@ class GnuplotData:
             line = lines[0].strip("\r\n ")
             titles = line.split(" ")
             for title in titles:
-                assert title.startswith("<") and title.endswith(">")
+                # assert title.startswith("<") and title.endswith(">")
                 self.titles.append(title[1:-1])
             lines = lines[1:]
         self.data = []

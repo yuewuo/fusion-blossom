@@ -6,6 +6,8 @@
 use super::util::*;
 use super::example_codes::*;
 use std::collections::VecDeque;
+use clap::Parser;
+use serde::Serialize;
 
 
 pub trait ExamplePartition {
@@ -361,16 +363,24 @@ impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
 
 
 /// evenly partition along the time axis
+#[derive(Parser, Clone, Serialize)]
 pub struct PhenomenologicalRotatedCodeTimePartition {
-    d: VertexNum,
-    noisy_measurements: VertexNum,
+    /// code distance
+    #[clap(value_parser)]
+    pub d: VertexNum,
+    /// rounds of noisy measurement, valid only when multiple rounds
+    #[clap(value_parser)]
+    pub noisy_measurements: VertexNum,
     /// the number of partition
-    partition_num: usize,
+    #[clap(value_parser)]
+    pub partition_num: usize,
     /// enable tree fusion (to minimize latency but incur log(partition_num) more memory copy)
-    enable_tree_fusion: bool,
+    #[clap(short = 't', long, default_value_t = false)]
+    pub enable_tree_fusion: bool,
     /// maximum amount of tree leaf; if the total partition is greater than this, it will be cut into multiple regions and each region is a separate tree;
     /// those trees are then fused sequentially
-    maximum_tree_leaf_size: usize,
+    #[clap(short = 'l', long, default_value_t = usize::MAX)]
+    pub maximum_tree_leaf_size: usize,
 }
 
 impl PhenomenologicalRotatedCodeTimePartition {
