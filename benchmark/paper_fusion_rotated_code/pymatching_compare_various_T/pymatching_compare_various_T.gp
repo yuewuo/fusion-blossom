@@ -33,6 +33,7 @@ plot "data_fusion.txt" using 1:3 with linespoints lt rgb "#9400D3" linewidth 3 p
     "" using 1:3:($3*(1-$5)):($3*(1+$5)) with errorbars lt rgb "#9400D3" linewidth 4 pointtype point_type_fusion pointsize default_point_size notitle,\
     "data_parity.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Parity Blossom",\
     "" using 1:3:($3*(1-$5)):($3*(1+$5)) with errorbars lt rgb "#e41a1c" linewidth 4 pointtype point_type_parity pointsize default_point_size notitle,\
-    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom"
+    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom",\
+    "data_blossomV.txt" using 1:3 with linespoints lt rgb "black" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Parity Blossom"
 
 system("ps2pdf -dEPSCrop pymatching_compare_various_T.eps pymatching_compare_various_T.pdf")

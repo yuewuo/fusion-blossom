@@ -10,7 +10,7 @@ d = 21
 p = 0.005
 total_rounds = 100
 small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
-noisy_measurements_vec = small_T_vec + [300]
+noisy_measurements_vec = small_T_vec + []
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))

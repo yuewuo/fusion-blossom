@@ -19,3 +19,15 @@ for filename in ["data_fusion.txt", "data_pymatching.txt"]:
 
     slope, intercept, r = data.fit(0, 2, x_func=lambda x:math.log(float(x)), y_func=lambda y:math.log(float(y)), starting_row=12)
     print(f"fit: {math.exp(intercept)} * (x ** {slope})")
+
+
+for filename in ["data_blossomV.txt"]:
+    print(filename)
+    data = GnuplotData(filename)
+    assert data.titles[0] == "d"
+    assert data.titles[2] == "average_decoding_time_per_round"
+    slope, intercept, r = data.fit(0, 2, x_func=lambda x:math.log((float(x)**2)), y_func=lambda y:math.log(float(y)), starting_row=5, ending_row=10)
+    print(f"time ~= N ^ {slope}")
+
+    slope, intercept, r = data.fit(0, 2, x_func=lambda x:math.log(float(x)), y_func=lambda y:math.log(float(y)), starting_row=5, ending_row=10)
+    print(f"fit: {math.exp(intercept)} * (x ** {slope})")
