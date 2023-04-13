@@ -304,18 +304,18 @@ fn fusion_paper_print_partition_configs() {
     println!("\nmaximum_tree_leaf_size = 4: {:?}\n", partition.build_partition(&code));
 }
 
-fn fusion_paper_example_delta_t_100() {
+fn fusion_paper_example_partition_8() {
     use crate::example_partition::*;
     use crate::dual_module_parallel::*;
     use crate::primal_module_parallel::*;
-    let visualize_filename = format!("fusion_paper_example_delta_t_100.json");
+    let visualize_filename = format!("fusion_paper_example_partition_8.json");
     let half_weight = 500;
-    let noisy_measurements = 20 * 3 - 1;
-    let d = 9;
+    let noisy_measurements = 10 * 8 - 1;
+    let d = 5;
     let mut code = PhenomenologicalRotatedCode::new(d, noisy_measurements, 0.02, half_weight);
     let random_syndrome = code.generate_random_errors(FUSION_PAPER_LARGE_DEMO_RNG_SEED);
     let mut partition = PhenomenologicalRotatedCodeTimePartition::new_tree(d, noisy_measurements
-        , 3, true, usize::MAX);
+        , 8, true, usize::MAX);
     let defect_vertices = partition.re_index_defect_vertices(&code, &random_syndrome.defect_vertices);
     let partition_config = partition.build_apply(&mut code);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
@@ -340,13 +340,13 @@ fn fusion_paper_example_delta_t_100() {
 }
 
 fn main() {
-    // fusion_paper_decoding_graph_static();
-    // fusion_paper_example_decoding_graph();
-    // fusion_paper_example_syndrome_graph();
-    // fusion_paper_example_partition();
-    // fusion_paper_large_demo();
-    // fusion_paper_large_demo_no_partition();
-    // fusion_paper_example_partition_16();
-    // fusion_paper_print_partition_configs();
-    fusion_paper_example_delta_t_100();
+    fusion_paper_decoding_graph_static();
+    fusion_paper_example_decoding_graph();
+    fusion_paper_example_syndrome_graph();
+    fusion_paper_example_partition();
+    fusion_paper_large_demo();
+    fusion_paper_large_demo_no_partition();
+    fusion_paper_example_partition_16();
+    fusion_paper_print_partition_configs();
+    fusion_paper_example_partition_8();
 }

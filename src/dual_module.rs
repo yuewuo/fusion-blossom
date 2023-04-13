@@ -285,7 +285,7 @@ pub struct DualNode {
     /// parent blossom: when parent exists, grow_state should be [`DualNodeGrowState::Stay`]
     pub parent_blossom: Option<DualNodeWeak>,
     /// information used to compute dual variable of this node: (last dual variable, last global progress)
-    dual_variable_cache: (Weight, Weight),
+    pub dual_variable_cache: (Weight, Weight),
     /// belonging of the dual module interface; a dual node is never standalone
     pub belonging: DualModuleInterfaceWeak,
 }

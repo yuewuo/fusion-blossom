@@ -204,6 +204,8 @@ pub enum PrimalDualType {
     Parallel,
     /// log error into a file for later fetch
     ErrorPatternLogger,
+    /// solver using traditional blossom V
+    BlossomV
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -608,6 +610,9 @@ impl PrimalDualType {
             },
             Self::ErrorPatternLogger => {
                 Box::new(SolverErrorPatternLogger::new(initializer, code, primal_dual_config))
+            },
+            Self::BlossomV => {
+                Box::new(SolverBlossomV::new(initializer))
             },
         }
     }
