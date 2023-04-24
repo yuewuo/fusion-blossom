@@ -339,6 +339,106 @@ fn fusion_paper_example_partition_8() {
         , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
 }
 
+fn fusion_paper_example_covers() {
+    let visualize_filename = format!("fusion_paper_example_covers.json");
+    let half_weight = 500;
+    let code = CodeCapacityRotatedCode::new(19, 0.1, half_weight);
+    let defect_vertices = vec![42, 75, 102, 6, 88];
+    let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
+    print_visualize_link(visualize_filename.clone());
+    let initializer = code.get_initializer();
+    // create dual module
+    let mut dual_module = DualModuleSerial::new_empty(&initializer);
+    let syndrome = SyndromePattern::new_vertices(defect_vertices);
+    let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+    let interface_ptr = DualModuleInterfacePtr::new_empty();
+    primal_module.solve_visualizer(&interface_ptr, &syndrome, &mut dual_module, Some(&mut visualizer));
+    let perfect_matching = primal_module.perfect_matching(&interface_ptr, &mut dual_module);
+    let mut subgraph_builder = SubGraphBuilder::new(&initializer);
+    subgraph_builder.load_perfect_matching(&perfect_matching);
+    let subgraph = subgraph_builder.get_subgraph();
+    visualizer.snapshot_combined("perfect matching and subgraph".to_string(), vec![&interface_ptr, &dual_module
+        , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
+}
+
+const OVERLAY_EXAMPLE_DEFECT_VERTICES: [VertexIndex; 13] = [ 104, 37, 27, 40, 63, 85, 118, 161, 181, 179, 146, 101, 57 ];
+const OVERLAY_D: VertexNum = 21;
+
+fn fusion_paper_overlay_decoding_graph() {
+    let visualize_filename = format!("fusion_paper_overlay_decoding_graph.json");
+    let half_weight = 500;
+    let code = CodeCapacityRotatedCode::new(OVERLAY_D, 0.1, half_weight);
+    let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
+    print_visualize_link(visualize_filename.clone());
+    // create dual module
+    let initializer = code.get_initializer();
+    let mut dual_module = DualModuleSerial::new_empty(&initializer);
+    let syndrome = SyndromePattern::new_vertices(OVERLAY_EXAMPLE_DEFECT_VERTICES.into());
+    let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
+    let dual_node_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+    visualizer.snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module]).unwrap();
+    for _ in 0..8 {
+        dual_module.grow_dual_node(&dual_node_ptr, half_weight);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+    }
+}
+
+fn fusion_paper_overlay_syndrome_graph() {
+    let visualize_filename = format!("fusion_paper_overlay_syndrome_graph.json");
+    let half_weight = 500;
+    let code = CodeCapacityRotatedCode::new(OVERLAY_D, 0.1, half_weight);
+    // construct the syndrome graph
+    let (initializer, syndrome, positions) = demo_construct_syndrome_graph(&code, &OVERLAY_EXAMPLE_DEFECT_VERTICES);
+    // create dual module
+    let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
+    print_visualize_link(visualize_filename.clone());
+    let mut dual_module = DualModuleSerial::new_empty(&initializer);
+    let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
+    let dual_node_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
+    visualizer.snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module]).unwrap();
+    for _ in 0..8 {
+        dual_module.grow_dual_node(&dual_node_ptr, half_weight);
+        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+    }
+}
+
+fn fusion_paper_pseudo_cover_island() {
+    let visualize_filename = format!("fusion_paper_pseudo_cover_island.json");
+    let half_weight = 500;
+    let code = CodeCapacityRotatedCode::new(11, 0.1, half_weight);
+    let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
+    print_visualize_link(visualize_filename.clone());
+    let initializer = code.get_initializer();
+    let mut dual_module = DualModuleSerial::new_empty(&initializer);
+    let syndrome = SyndromePattern::new(vec![28, 57, 13], vec![48, 38, 49, 37, 61, 73, 72, 62, 51, 50, 82, 92, 102, 112, 111]);
+    let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
+    let node_ptr_vec = (0..3).map(|i| interface_ptr.read_recursive().nodes[i].clone().unwrap()).collect::<Vec<_>>();
+    visualizer.snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module]).unwrap();
+    for dual_node_ptr in node_ptr_vec.iter() {
+        dual_module.grow_dual_node(&dual_node_ptr, 2 * half_weight);
+    }
+    for _ in 0..2 {
+        dual_module.prepare_dual_node_growth_single(&node_ptr_vec[2], true);
+    }
+    for _ in 0..2 {
+        dual_module.prepare_dual_node_growth_single(&node_ptr_vec[1], true);
+    }
+    for _ in 0..10 {
+        dual_module.prepare_dual_node_growth_single(&node_ptr_vec[0], true);
+    }
+    for _ in 0..10 {
+        dual_module.prepare_dual_node_growth_single(&node_ptr_vec[2], true);
+    }
+    for _ in 0..10 {
+        dual_module.prepare_dual_node_growth_single(&node_ptr_vec[1], true);
+    }
+    visualizer.snapshot_combined(format!("constructed initial"), vec![&interface_ptr, &dual_module]).unwrap();
+    dual_module.prepare_dual_node_growth(&node_ptr_vec[0], false);
+    visualizer.snapshot_combined(format!("intrude"), vec![&interface_ptr, &dual_module]).unwrap();
+    dual_module.prepare_dual_node_growth(&node_ptr_vec[1], true);
+    visualizer.snapshot_combined(format!("extrude"), vec![&interface_ptr, &dual_module]).unwrap();
+}
+
 fn main() {
     fusion_paper_decoding_graph_static();
     fusion_paper_example_decoding_graph();
@@ -349,4 +449,8 @@ fn main() {
     fusion_paper_example_partition_16();
     fusion_paper_print_partition_configs();
     fusion_paper_example_partition_8();
+    fusion_paper_example_covers();
+    fusion_paper_overlay_decoding_graph();
+    fusion_paper_overlay_syndrome_graph();
+    fusion_paper_pseudo_cover_island();
 }
