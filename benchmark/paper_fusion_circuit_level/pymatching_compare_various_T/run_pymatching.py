@@ -6,11 +6,13 @@ import subprocess
 from msgspec.json import decode
 from msgspec import Struct
 
-
-d_vec = [3, 5, 7]  # for debugging script
-d_vec = [3, 5, 7, 9, 11, 13, 17, 19, 23, 27, 33, 39, 47, 57, 67, 81, 97]
+# the same parameter as `thread_pool_size_partition_2k`, except for there is no partition
+d = 21
 p = 0.001
-total_rounds = 1000
+total_rounds = 100
+small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
+noisy_measurements_vec = small_T_vec + [300, 1000, 3000, 10000, 30000, 100000]
+# noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
 
 PYMATCHING_BATCH_DECODING = True
 
@@ -24,19 +26,17 @@ script_dir = os.path.dirname(__file__)
 tmp_dir = os.path.join(script_dir, "tmp")
 os.makedirs(tmp_dir, exist_ok=True)  # make sure tmp directory exists
 sys.path.insert(0, benchmark_dir)
-
-for d in d_vec:
-    syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
-    assert os.path.exists(syndrome_file_path), "run `run_fusion.py` first to generate syndrome data and graphs"
-
+import util
+from util import *
+compile_code_if_necessary()
 
 data_file = os.path.join(script_dir, "data_pymatching.txt")
 with open(data_file, "w", encoding="utf8") as data_f:
-    data_f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
+    data_f.write("<noisy_measurements> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
 
-    for d in d_vec:
-        print(f"d = {d}")
-        syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
+    for noisy_measurements in noisy_measurements_vec:
+        syndrome_file_path = os.path.join(tmp_dir, f"generated.T{noisy_measurements}.syndromes")
+        assert os.path.exists(syndrome_file_path)
 
         # load the generated graph and syndrome
         class SolverInitializer:
@@ -73,7 +73,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
             for i, virtual_vertex_str in enumerate(virtual_vertices_vec):
                 virtual_vertices[i] = int(virtual_vertex_str)
             initializer = SolverInitializer(vertex_num=vertex_num, weighted_edges=weighted_edges, virtual_vertices=virtual_vertices)
-            assert initializer.vertex_num == (d + 1) * ((d+1) * (d+1) / 2)
+            assert initializer.vertex_num == (noisy_measurements + 1) * (d+1) * (d+1) // 2
             positions = f.readline()  # don't care
             line = f.readline()
             while line != "":
@@ -84,7 +84,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
                 syndromes.append(syndrome)
                 defect_nums.append(len(syndrome_pattern.defect_vertices))
                 line = f.readline()
-            assert len(syndromes) >= total_rounds
+            assert len(syndromes) == total_rounds
         print("initializer loaded")
 
         # construct the binary parity check matrix
@@ -105,7 +105,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
         print("matching initialized")
 
         # run simulation
-        raw_time_file = os.path.join(tmp_dir, f"raw_time_d{d}.txt")
+        raw_time_file = os.path.join(tmp_dir, f"raw_time_T{noisy_measurements}.txt")
         with open(raw_time_file, "w", encoding="utf8") as f:
             if PYMATCHING_BATCH_DECODING:
                 prediction = matching.decode_batch(syndromes[:20])  # ignore performance of cold start
@@ -132,12 +132,12 @@ with open(data_file, "w", encoding="utf8") as data_f:
             defect_num_vec = [int(data[1]) for data in raw_data]
 
         average_decoding_time = sum(decoding_time_vec) / len(decoding_time_vec)
-        average_decoding_time_per_round = average_decoding_time / (d + 1)
+        average_decoding_time_per_round = average_decoding_time / (noisy_measurements + 1)
         if PYMATCHING_BATCH_DECODING:
             average_decoding_time_per_round /= (total_rounds - 20)
         average_decoding_time_per_defect = average_decoding_time / (sum(defect_num_vec) / len(defect_num_vec))
         data_f.write("%d %.5e %.5e %.5e\n" % (
-            d,
+            noisy_measurements,
             average_decoding_time,
             average_decoding_time_per_round,
             average_decoding_time_per_defect

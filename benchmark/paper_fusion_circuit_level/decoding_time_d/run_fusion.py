@@ -22,7 +22,7 @@ First generate syndrome data under this folder
 
 d_vec = [3, 5, 7]  # for debugging script
 d_vec = [3, 5, 7, 9, 11, 13, 17, 19, 23, 27, 33, 39, 47, 57, 67, 81, 97]
-p = 0.005
+p = 0.001
 total_rounds = 1000
 
 for d in d_vec:
@@ -33,6 +33,8 @@ for d in d_vec:
         command = fusion_blossom_qecp_generate_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
         command += ["--code-type", "rotated-planar-code"]
         command += ["--noise-model", "stim-noise-model"]
+        command += ["--parallel", "0"]  # use all cores
+        command += ["--use-brief-edge"]  # to save memory; it takes 23GB to run d=97 and 15min to initialize it...
         command += ["--fusion-blossom-syndrome-export-config", f'{{"filename":"{syndrome_file_path}","only_stab_z":true,"use_combined_probability":false}}']
         print(command)
         stdout, returncode = run_command_get_stdout(command)

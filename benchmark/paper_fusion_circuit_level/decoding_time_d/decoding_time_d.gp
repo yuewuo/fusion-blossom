@@ -28,13 +28,13 @@ set key box top left Left reverse width -3.5 height 0.5 opaque font default_font
 
 set output "decoding_time_d.eps"
 
-plot 4.695208442096201e-09 * (x ** 2.4402116227640254) with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 notitle,\
-    1.739749377951471e-09 * (x ** 2.4816802371806093) with lines dashtype 2 lt rgb "#279627" linewidth 3 notitle,\
-    3.4138784352631234e-12 * (x ** 5.420521402558033) with lines dashtype 2 lt rgb "black" linewidth 3 notitle,\
-    "data_fusion.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Parity Blossom, {/Symbol \265} N^{1.22}",\
+plot 2.3974819197244485e-09 * (x ** 2.6051773974832595) with lines dashtype 2 lt rgb "#e41a1c" linewidth 3 notitle,\
+    6.088756545927675e-10 * (x ** 2.6154079052030292) with lines dashtype 2 lt rgb "#279627" linewidth 3 notitle,\
+    1.2316063443201867e-12 * (x ** 5.406722336401108) with lines dashtype 2 lt rgb "black" linewidth 3 notitle,\
+    "data_fusion.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Parity Blossom, {/Symbol \265} N^{1.30}",\
     "" using 1:3:($3*(1-$5)):($3*(1+$5)) with errorbars lt rgb "#e41a1c" linewidth 4 pointtype point_type_parity pointsize default_point_size notitle,\
-    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom, {/Symbol \265} N^{1.24}",\
-    "data_blossomV.txt" using 1:3 with linespoints lt rgb "black" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Blossom V, {/Symbol \265} N^{2.71}"
+    "data_pymatching.txt" using 1:3 with linespoints lt rgb "#279627" linewidth 3 pointtype point_type_sparse pointsize default_point_size title "Sparse Blossom, {/Symbol \265} N^{1.31}",\
+    "data_blossomV.txt" using 1:3 with linespoints lt rgb "black" linewidth 3 pointtype point_type_parity pointsize default_point_size title "Blossom V, {/Symbol \265} N^{2.70}"
 
 system("ps2pdf -dEPSCrop decoding_time_d.eps decoding_time_d.pdf")
 

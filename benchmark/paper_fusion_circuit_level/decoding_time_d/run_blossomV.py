@@ -22,23 +22,12 @@ First generate syndrome data under this folder
 
 d_vec = [3, 5, 7, 9, 11, 13]  # for debugging script
 d_vec = [3, 5, 7, 9, 11, 13, 17, 19, 23, 27, 33, 39]
-p = 0.005
+p = 0.001
 total_rounds = 1000
 
 for d in d_vec:
     syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
-    if os.path.exists(syndrome_file_path):
-        print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
-    else:
-        command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
-        command += ["--code-type", "phenomenological-rotated-code"]
-        command += ["--primal-dual-type", "error-pattern-logger"]
-        command += ["--verifier", "none"]
-        command += ["--primal-dual-config", f'{{"filename":"{syndrome_file_path}"}}']
-        print(command)
-        stdout, returncode = run_command_get_stdout(command)
-        print("\n" + stdout)
-        assert returncode == 0, "command fails..."
+    assert os.path.exists(syndrome_file_path), "run `run_fusion.py` first to generate syndrome data and graphs"
 
 """
 Run simulations
