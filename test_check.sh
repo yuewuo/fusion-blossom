@@ -7,6 +7,7 @@ cargo clippy  # A collection of lints to catch common mistakes and improve your 
 cargo check --features u32_index
 cargo check --features u32_index --release
 cargo check --features disable_visualizer,u32_index --release
+cargo check --features qecp_integrate
 
 cargo check --release
 cargo check --features unsafe_pointer

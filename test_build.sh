@@ -8,6 +8,7 @@ cargo clippy  # A collection of lints to catch common mistakes and improve your 
 cargo test --no-run --features u32_index
 cargo test --no-run --features u32_index --release
 cargo test --no-run --features disable_visualizer,u32_index --release
+cargo test --no-run --features qecp_integrate
 
 cargo test --no-run
 cargo test --no-run --release

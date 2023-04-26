@@ -7,11 +7,12 @@ use super::example_partition;
 use super::mwpm_solver::*;
 use pbr::ProgressBar;
 use rand::{Rng, thread_rng};
-
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
 use serde_json::json;
 use std::env;
+#[cfg(feature="qecp_integrate")]
+use crate::qecp;
 
 const TEST_EACH_ROUNDS: usize = 100;
 
@@ -94,6 +95,8 @@ pub struct BenchmarkParameters {
 enum Commands {
     /// benchmark the speed (and also correctness if enabled)
     Benchmark(BenchmarkParameters),
+    #[cfg(feature="qecp_integrate")]
+    QecpGenerateSyndrome(qecp::cli::BenchmarkParameters),
     /// built-in tests
     Test {
         #[clap(subcommand)]
@@ -462,6 +465,14 @@ impl Cli {
                     },
                 }
             },
+            #[cfg(feature="qecp_integrate")]
+            Commands::QecpGenerateSyndrome(mut benchmark_parameters) => {
+                // cargo run --release -- qecp-generate-syndrome [3] [3] [0.001] --code-type rotated-planar-code --noise-model stim-noise-model --fusion-blossom-syndrome-export-config '{"filename":"./tmp/test.syndromes","only_stab_z":true,"use_combined_probability":false}' -m100
+                benchmark_parameters.decoder = qecp::tool::BenchmarkDecoder::None;  // disable any decoder, only for syndrome generation
+                assert!(benchmark_parameters.fusion_blossom_syndrome_export_config != "{}", "fusion_blossom_syndrome_export_config must be provided");
+                benchmark_parameters.debug_print = Some(qecp::tool::BenchmarkDebugPrint::FusionBlossomSyndromeFile);
+                benchmark_parameters.run();
+            },
         }
     }
 }
@@ -609,7 +620,7 @@ impl PrimalDualType {
                 Box::new(SolverParallel::new(initializer, partition_info, primal_dual_config))
             },
             Self::ErrorPatternLogger => {
-		Box::new(SolverErrorPatternLogger::new(initializer, &code.get_positions(), primal_dual_config))                
+                Box::new(SolverErrorPatternLogger::new(initializer, &code.get_positions(), primal_dual_config))
             },
             Self::BlossomV => {
                 Box::new(SolverBlossomV::new(initializer))

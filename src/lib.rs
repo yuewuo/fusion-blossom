@@ -31,6 +31,8 @@ extern crate clap;
 extern crate pbr;
 #[cfg(test)]
 extern crate petgraph;
+#[cfg(feature="qecp_integrate")]
+extern crate qecp;
 
 pub mod blossom_v;
 pub mod util;

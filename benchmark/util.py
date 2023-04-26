@@ -132,7 +132,7 @@ def compile_code_if_necessary(additional_build_parameters=None):
     if FUSION_BLOSSOM_COMPILATION_DONE is False:
         build_parameters = ["cargo", "build", "--release"]
         if FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER:
-            build_parameters += ["--features", "dangerous_pointer,u32_index,i32_weight"]
+            build_parameters += ["--features", "dangerous_pointer,u32_index,i32_weight,qecp_integrate"]
         if additional_build_parameters is not None:
             build_parameters += additional_build_parameters
         # print(build_parameters)
@@ -141,11 +141,14 @@ def compile_code_if_necessary(additional_build_parameters=None):
         assert process.returncode == 0, "compile has error"
         FUSION_BLOSSOM_COMPILATION_DONE = True
 
+def fusion_blossom_command():
+    fusion_path = os.path.join(rust_dir, "target", "release", "fusion_blossom")
+    return [fusion_path]
+
 def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, noisy_measurements=None, n=None):
     assert d is not None
     assert p is not None
-    fusion_path = os.path.join(rust_dir, "target", "release", "fusion_blossom")
-    command = [fusion_path, "benchmark", f"{d}", f"{p}"]
+    command = fusion_blossom_command() + ["benchmark", f"{d}", f"{p}"]
     if total_rounds is not None:
         command += ["-r", f"{total_rounds}"]
     elif r is not None:
@@ -154,6 +157,10 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
         command += ["-n", f"{noisy_measurements}"]
     elif n is not None:
         command += ["-n", f"{n}"]
+    return command
+
+def fusion_blossom_qecp_generate_command(d, p, total_rounds, noisy_measurements):
+    command = fusion_blossom_command() + ["qecp-generate-syndrome", f"[{d}]", f"[{noisy_measurements}]", f"[{p}]", f"-m{total_rounds}"]
     return command
 
 def fusion_blossom_bin_command(bin):
