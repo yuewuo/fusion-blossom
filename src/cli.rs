@@ -609,7 +609,7 @@ impl PrimalDualType {
                 Box::new(SolverParallel::new(initializer, partition_info, primal_dual_config))
             },
             Self::ErrorPatternLogger => {
-                Box::new(SolverErrorPatternLogger::new(initializer, code, primal_dual_config))
+		Box::new(SolverErrorPatternLogger::new(initializer, &code.get_positions(), primal_dual_config))                
             },
             Self::BlossomV => {
                 Box::new(SolverBlossomV::new(initializer))
