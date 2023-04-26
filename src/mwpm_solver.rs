@@ -10,7 +10,6 @@ use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching, V
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::dual_module_parallel::*;
-use super::example_codes::*;
 use super::primal_module_parallel::*;
 use super::visualize::*;
 use crate::complete_graph::*;
@@ -474,7 +473,7 @@ pub struct SolverErrorPatternLogger {
 bind_trait_primal_dual_solver!{SolverErrorPatternLogger}
 
 impl SolverErrorPatternLogger {
-    pub fn new(initializer: &SolverInitializer, code: &dyn ExampleCode, mut config: serde_json::Value) -> Self {
+    pub fn new(initializer: &SolverInitializer, positions: &Vec<VisualizePosition>, mut config: serde_json::Value) -> Self {
         let mut filename = "tmp/syndrome_patterns.txt".to_string();
         let config = config.as_object_mut().expect("config must be JSON object");
         if let Some(value) = config.remove("filename") {
@@ -486,7 +485,7 @@ impl SolverErrorPatternLogger {
         file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
         serde_json::to_writer(&mut file, &initializer).unwrap();  // large object write to file directly
         file.write_all(b"\n").unwrap();
-        serde_json::to_writer(&mut file, &code.get_positions()).unwrap();
+        serde_json::to_writer(&mut file, &positions).unwrap();
         file.write_all(b"\n").unwrap();
         Self {
             file,
