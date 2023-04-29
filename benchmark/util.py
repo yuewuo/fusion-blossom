@@ -160,7 +160,7 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
     return command
 
 def fusion_blossom_qecp_generate_command(d, p, total_rounds, noisy_measurements):
-    command = fusion_blossom_command() + ["qecp-generate-syndrome", f"[{d}]", f"[{noisy_measurements}]", f"[{p}]", f"-m{total_rounds}"]
+    command = fusion_blossom_command() + ["qecp", f"[{d}]", f"[{noisy_measurements}]", f"[{p}]", f"-m{total_rounds}"]
     return command
 
 def fusion_blossom_bin_command(bin):

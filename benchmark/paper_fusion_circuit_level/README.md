@@ -14,6 +14,12 @@ cargo run --release -- tool benchmark [3] [3] [0.001] --code-type rotated-planar
 cargo run --release -- tool benchmark [3] [3] [0.001] --code-type rotated-planar-code --noise-model stim-noise-model --decoder fusion -e1000
 ```
 
+In order to run the simulation in a reasonable time and memory, we use a new feature to do it.
+```sh
+cargo run --release -- tool benchmark [5] [1000] [0.001] --code-type rotated-planar-code --noise-model stim-noise-model --use-brief-edge --decoder none --decoder-config '{"only_stab_z":true,"use_combined_probability":false,"skip_decoding":true}' -m1000 --debug-print fusion-blossom-syndrome-file
+cargo run --release -- tool benchmark [5] [5] [0.001] --code-type rotated-planar-code --noise-model stim-noise-model --use-brief-edge --decoder fusion --decoder-config '{"only_stab_z":true,"use_combined_probability":false,"skip_decoding":true}' -m1000 --simulator-compact-extender-noisy-measurements 1000 --use-compact-simulator --debug-print fusion-blossom-syndrome-file
+```
+
 After testing the noise model correctly, we can use fusion blossom to call qecp to export a file including the decoding graph and several syndromes.
 Note that this is different from the `ExampleCode` in this repo, where the decoding graph is ideal from the noise model.
 The decoding graph generated from QEC-Playground is an approximation to the real noise model, by removing hyperedges that generates more than 2 defect vertices.

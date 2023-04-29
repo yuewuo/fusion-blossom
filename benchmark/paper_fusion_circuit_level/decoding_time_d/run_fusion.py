@@ -30,12 +30,15 @@ for d in d_vec:
     if os.path.exists(syndrome_file_path):
         print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
     else:
-        command = fusion_blossom_qecp_generate_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
+        command = fusion_blossom_qecp_generate_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=min(d, 4))
         command += ["--code-type", "rotated-planar-code"]
         command += ["--noise-model", "stim-noise-model"]
+        command += ["--decoder", "fusion", "--decoder-config", '{"only_stab_z":true,"use_combined_probability":false,"skip_decoding":true}']
+        command += ["--debug-print", "fusion-blossom-syndrome-file", "--fusion-blossom-syndrome-export-filename", syndrome_file_path]
+        command += ["--use-compact-simulator", "--use-compact-simulator-compressed"]
+        command += ["--simulator-compact-extender-noisy-measurements", f"{d}"]
         command += ["--parallel", "0"]  # use all cores
         command += ["--use-brief-edge"]  # to save memory; it takes 23GB to run d=97 and 15min to initialize it...
-        command += ["--fusion-blossom-syndrome-export-config", f'{{"filename":"{syndrome_file_path}","only_stab_z":true,"use_combined_probability":false}}']
         print(command)
         stdout, returncode = run_command_get_stdout(command)
         print("\n" + stdout)
@@ -48,35 +51,28 @@ study the effect of partition_num given a single thread
 
 """
 
-benchmark_profile_path_vec = []
-for d in d_vec:
-    syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
-    benchmark_profile_path = os.path.join(tmp_dir, f"d{d}.profile")
-    benchmark_profile_path_vec.append(benchmark_profile_path)
-    if os.path.exists(benchmark_profile_path):
-        print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
-    else:
-        command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
-        command += ["--code-type", "error-pattern-reader"]
-        command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
-        command += ["--primal-dual-type", "serial"]
-        command += ["--verifier", "none"]
-        command += ["--benchmark-profiler-output", benchmark_profile_path]
-        print(command)
-        stdout, returncode = run_command_get_stdout(command)
-        print("\n" + stdout)
-        assert returncode == 0, "command fails..."
-
-
-"""
-Gather useful data
-"""
-
 data_file = os.path.join(script_dir, "data_fusion.txt")
 with open(data_file, "w", encoding="utf8") as f:
     f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>\n")
+
     for idx, d in enumerate(d_vec):
-        benchmark_profile_path = benchmark_profile_path_vec[idx]
+
+        syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
+        benchmark_profile_path = os.path.join(tmp_dir, f"d{d}.profile")
+        if os.path.exists(benchmark_profile_path):
+            print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
+        else:
+            command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
+            command += ["--code-type", "error-pattern-reader"]
+            command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
+            command += ["--primal-dual-type", "serial"]
+            command += ["--verifier", "none"]
+            command += ["--benchmark-profiler-output", benchmark_profile_path]
+            print(command)
+            stdout, returncode = run_command_get_stdout(command)
+            print("\n" + stdout)
+            assert returncode == 0, "command fails..."
+
         print(benchmark_profile_path)
         profile = Profile(benchmark_profile_path)
         print("d:", d)

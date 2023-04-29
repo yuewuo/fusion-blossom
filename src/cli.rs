@@ -96,7 +96,7 @@ enum Commands {
     /// benchmark the speed (and also correctness if enabled)
     Benchmark(BenchmarkParameters),
     #[cfg(feature="qecp_integrate")]
-    QecpGenerateSyndrome(qecp::cli::BenchmarkParameters),
+    Qecp(qecp::cli::BenchmarkParameters),
     /// built-in tests
     Test {
         #[clap(subcommand)]
@@ -466,12 +466,8 @@ impl Cli {
                 }
             },
             #[cfg(feature="qecp_integrate")]
-            Commands::QecpGenerateSyndrome(mut benchmark_parameters) => {
-                // cargo run --release -- qecp-generate-syndrome [3] [3] [0.001] --code-type rotated-planar-code --noise-model stim-noise-model --fusion-blossom-syndrome-export-config '{"filename":"./tmp/test.syndromes","only_stab_z":true,"use_combined_probability":false}' -m100
-                benchmark_parameters.decoder = qecp::tool::BenchmarkDecoder::None;  // disable any decoder, only for syndrome generation
-                assert!(benchmark_parameters.fusion_blossom_syndrome_export_config != "{}", "fusion_blossom_syndrome_export_config must be provided");
-                benchmark_parameters.debug_print = Some(qecp::tool::BenchmarkDebugPrint::FusionBlossomSyndromeFile);
-                benchmark_parameters.run();
+            Commands::Qecp(mut benchmark_parameters) => {
+                benchmark_parameters.run().unwrap();
             },
         }
     }

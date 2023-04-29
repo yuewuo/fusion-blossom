@@ -36,35 +36,28 @@ study the effect of partition_num given a single thread
 
 """
 
-benchmark_profile_path_vec = []
-for d in d_vec:
-    syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
-    benchmark_profile_path = os.path.join(tmp_dir, f"blossomV-d{d}.profile")
-    benchmark_profile_path_vec.append(benchmark_profile_path)
-    if os.path.exists(benchmark_profile_path):
-        print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
-    else:
-        command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
-        command += ["--code-type", "error-pattern-reader"]
-        command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
-        command += ["--primal-dual-type", "blossom-v"]
-        command += ["--verifier", "none"]
-        command += ["--benchmark-profiler-output", benchmark_profile_path]
-        print(command)
-        stdout, returncode = run_command_get_stdout(command)
-        print("\n" + stdout)
-        assert returncode == 0, "command fails..."
-
-
-"""
-Gather useful data
-"""
-
 data_file = os.path.join(script_dir, "data_blossomV.txt")
 with open(data_file, "w", encoding="utf8") as f:
     f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>\n")
+
     for idx, d in enumerate(d_vec):
-        benchmark_profile_path = benchmark_profile_path_vec[idx]
+
+        syndrome_file_path = os.path.join(tmp_dir, f"generated-d{d}.syndromes")
+        benchmark_profile_path = os.path.join(tmp_dir, f"blossomV-d{d}.profile")
+        if os.path.exists(benchmark_profile_path):
+            print("[warning] found existing profile (if you think it's stale, delete it and rerun)")
+        else:
+            command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
+            command += ["--code-type", "error-pattern-reader"]
+            command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
+            command += ["--primal-dual-type", "blossom-v"]
+            command += ["--verifier", "none"]
+            command += ["--benchmark-profiler-output", benchmark_profile_path]
+            print(command)
+            stdout, returncode = run_command_get_stdout(command)
+            print("\n" + stdout)
+            assert returncode == 0, "command fails..."
+
         print(benchmark_profile_path)
         profile = Profile(benchmark_profile_path)
         print("d:", d)
