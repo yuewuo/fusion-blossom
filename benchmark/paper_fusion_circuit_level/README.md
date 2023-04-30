@@ -46,9 +46,8 @@ remember to
 
 Since calling QECP requires a huge amount of memory and CPU time, we need to run almost all of them on m6i.metal instance...
 
-on m6i.4xlarge (16 vCPU, 64GB memory)
-- [x] decoding_time_d
 on m6i.metal (128 vCPU, 512GB memory)
+- [ ] decoding_time_d
 - [ ] partition_num_single_thread_2_tree
 - [ ] pymatching_compare_various_T
 - [ ] thread_pool_size_partition_1k

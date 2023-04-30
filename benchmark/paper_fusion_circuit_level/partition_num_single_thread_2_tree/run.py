@@ -21,9 +21,9 @@ First generate syndrome data under this folder
 """
 
 d = 21
-p = 0.005
+p = 0.001
 total_rounds = 100
-noisy_measurements = 10000
+noisy_measurements = 100000
 
 syndrome_file_path = os.path.join(tmp_dir, "generated.syndromes")
 if os.path.exists(syndrome_file_path):
