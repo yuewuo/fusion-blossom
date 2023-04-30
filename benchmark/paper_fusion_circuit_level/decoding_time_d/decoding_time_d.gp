@@ -3,7 +3,7 @@ set terminal postscript eps color default_font
 set terminal postscript landscape enhanced
 set xlabel "Code Distance d" font default_font
 set ylabel "Decoding time per round ({/Symbol m}s)" font default_font
-set title "p = 0.5%, d {/Symbol \264} d {/Symbol \264} d"
+set title "p = 0.1%, d {/Symbol \264} d {/Symbol \264} d"
 set size 1,1
 
 set style line 12 lc rgb '0xCCCCCC' lt 1 lw 2

@@ -45,14 +45,17 @@ remember to
 # Evaluation Plan
 
 Since calling QECP requires a huge amount of memory and CPU time, we need to run almost all of them on m6i.metal instance...
+Well, I optimized QECP simulation to support 21 * 21 * 10^5 simulation with ~5GB memory, so it now runs on m6i.4xlarge as well.
 
-on m6i.metal (128 vCPU, 512GB memory)
-- [ ] decoding_time_d
-- [ ] partition_num_single_thread_2_tree
-- [ ] pymatching_compare_various_T
-- [ ] thread_pool_size_partition_1k
-- [ ] decoding_throughput_threads64
+on m6i.4xlarge
+- [ ] decoding_time_d (code distance)
+- [ ] partition_num_single_thread_2_tree (what is optimal partition size)
+- [ ] pymatching_compare_various_T (decoding time scaling with T)
 - [ ] fusion_time_d
 - [ ] fusion_time_delta_T
 - [ ] fusion_time_children_count
-- [ ] emulate_decoding_d21_threads64
+
+on m6i.metal (128 vCPU, 512GB memory)
+- [ ] thread_pool_size_partition_1k (#threads)
+- [ ] decoding_throughput_threads64 (different p)
+- [ ] emulate_decoding_d21_threads64 (latency evaluation)
