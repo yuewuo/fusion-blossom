@@ -23,8 +23,7 @@ First generate syndrome data under this folder
 d = 21
 p = 0.005
 total_rounds = 100
-noisy_measurements = 100
-# noisy_measurements = 100000
+noisy_measurements = 10000
 
 syndrome_file_path = os.path.join(tmp_dir, "generated.syndromes")
 if os.path.exists(syndrome_file_path):
@@ -58,7 +57,6 @@ partition_num_vec = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 repeat_vec = [10, 15, 22, 33, 50, 75]
 partition_num_vec += [e for e in repeat_vec]
 partition_num_vec += [e * 10 for e in repeat_vec]
-partition_num_vec += [e * 100 for e in repeat_vec]
 # partition_num_vec += [int(noisy_measurements/e) for e in range(10, 1, -1)]  # how many measurement rounds between two fusion
 print(partition_num_vec)
 benchmark_profile_path_vec = []
