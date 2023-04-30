@@ -15,13 +15,13 @@ set xtics ('1' 1, '3' 3, '10' 10, '30' 30, '100' 100, '300' 300, '1000' 1000, '3
 set x2tics ('1e5' 1, '3.3e4' 3, '1e4' 10, '3.3e3' 30, '1e3' 100, '3.3e2' 300, '100' 1000, '33' 3000)
 # set logscale y
 # print(", ".join([f"'1e{i}' 1e{i}" for i in range(-4, 2)]))
-set ytics ('2' 2e-6, '3' 3e-6, '4' 4e-6)
-set yrange [2e-6:4e-6]
+set ytics ('3' 3e-6, '5' 5e-6, '10' 10e-6, '15' 15e-6)
+set yrange [3e-6:15e-6]
 set key outside horizontal top center font "Arial, 24"
 set style fill transparent solid 0.2 noborder
 set key samplen 4
 
-set arrow from 2000, graph 0 to 2000, graph 1 nohead lc rgb "blue"
+set arrow from 1000, graph 0 to 1000, graph 1 nohead lc rgb "blue"
 
 set output "decoding_time_per_defect.eps"
 

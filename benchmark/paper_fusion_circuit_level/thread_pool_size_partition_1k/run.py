@@ -22,7 +22,7 @@ First generate syndrome data under this folder
 
 d = 21
 p = 0.001
-total_rounds = 100
+total_rounds = 200  # drop the first 100 because they seem to suffer from slow start
 noisy_measurements = 100000
 partition_num = 1000
 
@@ -80,7 +80,7 @@ with open(data_file, "w", encoding="utf8") as f:
             assert returncode == 0, "command fails..."
 
         print(benchmark_profile_path)
-        profile = Profile(benchmark_profile_path)
+        profile = Profile(benchmark_profile_path, 100)
         print("thread_pool_size:", thread_pool_size)
         print("    average_decoding_time:", profile.average_decoding_time())
         print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))

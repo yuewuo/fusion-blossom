@@ -22,9 +22,9 @@ set xtics ('1' 1, '10' 10, '10^2' 100, '10^3' 1000, '10^4' 10000, '10^5' 100000)
 set logscale y
 # print(", ".join([f"'1e{i}' 1e{i}" for i in range(-4, 2)]))
 set ytics ('0.3' 3e-7, '1' 1e-6, '3' 3e-6, '10' 1e-5, '30' 3e-5)
-set yrange [2e-6:10e-5]
+set yrange [2e-6:30e-5]
 set style fill transparent solid 0.2 noborder
-set key box top left Left reverse width -0.5 height 0.5 opaque font default_font samplen 2
+# set key box top left Left reverse width -0.5 height 0.5 opaque font default_font samplen 2
 
 
 set output "pymatching_compare_various_T.eps"

@@ -26,7 +26,7 @@ ONLY_PROCESS_DATA_IN_FOLDER = None
 
 d = 21
 p = 0.001
-total_rounds = 100
+total_rounds = 200
 noisy_measurements = 100000
 thread_pool_size = 64
 maximum_tree_leaf_size = 100  # see ./study_fusion_tree_latency
@@ -93,7 +93,7 @@ for delta_T in delta_T_vec:
             profile = Profile(benchmark_profile_path)
             latency_vec = []
             syndrome_ready_time = delta_T*measure_interval * partition_num
-            for entry in profile.entries[30:]:  # give it more time for cold start
+            for entry in profile.entries[100:]:  # give it more time for cold start
                 event_time_vec = entry["solver_profile"]["primal"]["event_time_vec"]
                 last_fusion_finished = event_time_vec[-1]["end"]
                 latency = last_fusion_finished - syndrome_ready_time

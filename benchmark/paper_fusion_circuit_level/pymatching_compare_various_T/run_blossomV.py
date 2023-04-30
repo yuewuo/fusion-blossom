@@ -10,7 +10,7 @@ d = 21
 p = 0.001
 total_rounds = 100
 small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
-noisy_measurements_vec = small_T_vec + []
+noisy_measurements_vec = small_T_vec + [150, 200, 250]
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
@@ -33,7 +33,25 @@ with open(data_file, "w", encoding="utf8") as data_f:
 
     for noisy_measurements in noisy_measurements_vec:
         syndrome_file_path = os.path.join(tmp_dir, f"generated.T{noisy_measurements}.syndromes")
-        assert os.path.exists(syndrome_file_path)
+        if os.path.exists(syndrome_file_path):
+            print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
+        else:
+            if noisy_measurements < min(d, 4):
+                command = fusion_blossom_qecp_generate_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
+            else:
+                command = fusion_blossom_qecp_generate_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=min(d, 4))
+                command += ["--use-compact-simulator", "--use-compact-simulator-compressed"]
+                command += ["--simulator-compact-extender-noisy-measurements", f"{noisy_measurements}"]
+            command += ["--code-type", "rotated-planar-code"]
+            command += ["--noise-model", "stim-noise-model"]
+            command += ["--decoder", "fusion", "--decoder-config", '{"only_stab_z":true,"use_combined_probability":false,"skip_decoding":true}']
+            command += ["--debug-print", "fusion-blossom-syndrome-file", "--fusion-blossom-syndrome-export-filename", syndrome_file_path]
+            command += ["--parallel", "0"]  # use all cores
+            command += ["--use-brief-edge"]  # to save memory; it takes 23GB to run d=97 and 15min to initialize it...
+            print(command)
+            stdout, returncode = run_command_get_stdout(command)
+            print("\n" + stdout)
+            assert returncode == 0, "command fails..."
 
         # run simulation
         benchmark_profile_path = os.path.join(tmp_dir, f"blossomV-T{noisy_measurements}.profile")

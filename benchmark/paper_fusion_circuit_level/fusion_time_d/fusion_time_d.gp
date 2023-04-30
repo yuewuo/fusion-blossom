@@ -28,7 +28,7 @@ set key box top left Left reverse width -3.5 height 0.5 opaque font default_font
 
 set output "fusion_time_d.eps"
 
-plot "data.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title ""
+plot "data.txt" using 1:2 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title ""
 
 system("ps2pdf -dEPSCrop fusion_time_d.eps fusion_time_d.pdf")
 

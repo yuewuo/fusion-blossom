@@ -47,13 +47,13 @@ remember to
 Since calling QECP requires a huge amount of memory and CPU time, we need to run almost all of them on m6i.metal instance...
 Well, I optimized QECP simulation to support 21 * 21 * 10^5 simulation with ~5GB memory, so it now runs on m6i.4xlarge as well.
 
-on m6i.4xlarge
-- [ ] decoding_time_d (code distance)
-- [ ] partition_num_single_thread_2_tree (what is optimal partition size)
-- [ ] pymatching_compare_various_T (decoding time scaling with T)
-- [ ] fusion_time_d
-- [ ] fusion_time_delta_T
-- [ ] fusion_time_children_count
+on m6i.4xlarge (some very large points for blossomV are generated on a m6i.12xlarge machine)
+- [x] decoding_time_d (code distance)
+- [x] partition_num_single_thread_2_tree (what is optimal partition size: still 100)
+- [x] pymatching_compare_various_T (decoding time scaling with T)
+- [x] fusion_time_d
+- [x] fusion_time_delta_T
+- [x] fusion_time_children_count
 
 on m6i.metal (128 vCPU, 512GB memory)
 - [ ] thread_pool_size_partition_1k (#threads)

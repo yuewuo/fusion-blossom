@@ -84,7 +84,7 @@ with open(data_file, "w", encoding="utf8") as data_f:
                 syndromes.append(syndrome)
                 defect_nums.append(len(syndrome_pattern.defect_vertices))
                 line = f.readline()
-            assert len(syndromes) == total_rounds
+            assert len(syndromes) >= total_rounds
         print("initializer loaded")
 
         # construct the binary parity check matrix

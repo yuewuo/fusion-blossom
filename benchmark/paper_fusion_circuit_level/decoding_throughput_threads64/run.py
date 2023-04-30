@@ -22,7 +22,10 @@ compile_code_if_necessary()
 
 d_vec = [11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
 p_vec = [0.001, 0.002, 0.003]
-total_rounds = 100
+# p_vec = [0.001]
+# p_vec = [0.002]
+# p_vec = [0.003]
+total_rounds = 200
 noisy_measurements = 100000
 
 # # small size debug
@@ -73,7 +76,7 @@ for p in p_vec:
             print("\n" + stdout)
             assert returncode == 0, "command fails..."
 
-            profile = Profile(benchmark_profile_path)
+            profile = Profile(benchmark_profile_path, 100)
             print("d:", d, ", p", p)
             print("    average_decoding_time:", profile.average_decoding_time())
             print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
