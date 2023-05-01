@@ -27,20 +27,19 @@ ONLY_PROCESS_DATA_IN_FOLDER = None
 d = 21
 p = 0.001
 total_rounds = 200
-benchmark_total_run = 5 * total_rounds  # run benchmark longer to get rid of cold start
+benchmark_total_run = 3 * total_rounds  # run benchmark longer to get rid of cold start
 noisy_measurements = 100000
 thread_pool_size = 128
-maximum_tree_leaf_size = 100  # see ./study_fusion_tree_latency
+maximum_tree_leaf_size_vec = [128, 64, 32, 16, 8]  # see ./study_fusion_tree_latency
 measure_interval_vec = [0.2e-6 * (1.15 ** i) for i in range(20)]
 # print(measure_interval_vec)
-delta_T_vec = [100, 50, 20]
+delta_T = 20  # roughly 10us * 20 = 200us base decoding time; in the ideal case, subtree = 8, roughly 600us latency
 interleaving_base_fusion = 2 * thread_pool_size + 1
 
 
 # # small size debug
-# d = 5
-# noisy_measurements = 1000
-# measure_interval_vec = measure_interval_vec[:5]
+# noisy_measurements = 100
+# measure_interval_vec = [1e-6]
 
 
 if ONLY_PROCESS_DATA_IN_FOLDER == None:
@@ -64,16 +63,16 @@ if ONLY_PROCESS_DATA_IN_FOLDER == None:
 else:
     tmp_dir = os.path.join(script_dir, ONLY_PROCESS_DATA_IN_FOLDER)
 
-for delta_T in delta_T_vec:
+for maximum_tree_leaf_size in maximum_tree_leaf_size_vec:
 
-    data_file = os.path.join(script_dir, f"data_deltaT{delta_T}.txt")
+    data_file = os.path.join(script_dir, f"data_subtree{maximum_tree_leaf_size}.txt")
     with open(data_file, "w", encoding="utf8") as f:
         f.write("<measure_interval> <median_latency> <average_latency> <stddev_latency> <sample_latency>\n")
 
         for idx, measure_interval in enumerate(measure_interval_vec):
             partition_num = noisy_measurements // delta_T
 
-            benchmark_profile_path = os.path.join(tmp_dir, f"deltaT{delta_T}_{'%.3e' % measure_interval}.profile")
+            benchmark_profile_path = os.path.join(tmp_dir, f"subtree{maximum_tree_leaf_size}_{'%.3e' % measure_interval}.profile")
 
             if ONLY_PROCESS_DATA_IN_FOLDER == None:
                 command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=benchmark_total_run, noisy_measurements=noisy_measurements)
@@ -94,7 +93,7 @@ for delta_T in delta_T_vec:
             profile = Profile(benchmark_profile_path, benchmark_total_run-total_rounds)
             latency_vec = []
             syndrome_ready_time = delta_T*measure_interval * partition_num
-            for entry in profile.entries[100:]:  # give it more time for cold start
+            for entry in profile.entries:
                 event_time_vec = entry["solver_profile"]["primal"]["event_time_vec"]
                 last_fusion_finished = event_time_vec[-1]["end"]
                 latency = last_fusion_finished - syndrome_ready_time

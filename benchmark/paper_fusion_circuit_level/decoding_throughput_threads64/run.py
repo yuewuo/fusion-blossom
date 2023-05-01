@@ -21,10 +21,10 @@ util.FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True  # better performance, still sa
 compile_code_if_necessary()
 
 d_vec = [11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31]
-p_vec = [0.001, 0.002, 0.003]
+p_vec = [0.001, 0.002, 0.004]
 # p_vec = [0.001]
 # p_vec = [0.002]
-# p_vec = [0.003]
+# p_vec = [0.004]
 total_rounds = 200
 benchmark_total_run = 3 * total_rounds  # run benchmark longer to get rid of cold start
 noisy_measurements = 100000
