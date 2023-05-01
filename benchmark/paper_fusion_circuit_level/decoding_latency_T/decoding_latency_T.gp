@@ -16,7 +16,7 @@ set tmargin 1
 set bmargin 1
 
 set logscale x
-set xrange [10:1e5]
+set xrange [10:10e5]
 # print(", ".join([f"'{2 ** i}' {2 ** i}" for i in range(0,10)]))
 # set xtics ('11' 11, '13' 13, '15' 15, '17' 17, '21' 21, '25' 25, '31' 31, '35' 35)
 set logscale y
