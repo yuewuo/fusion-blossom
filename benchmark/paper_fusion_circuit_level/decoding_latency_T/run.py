@@ -28,9 +28,9 @@ d = 21
 p = 0.001
 total_rounds = 200
 benchmark_total_run = 3 * total_rounds  # run benchmark longer to get rid of cold start
-noisy_measurements_vec = [20, 100, 300, 1000, 3000, 10000, 30000, 100000]
-thread_pool_size = 128
-maximum_tree_leaf_size = 10  # only applicable to stream decoding
+noisy_measurements_vec = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
+thread_pool_size = 32
+maximum_tree_leaf_size = 50  # only applicable to stream decoding
 measure_interval = 1e-6
 # print(measure_interval_vec)
 delta_T = 20  # roughly 10us * 20 = 200us base decoding time; in the ideal case, subtree = 8, roughly 600us latency
