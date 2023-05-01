@@ -30,7 +30,7 @@ total_rounds = 200
 benchmark_total_run = 3 * total_rounds  # run benchmark longer to get rid of cold start
 noisy_measurements = 100000
 thread_pool_size = 128
-maximum_tree_leaf_size_vec = [128, 64, 32, 16, 8]  # see ./study_fusion_tree_latency
+maximum_tree_leaf_size_vec = [1000, 100, 10]  # see ./study_fusion_tree_latency
 measure_interval_vec = [0.2e-6 * (1.15 ** i) for i in range(20)]
 # print(measure_interval_vec)
 delta_T = 20  # roughly 10us * 20 = 200us base decoding time; in the ideal case, subtree = 8, roughly 600us latency

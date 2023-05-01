@@ -28,9 +28,9 @@ set key box top left Left reverse width -3.5 height 0.5 opaque font default_font
 
 set output "decoding_throughput_threads64.eps"
 
-plot "data_p0.005.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title "p = 0.5%",\
-    "data_p0.01.txt" using 1:3 with linespoints lt rgb "blue" linewidth 3 pointtype point_type_parity pointsize default_point_size title "p = 1%",\
-    "data_p0.02.txt" using 1:3 with linespoints lt rgb "green" linewidth 3 pointtype point_type_parity pointsize default_point_size title "p = 2%"
+plot "data_p0.001.txt" using 1:3 with linespoints lt rgb "#e41a1c" linewidth 3 pointtype point_type_parity pointsize default_point_size title "p = 0.1%",\
+    "data_p0.002.txt" using 1:3 with linespoints lt rgb "blue" linewidth 3 pointtype point_type_parity pointsize default_point_size title "p = 0.2%",\
+    "data_p0.004.txt" using 1:3 with linespoints lt rgb "green" linewidth 3 pointtype point_type_parity pointsize default_point_size title "p = 0.4%"
 
 system("ps2pdf -dEPSCrop decoding_throughput_threads64.eps decoding_throughput_threads64.pdf")
 
