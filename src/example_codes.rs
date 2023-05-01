@@ -1020,13 +1020,21 @@ pub struct ErrorPatternReader {
     /// cursor of current errors
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub defect_index: usize,
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub cyclic_syndrome: bool,
 }
 
 impl ExampleCode for ErrorPatternReader {
     fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
     fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
     fn generate_random_errors(&mut self, _seed: u64) -> SyndromePattern {
-        assert!(self.defect_index < self.syndrome_patterns.len(), "reading syndrome pattern more than in the file, consider generate the file with more data points");
+        if self.cyclic_syndrome {
+            if self.defect_index >= self.syndrome_patterns.len() {
+                self.defect_index = 0;  // cyclic
+            }
+        } else {
+            assert!(self.defect_index < self.syndrome_patterns.len(), "reading syndrome pattern more than in the file, consider generate the file with more data points");
+        }
         let syndrome_pattern = self.syndrome_patterns[self.defect_index].clone();
         self.defect_index += 1;
         syndrome_pattern
@@ -1041,6 +1049,9 @@ impl ErrorPatternReader {
         if let Some(value) = config.remove("filename") {
             filename = value.as_str().expect("filename string").to_string();
         }
+        let cyclic_syndrome = if let Some(cyclic_syndrome) = config.remove("cyclic_syndrome") {
+            cyclic_syndrome.as_bool().expect("cyclic_syndrome: bool")
+        } else { false };  // by default not enable cyclic syndrome, to avoid problem
         if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
         let file = File::open(filename).unwrap();
         let mut syndrome_patterns = vec![];
@@ -1073,6 +1084,7 @@ impl ErrorPatternReader {
             edges: Vec::with_capacity(initializer.weighted_edges.len()),
             syndrome_patterns,
             defect_index: 0,
+            cyclic_syndrome,
         };
         for (left_vertex, right_vertex, weight) in initializer.weighted_edges.iter() {
             assert!(weight % 2 == 0, "weight must be even number");

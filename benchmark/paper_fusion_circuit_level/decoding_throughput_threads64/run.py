@@ -26,12 +26,13 @@ p_vec = [0.001, 0.002, 0.003]
 # p_vec = [0.002]
 # p_vec = [0.003]
 total_rounds = 200
+benchmark_total_run = 3 * total_rounds  # run benchmark longer to get rid of cold start
 noisy_measurements = 100000
 
 # # small size debug
-# d_vec = [3,5,7]
+# d_vec = [11]
 # noisy_measurements = 1000
-# p_vec = [0.005, 0.01, 0.02]
+# p_vec = [0.001]
 
 
 for p in p_vec:
@@ -60,11 +61,11 @@ for p in p_vec:
                 assert returncode == 0, "command fails..."
 
             benchmark_profile_path = os.path.join(tmp_dir, f"p{p}_d{d}.profile")
-            command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
+            command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=benchmark_total_run, noisy_measurements=noisy_measurements)
             command += ["--code-type", "error-pattern-reader"]
-            command += ["--code-config", f'{{"filename":"{syndrome_file_path}"}}']
+            command += ["--code-config", f'{{"filename":"{syndrome_file_path}","cyclic_syndrome":true}}']
             command += ["--primal-dual-type", "parallel"]
-            command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":64,"pin_threads_to_cores":true}},"dual":{{"thread_pool_size":64}}}}']
+            command += ["--primal-dual-config", f'{{"primal":{{"thread_pool_size":128,"pin_threads_to_cores":true}},"dual":{{"thread_pool_size":128}}}}']
             command += ["--partition-strategy", "phenomenological-rotated-code-time-partition"]
             # use `maximum_tree_leaf_size` to make sure fusion jobs are distributed to multiple cores while limiting the size of tree
             partition_num = noisy_measurements // 100
@@ -76,7 +77,7 @@ for p in p_vec:
             print("\n" + stdout)
             assert returncode == 0, "command fails..."
 
-            profile = Profile(benchmark_profile_path, 100)
+            profile = Profile(benchmark_profile_path, benchmark_total_run-total_rounds)
             print("d:", d, ", p", p)
             print("    average_decoding_time:", profile.average_decoding_time())
             print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
