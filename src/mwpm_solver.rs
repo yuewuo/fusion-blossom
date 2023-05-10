@@ -521,7 +521,6 @@ pub struct SolverBlossomV {
 }
 
 impl SolverBlossomV {
-    #[cfg_attr(feature = "python_binding", new)]
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
             initializer: initializer.clone(),

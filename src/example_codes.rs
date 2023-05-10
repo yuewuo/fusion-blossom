@@ -317,6 +317,33 @@ pub trait ExampleCode {
         self.get_syndrome()
     }
 
+    fn generate_errors(&mut self, edge_indices: &[EdgeIndex]) -> SyndromePattern {
+        let (vertices, edges) = self.vertices_edges();
+        for &edge_index in edge_indices {
+            let edge = &mut edges.get_mut(edge_index).unwrap();
+            let (v1, v2) = edge.vertices;
+            let vertex_1 = &mut vertices[v1 as usize];
+            if !vertex_1.is_virtual {
+                vertex_1.is_defect = !vertex_1.is_defect;
+            }
+            let vertex_2 = &mut vertices[v2 as usize];
+            if !vertex_2.is_virtual {
+                vertex_2.is_defect = !vertex_2.is_defect;
+            }
+        }
+        self.get_syndrome()
+    }
+
+    fn clear_errors(&mut self) {
+        let (vertices, edges) = self.vertices_edges();
+        for vertex in vertices.iter_mut() {
+            vertex.is_defect = false;
+        }
+        for edge in edges.iter_mut() {
+            edge.is_erasure = true;
+        }
+    }
+
     fn is_virtual(&self, vertex_idx: usize) -> bool {
         let (vertices, _edges) = self.immutable_vertices_edges();
         vertices[vertex_idx].is_virtual
@@ -384,6 +411,10 @@ macro_rules! bind_trait_example_code {
             #[pyo3(name = "generate_random_errors")]
             #[args(seed = "thread_rng().gen()")]
             fn trait_generate_random_errors(&mut self, seed: u64) -> SyndromePattern { self.generate_random_errors(seed) }
+            #[pyo3(name = "generate_errors")]
+            fn trait_generate_errors(&mut self, edge_indices: Vec<EdgeIndex>) -> SyndromePattern { self.generate_errors(&edge_indices) }
+            #[pyo3(name = "clear_errors")]
+            fn trait_clear_errors(&mut self) { self.clear_errors() }
             #[pyo3(name = "is_virtual")]
             fn trait_is_virtual(&mut self, vertex_idx: usize) -> bool { self.is_virtual(vertex_idx) }
             #[pyo3(name = "is_defect")]
@@ -1153,6 +1184,131 @@ impl<CodeType: ExampleCode + Sync + Send + Clone> ExampleCode for ExampleCodePar
     }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+/// CSS surface code (the rotated one) with X-type stabilizers
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pyclass)]
+pub struct YqiArtCode {
+    /// vertices in the code
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub vertices: Vec<CodeVertex>,
+    /// nearest-neighbor edges in the decoding graph
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub edges: Vec<CodeEdge>,
+}
+
+impl ExampleCode for YqiArtCode {
+    fn vertices_edges(&mut self) -> (&mut Vec<CodeVertex>, &mut Vec<CodeEdge>) { (&mut self.vertices, &mut self.edges) }
+    fn immutable_vertices_edges(&self) -> (&Vec<CodeVertex>, &Vec<CodeEdge>) { (&self.vertices, &self.edges) }
+}
+
+#[cfg(feature="python_binding")]
+bind_trait_example_code!{YqiArtCode}
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
+impl YqiArtCode {
+
+    #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
+        let mut code = Self::create_code(d);
+        code.set_probability(p);
+        code.compute_weights(max_half_weight);
+        code
+    }
+
+    #[cfg_attr(feature = "python_binding", staticmethod)]
+    pub fn create_code(d: VertexNum) -> Self {
+        assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
+        let row_vertex_num = (d-1) / 2 + 1;  // a virtual node at either left or right
+        let half_vertex_num = row_vertex_num * (d+1);  // d+1 rows
+        let vertex_num = half_vertex_num * 2;
+        // create edges
+        let mut edges: Vec<CodeEdge> = Vec::new();
+        for rotate in 0..2 {
+            for row in 0..d {
+                let bias = row * row_vertex_num + half_vertex_num * rotate;
+                if row % 2 == 0 {
+                    for i in 0..d {
+                        if i % 2 == 0 {
+                            edges.push(CodeEdge::new(bias + i / 2, bias + row_vertex_num + i / 2));
+                        } else {
+                            edges.push(CodeEdge::new(bias + (i - 1) / 2, bias + row_vertex_num + (i + 1) / 2));
+                        }
+                    }
+                } else {
+                    for i in 0..d {
+                        if i % 2 == 0 {
+                            edges.push(CodeEdge::new(bias + i / 2, bias + row_vertex_num + i / 2));
+                        } else {
+                            edges.push(CodeEdge::new(bias + (i + 1) / 2, bias + row_vertex_num + (i - 1) / 2));
+                        }
+                    }
+                }
+            }
+        }
+        let mut code = Self {
+            vertices: Vec::new(),
+            edges,
+        };
+        // create vertices
+        code.fill_vertices(vertex_num);
+        for rotate in 0..2 {
+            for row in 0..d+1 {
+                let bias = row * row_vertex_num + half_vertex_num * rotate;
+                if row % 2 == 0 {
+                    code.vertices[(bias + row_vertex_num - 1) as usize].is_virtual = true;
+                } else {
+                    code.vertices[(bias) as usize].is_virtual = true;
+                }
+            }
+        }
+        let mut positions = Vec::new();
+        for rotate in 0..2 {
+            for row in 0..d+1 {
+                let pos_i = row as f64;
+                for i in 0..row_vertex_num {
+                    let pos_bias = if row % 2 == 0 { 1 } else { 0 };
+                    let pos_j = (i * 2 + pos_bias) as f64;
+                    let (pos_i, pos_j) = if rotate == 0 { (pos_i, pos_j) } else { (pos_j, d as f64 - pos_i) };
+                    positions.push(VisualizePosition::new(pos_i, pos_j, 0. + rotate as f64));
+                }
+            }
+        }
+        for (i, position) in positions.into_iter().enumerate() {
+            code.vertices[i].position = position;
+        }
+        code
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #[cfg(feature="python_binding")]
 #[pyfunction]
 pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
@@ -1163,6 +1319,9 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<CodeCapacityPlanarCode>()?;
     m.add_class::<PhenomenologicalPlanarCode>()?;
     m.add_class::<CircuitLevelPlanarCode>()?;
+    m.add_class::<CodeCapacityRotatedCode>()?;
+    m.add_class::<PhenomenologicalRotatedCode>()?;
+    m.add_class::<YqiArtCode>()?;
     Ok(())
 }
 

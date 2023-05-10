@@ -179,6 +179,8 @@ pub enum ExampleCodeType {
     CodeCapacityRotatedCode,
     /// rotated surface code with phenomenological noise model
     PhenomenologicalRotatedCode,
+    /// YQI art code
+    YqiArtCode,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -466,7 +468,7 @@ impl Cli {
                 }
             },
             #[cfg(feature="qecp_integrate")]
-            Commands::Qecp(mut benchmark_parameters) => {
+            Commands::Qecp(benchmark_parameters) => {
                 benchmark_parameters.run().unwrap();
             },
         }
@@ -533,6 +535,10 @@ impl ExampleCodeType {
             Self::PhenomenologicalRotatedCode => {
                 assert_eq!(code_config, json!({}), "config not supported");
                 Box::new(PhenomenologicalRotatedCode::new(d, noisy_measurements, p, max_half_weight))
+            },
+            Self::YqiArtCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(YqiArtCode::new(d, p, max_half_weight))
             },
             _ => unimplemented!()
         }

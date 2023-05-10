@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.2.4"
+version = "0.2.5-yqi-art"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -70,7 +70,7 @@ rayon = "1.7.0"
 weak-table = "0.3.2"
 rand = "0.8.5"
 core_affinity = "0.8.0"
-pyo3 = { version =  "0.18.3", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
+pyo3 = { version =  "0.17.3", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
 lazy_static = "1.4.0"
 petgraph = "0.6.3"
 qecp = { version = "0.2.2", features = ["fusion-blossom"], optional = true }
