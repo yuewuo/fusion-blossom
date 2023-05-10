@@ -144,7 +144,7 @@ export class CodeSimulator {
         // create correction pattern
         this.correction = {}
         for (let edge_index of this.subgraph) {
-            
+            console.log(edge_index)
         }
     }
 
