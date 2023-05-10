@@ -317,6 +317,33 @@ pub trait ExampleCode {
         self.get_syndrome()
     }
 
+    fn generate_errors(&mut self, edge_indices: &[EdgeIndex]) -> SyndromePattern {
+        let (vertices, edges) = self.vertices_edges();
+        for &edge_index in edge_indices {
+            let edge = &mut edges.get_mut(edge_index).unwrap();
+            let (v1, v2) = edge.vertices;
+            let vertex_1 = &mut vertices[v1 as usize];
+            if !vertex_1.is_virtual {
+                vertex_1.is_defect = !vertex_1.is_defect;
+            }
+            let vertex_2 = &mut vertices[v2 as usize];
+            if !vertex_2.is_virtual {
+                vertex_2.is_defect = !vertex_2.is_defect;
+            }
+        }
+        self.get_syndrome()
+    }
+
+    fn clear_errors(&mut self) {
+        let (vertices, edges) = self.vertices_edges();
+        for vertex in vertices.iter_mut() {
+            vertex.is_defect = false;
+        }
+        for edge in edges.iter_mut() {
+            edge.is_erasure = true;
+        }
+    }
+
     fn is_virtual(&self, vertex_idx: usize) -> bool {
         let (vertices, _edges) = self.immutable_vertices_edges();
         vertices[vertex_idx].is_virtual
@@ -381,17 +408,19 @@ macro_rules! bind_trait_example_code {
             fn trait_get_erasures(&self) -> Vec<EdgeIndex> { self.get_erasures() }
             #[pyo3(name = "get_syndrome")]
             fn trait_get_syndrome(&self) -> SyndromePattern { self.get_syndrome() }
-            #[pyo3(name = "generate_random_errors")]
-            #[args(seed = "thread_rng().gen()")]
+            #[pyo3(name = "generate_random_errors", signature = (seed=thread_rng().gen()))]
             fn trait_generate_random_errors(&mut self, seed: u64) -> SyndromePattern { self.generate_random_errors(seed) }
+            #[pyo3(name = "generate_errors")]
+            fn trait_generate_errors(&mut self, edge_indices: Vec<EdgeIndex>) -> SyndromePattern { self.generate_errors(&edge_indices) }
+            #[pyo3(name = "clear_errors")]
+            fn trait_clear_errors(&mut self) { self.clear_errors() }
             #[pyo3(name = "is_virtual")]
             fn trait_is_virtual(&mut self, vertex_idx: usize) -> bool { self.is_virtual(vertex_idx) }
             #[pyo3(name = "is_defect")]
             fn trait_is_defect(&mut self, vertex_idx: usize) -> bool { self.is_defect(vertex_idx) }
             #[pyo3(name = "reorder_vertices")]
             fn trait_reorder_vertices(&mut self, sequential_vertices: Vec<VertexIndex>) { self.reorder_vertices(&sequential_vertices) }
-            #[pyo3(name = "snapshot")]
-            #[args(abbrev = "true")]
+            #[pyo3(name = "snapshot", signature = (abbrev=true))]
             fn trait_snapshot(&mut self, abbrev: bool) -> PyObject { json_to_pyobject(self.snapshot(abbrev)) }
         }
     };
@@ -449,7 +478,7 @@ bind_trait_example_code!{CodeCapacityRepetitionCode}
 impl CodeCapacityRepetitionCode {
 
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, p, max_half_weight = 500)))]
     pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -515,7 +544,7 @@ bind_trait_example_code!{CodeCapacityPlanarCode}
 impl CodeCapacityPlanarCode {
 
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, p, max_half_weight = 500)))]
     pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -596,7 +625,7 @@ bind_trait_example_code!{PhenomenologicalPlanarCode}
 impl PhenomenologicalPlanarCode {
 
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, noisy_measurements, p, max_half_weight = 500)))]
     pub fn new(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
@@ -698,17 +727,17 @@ impl CircuitLevelPlanarCode {
 
     /// by default diagonal edge has error rate p/3 to mimic the behavior of unequal weights
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, noisy_measurements, p, max_half_weight = 500)))]
     pub fn new(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight) -> Self {
-        Self::new_diagonal(d, noisy_measurements, p, max_half_weight, p/3.)
+        Self::new_diagonal(d, noisy_measurements, p, max_half_weight, Some(p/3.))
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
-    pub fn new_diagonal(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight, diagonal_p: f64) -> Self {
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, noisy_measurements, p, max_half_weight = 500, diagonal_p = None)))]
+    pub fn new_diagonal(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight, diagonal_p: Option<f64>) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
-        if diagonal_p != p {
+        if let Some(diagonal_p) = diagonal_p {
             let (vertices, edges) = code.vertices_edges();
             for edge in edges.iter_mut() {
                 let (v1, v2) = edge.vertices;
@@ -825,7 +854,7 @@ bind_trait_example_code!{CodeCapacityRotatedCode}
 impl CodeCapacityRotatedCode {
 
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, p, max_half_weight = 500)))]
     pub fn new(d: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d);
         code.set_probability(p);
@@ -916,7 +945,7 @@ bind_trait_example_code!{PhenomenologicalRotatedCode}
 impl PhenomenologicalRotatedCode {
 
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(max_half_weight = "500"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (d, noisy_measurements, p, max_half_weight = 500)))]
     pub fn new(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
@@ -1163,6 +1192,8 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<CodeCapacityPlanarCode>()?;
     m.add_class::<PhenomenologicalPlanarCode>()?;
     m.add_class::<CircuitLevelPlanarCode>()?;
+    m.add_class::<CodeCapacityRotatedCode>()?;
+    m.add_class::<PhenomenologicalRotatedCode>()?;
     Ok(())
 }
 

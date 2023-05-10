@@ -78,7 +78,7 @@ impl SyndromePattern {
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(defect_vertices="vec![]", erasures="vec![]"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (defect_vertices=vec![], erasures=vec![], syndrome_vertices=None)))]
     pub fn py_new(mut defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>, syndrome_vertices: Option<Vec<VertexIndex>>) -> Self {
         if let Some(syndrome_vertices) = syndrome_vertices {
             assert!(defect_vertices.is_empty(), "do not pass both `syndrome_vertices` and `defect_vertices` since they're aliasing");
@@ -752,7 +752,7 @@ pub fn pyobject_to_json_locked<'py>(value: PyObject, py: Python<'py>) -> serde_j
             .into_iter().map(|object| pyobject_to_json_locked(object, py)).collect();
         json!(elements)
     } else if value.is_instance_of::<pyo3::types::PyDict>().unwrap() {
-        let map: &pyo3::types::PyDict = value.cast_as().unwrap();
+        let map: &pyo3::types::PyDict = value.downcast().unwrap();
         let mut json_map = serde_json::Map::new();
         for (key, value) in map.iter() {
             json_map.insert(key.extract::<String>().unwrap(), pyobject_to_json_locked(value.to_object(py), py));

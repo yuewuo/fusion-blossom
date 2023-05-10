@@ -26,8 +26,7 @@ macro_rules! bind_trait_fusion_visualizer {
         #[cfg(feature="python_binding")]
         #[pymethods]
         impl $struct_name {
-            #[pyo3(name = "snapshot")]
-            #[args(abbrev = "true")]
+            #[pyo3(name = "snapshot", signature = (abbrev = true))]
             fn trait_snapshot(&self, abbrev: bool) -> PyObject { json_to_pyobject(self.snapshot(abbrev)) }
         }
     };
@@ -275,7 +274,7 @@ impl Visualizer {
 
     /// create a new visualizer with target filename and node layout
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", args(positions = "vec![]", center = "true"))]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (filepath, positions=vec![], center=true)))]
     pub fn new(mut filepath: Option<String>, mut positions: Vec<VisualizePosition>, center: bool) -> std::io::Result<Self> {
         if cfg!(feature = "disable_visualizer") {
             filepath = None;  // do not open file
@@ -646,7 +645,7 @@ mod tests {
                 format!("visualize_rough_idea_fusion_blossom.json")
             };
             let mut code: Box<dyn ExampleCode> = if is_circuit_level {
-                Box::new(CircuitLevelPlanarCode::new_diagonal(7, 7, 0.2, half_weight, 0.2))
+                Box::new(CircuitLevelPlanarCode::new_diagonal(7, 7, 0.2, half_weight, None))
             } else {
                 Box::new(PhenomenologicalPlanarCode::new(7, 7, 0.2, half_weight))
             };
