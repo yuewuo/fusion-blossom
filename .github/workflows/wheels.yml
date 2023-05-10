@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - yqi-art
     tags:
       - '**'
   # pull_request: {}
