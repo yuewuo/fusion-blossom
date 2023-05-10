@@ -21,7 +21,7 @@ util.FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True  # better performance, still sa
 compile_code_if_necessary()
 import numpy as np
 
-d_vec = [3, 5, 7, 9, 11, 13, 15, 17]
+d_vec = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
 p = 0.001
 total_rounds = 10000
 noisy_measurements = 13

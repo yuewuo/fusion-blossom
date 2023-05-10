@@ -466,7 +466,7 @@ impl Cli {
                 }
             },
             #[cfg(feature="qecp_integrate")]
-            Commands::Qecp(mut benchmark_parameters) => {
+            Commands::Qecp(benchmark_parameters) => {
                 benchmark_parameters.run().unwrap();
             },
         }

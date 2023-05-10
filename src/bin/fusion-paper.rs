@@ -339,6 +339,63 @@ fn fusion_paper_example_partition_8() {
         , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
 }
 
+#[cfg(feature="qecp_integrate")]
+fn fusion_paper_example_partition_8_circuit_level() {
+    use clap::Parser;
+    use crate::example_partition::*;
+    use crate::dual_module_parallel::*;
+    use crate::primal_module_parallel::*;
+    use crate::visualize::*;
+    use serde_json::json;
+    let syndromes_filename = format!("{}fusion_paper_example_partition_8_circuit_level.syndromes", visualize_data_folder());
+    let visualize_filename = format!("fusion_paper_example_partition_8_circuit_level.json");
+    let noisy_measurements = 10 * 8 - 1;
+    let d = 5;
+    let benchmark_parameters = qecp::cli::BenchmarkParameters::parse_from([
+        "qecp", format!("[{d}]").as_str(), format!("[{noisy_measurements}]").as_str(), format!("[0.008]").as_str(),
+        "--code-type", "rotated-planar-code", "--noise-model", "stim-noise-model", "--decoder", "fusion",
+        "--decoder-config", r#"{"only_stab_z":true,"use_combined_probability":false,"skip_decoding":true,"max_half_weight":500}"#,
+        "--debug-print", "fusion-blossom-syndrome-file", "--fusion-blossom-syndrome-export-filename", syndromes_filename.as_str(),
+        "--use-brief-edge", "-m10"
+    ]);
+    benchmark_parameters.run().unwrap();
+    let mut code = ErrorPatternReader::new(json!({ "filename": syndromes_filename }));
+    let random_syndrome = code.generate_random_errors(FUSION_PAPER_LARGE_DEMO_RNG_SEED);
+    let mut partition: PhenomenologicalRotatedCodeTimePartition = PhenomenologicalRotatedCodeTimePartition::new_tree(d, noisy_measurements
+        , 8, true, usize::MAX);
+    let defect_vertices = partition.re_index_defect_vertices(&code, &random_syndrome.defect_vertices);
+    let partition_config = partition.build_apply(&mut code);
+    let mut positions = code.get_positions();
+    // modify the positions
+    let ratio = 0.5;
+    for position in positions.iter_mut() {
+        let (i, j) = (position.i, position.j);
+        position.i = - (i + j) * ratio;
+        position.j = (j - i) * ratio;
+        position.t *= ratio * (2f64).sqrt();
+    }
+    // construct visualizer
+    let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
+    print_visualize_link(visualize_filename.clone());
+    let initializer = code.get_initializer();
+    let partition_info = partition_config.info();
+    // create dual module
+    let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
+    let mut primal_config = PrimalModuleParallelConfig::default();
+    primal_config.debug_sequential = true;
+    let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
+    code.set_defect_vertices(&defect_vertices);
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    let useless_interface_ptr = DualModuleInterfacePtr::new_empty();  // don't actually use it
+    let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
+    let mut subgraph_builder = SubGraphBuilder::new(&initializer);
+    subgraph_builder.load_perfect_matching(&perfect_matching);
+    let subgraph = subgraph_builder.get_subgraph();
+    let last_interface_ptr = &primal_module.units.last().unwrap().read_recursive().interface_ptr;
+    visualizer.snapshot_combined("perfect matching and subgraph".to_string(), vec![last_interface_ptr, &dual_module
+        , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
+}
+
 fn fusion_paper_example_covers() {
     let visualize_filename = format!("fusion_paper_example_covers.json");
     let half_weight = 500;
@@ -453,4 +510,6 @@ fn main() {
     fusion_paper_overlay_decoding_graph();
     fusion_paper_overlay_syndrome_graph();
     fusion_paper_pseudo_cover_island();
+    #[cfg(feature="qecp_integrate")]
+    fusion_paper_example_partition_8_circuit_level();
 }
