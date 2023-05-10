@@ -21,7 +21,7 @@ display(code)
 
 // start decoding, show an animation
 await code.decode()
-animate_decoding(code)
+await animate_decoding(code)
 
 
 exit()  // must be called, otherwise javascript never ends

@@ -144,7 +144,13 @@ export class CodeSimulator {
         // create correction pattern
         this.correction = {}
         for (let edge_index of this.subgraph) {
-            console.log(edge_index)
+            let position = this.layouts.data_qubits_positions[edge_index]
+            let is_Z_error = edge_index >= this.layouts.edge_num / 2
+            if (this.correction[position] == null) {
+                this.correction[position] = is_Z_error ? "Z" : "X"
+            } else {
+                this.correction[position] = "Y"
+            }
         }
     }
 
@@ -152,8 +158,10 @@ export class CodeSimulator {
 
 
 // a mock function that show the code in text
-export function display(code) {
-    console.log("mock display: (·) trivial stabilizer check, (XZ) nontrivial stabilizer check")
+export function display(code, print_legend=true) {
+    if (print_legend) {
+        console.log("mock display: (·) trivial stabilizer check, (XZ) nontrivial stabilizer check")
+    }
     for (let i=0; i<=code.d; ++i) {
         let row_string = ""
         for (let j=0; j<=code.d; ++j) {
@@ -176,28 +184,16 @@ export function display(code) {
     }
 }
 
-// a mock function that show the animation of the decoding
-export function animate_decoding(code) {
+// a mock function that show the animation of the decoding: show the correction one by one
+export async function animate_decoding(code) {
     console.log("mock animation: (·) trivial stabilizer check, (XZ) nontrivial stabilizer check")
-    for (let i=0; i<=code.d; ++i) {
-        let row_string = ""
-        for (let j=0; j<=code.d; ++j) {
-            let pos = new Position(i, j)
-            if (code.has_stabilizer(pos)) {
-                if (code.is_nontrivial_measurement(pos)) {
-                    if (code.is_Z_stabilizer(pos)) {
-                        row_string += " Z"
-                    } else {
-                        row_string += " X"
-                    }
-                } else {
-                    row_string += " ·"
-                }
-            } else {
-                row_string += "  "
-            }
-        }
-        console.log(row_string)
+    let code_cloned = Object.assign(Object.create(Object.getPrototypeOf(code)), code)
+    for (const [position, error] of Object.entries(code.correction)) {
+        console.log(`${position}: ${error}`)
+        code_cloned.clear()
+        code_cloned.set_qubit_error(position, error)
+        await code_cloned.simulate()
+        display(code_cloned, false)
     }
 }
 
