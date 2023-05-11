@@ -320,7 +320,7 @@ pub trait ExampleCode {
     fn generate_errors(&mut self, edge_indices: &[EdgeIndex]) -> SyndromePattern {
         let (vertices, edges) = self.vertices_edges();
         for &edge_index in edge_indices {
-            let edge = &mut edges.get_mut(edge_index).unwrap();
+            let edge = &mut edges.get_mut(edge_index as usize).unwrap();
             let (v1, v2) = edge.vertices;
             let vertex_1 = &mut vertices[v1 as usize];
             if !vertex_1.is_virtual {
