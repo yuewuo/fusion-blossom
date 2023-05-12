@@ -333,6 +333,7 @@ impl Cli {
                         let command_head = vec![format!(""), format!("benchmark")];
                         let mut command_tail = vec!["--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
+                        else { command_tail.append(&mut vec![format!("--verifier"), format!("none")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
@@ -395,6 +396,7 @@ impl Cli {
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")
                             , "--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
+                        else { command_tail.append(&mut vec![format!("--verifier"), format!("none")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
@@ -457,6 +459,7 @@ impl Cli {
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("parallel")
                             , "--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
+                        else { command_tail.append(&mut vec![format!("--verifier"), format!("none")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
