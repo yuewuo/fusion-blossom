@@ -24,10 +24,10 @@ import numpy as np
 d_vec = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
 p = 0.001
 total_rounds = 10000
-noisy_measurements = 13
 
 
 for d in d_vec:
+    noisy_measurements = d
     syndrome_file_path = os.path.join(tmp_dir, f"generated_d{d}.syndromes")
     if os.path.exists(syndrome_file_path):
         print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
@@ -47,6 +47,7 @@ with open(data_file, "w", encoding="utf8") as f:
     f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>\n")
 
     for d in d_vec:
+        noisy_measurements = d
         benchmark_profile_path = os.path.join(tmp_dir, f"generated_d{d}.profile")
         syndrome_file_path = os.path.join(tmp_dir, f"generated_d{d}.syndromes")
         command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)

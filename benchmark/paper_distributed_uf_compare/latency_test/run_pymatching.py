@@ -6,10 +6,9 @@ import subprocess
 from msgspec.json import decode
 from msgspec import Struct
 
-d_vec = [3, 5, 7, 9, 11, 13, 15, 17]
+d_vec = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
 p = 0.001
 total_rounds = 10000
-noisy_measurements = 13
 
 
 PYMATCHING_BATCH_DECODING = True
@@ -33,12 +32,13 @@ with open(data_file, "w", encoding="utf8") as data_f:
     data_f.write("<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
 
     for d in d_vec:
+        noisy_measurements = d
 
         syndrome_file_path = os.path.join(tmp_dir, f"generated_d{d}.syndromes")
         if os.path.exists(syndrome_file_path):
             print("[warning] use existing syndrome data (if you think it's stale, delete it and rerun)")
         else:
-            command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=noisy_measurements)
+            command = fusion_blossom_benchmark_command(d=d, p=p, total_rounds=total_rounds, noisy_measurements=d)
             command += ["--code-type", "phenomenological-rotated-code"]
             command += ["--primal-dual-type", "error-pattern-logger"]
             command += ["--verifier", "none"]
