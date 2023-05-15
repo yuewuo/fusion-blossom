@@ -18,9 +18,10 @@ Our paper is out on arXiv!
 
 ## Benchmark Highlights
 
-- In phenomenological noise model with **$p$ = 0.005**, code distance **$d$ = 21**, planar code with $d(d-1)$ = 420 $Z$ stabilizers, 100000 measurement rounds
-  - single-thread: **2.4us per defect vertex** or 29us per measurement round
-  - 64-threads: 58ns per defect vertex or **0.7us per measurement round**
+- In circuit-level noise model with **$p$ = 0.001**, code distance **$d$ = 21**, rotated CSS code, 100000 measurement rounds
+  - single-thread: **3.9us per defect vertex** or 13us per measurement round
+  - 64-threads: 95ns per defect vertex or **0.3us per measurement round**
+  - in streaming mode, the latency is **0.7ms regardless of rounds of measurement**
 
 ## Background and Key Ideas
 
