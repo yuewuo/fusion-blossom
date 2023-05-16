@@ -14,7 +14,7 @@ Our paper is out on arXiv!
 - **Correctness**: This is an exact MWPM solver, verified against the [Blossom V library](https://pub.ist.ac.at/~vnk/software.html) with millions of randomized test cases .
 - **Linear Complexity**: The average decoding time is roughly $O(N)$ given small physical error rate, proportional to the number of defect vertices $N$.
 - **Parallelism**: A single MWPM decoding problem can be partitioned and solved in parallel, then *fused* together to find an **exact** global MWPM solution.
-- **Simple Interface**: The graph problem is abstracted and easy-to-use for QEC applications.
+- **Simple Interface**: The graph problem is abstracted and easy-to-use for QEC applications. Especially, it supports decoding erasure errors (by setting some edge weights to 0 on the fly).
 
 ## Benchmark Highlights
 
@@ -60,12 +60,6 @@ We have several Python demos at [the tutorial website](https://tutorial.fusionbl
 
 For parallel solver, it needs user to provide a partition strategy. Please check our paper for a thorough description of how partition works.
 
-## Parallel Execution Visualization
-
-In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each consists of 49 rounds of measurement. Green blocks are fusion operations, a single round of measurement sandwiched by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
-
-[<img src="./benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/64.svg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/tmp/64.profile)
-
 ## Interface
 
 #### Sparse Decoding Graph and Integer Weights
@@ -75,7 +69,6 @@ The weights in QEC decoding graph are computed by taking the log of error probab
 We use integer also for ease of migrating to FPGA implementation. In order to fit more vertices into a single FPGA, it's necessary to reduce the resource usage for each vertex. Integers are much cheaper than floating-point numbers, and also it allows flexible trade-off between resource usage and accuracy, e.g. if all weights are equal, we can simply use a 2 bit integer.
 
 Note that other libraries of MWPM solver like [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) also default to integer weights as well. Although one can change the macro to use floating-point weights, it's not recommended because "the code may even get stuck due to rounding errors".
-
 
 ## Tests
 
@@ -87,7 +80,9 @@ cp -r blossom5-v2.05.src/* blossomV/
 rm -r blossom5-v2.05.src
 ```
 
-# Visualize
+# Visualization
+
+## Visualize the solving procedure of a single decoding problem
 
 To start a server, run the following
 ```sh
@@ -102,6 +97,12 @@ cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
 npm install  # to download packages
 node index.js <url> <width> <height>  # local render
 ```
+
+## Visualize parallel execution of multiple decoding problems
+
+In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each consists of 49 rounds of measurement. Green blocks are fusion operations, a single round of measurement sandwiched by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
+
+[<img src="./benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/64.svg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/tmp/64.profile)
 
 # TODOs
 
