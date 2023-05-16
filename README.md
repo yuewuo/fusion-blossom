@@ -7,7 +7,7 @@ A fast Minimum-Weight Perfect Matching (MWPM) solver for Quantum Error Correctio
 
 Please see [our tutorial for a quick explanation and some Python demos](https://tutorial.fusionblossom.com).
 
-Our paper is out on arXiv!
+Our paper is out on arXiv! [https://arxiv.org/abs/2305.08307](https://arxiv.org/abs/2305.08307)
 
 ## Key Features
 
