@@ -903,10 +903,10 @@ impl DualModuleImpl for DualModuleSerial {
     fn execute_sync_event(&mut self, sync_event: &SyncRequest) {
         let active_timestamp = self.active_timestamp;
         debug_assert!(self.contains_vertex(sync_event.vertex_index));
-        let propagated_dual_node_internal_ptr = sync_event.propagated_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
+        let propagated_dual_node_internal_ptr = sync_event.propagated_dual_node.as_ref().map(|(dual_node_weak, dual_variable, _representative_vertex)| {
             self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
         });
-        let propagated_grandson_dual_node_internal_ptr = sync_event.propagated_grandson_dual_node.as_ref().map(|(dual_node_weak, dual_variable)| {
+        let propagated_grandson_dual_node_internal_ptr = sync_event.propagated_grandson_dual_node.as_ref().map(|(dual_node_weak, dual_variable, _representative_vertex)| {
             self.get_otherwise_add_dual_node(&dual_node_weak.upgrade_force(), *dual_variable)
         });
         let local_vertex_index = self.get_vertex_index(sync_event.vertex_index).expect("cannot synchronize at a non-existing vertex");
@@ -1006,7 +1006,6 @@ impl DualModuleImpl for DualModuleSerial {
                 }
                 self.active_list.push(dual_node_internal_ptr.downgrade());
             }
-            
         }
     }
 
@@ -1093,7 +1092,7 @@ impl DualModuleSerial {
     fn hard_clear_edge_dedup(&mut self) {
         for edge in self.edges.iter() {
             let mut edge = edge.write_force();
-            edge.dedup_timestamp = (0 ,0);
+            edge.dedup_timestamp = (0, 0);
         }
         self.edge_dedup_timestamp = 0;
     }
@@ -1499,12 +1498,12 @@ impl DualModuleSerial {
                             propagated_dual_node: vertex.propagated_dual_node.clone().map(|weak| {
                                 let dual_node_ptr = weak.upgrade_force();
                                 let dual_node = dual_node_ptr.read_recursive();
-                                (dual_node.origin.clone(), dual_node.dual_variable)
+                                (dual_node.origin.clone(), dual_node.dual_variable, dual_node.origin.upgrade_force().get_representative_vertex())
                             }),
                             propagated_grandson_dual_node: vertex.propagated_grandson_dual_node.as_ref().map(|weak| {
                                 let dual_node_ptr = weak.upgrade_force();
                                 let dual_node = dual_node_ptr.read_recursive();
-                                (dual_node.origin.clone(), dual_node.dual_variable)
+                                (dual_node.origin.clone(), dual_node.dual_variable, dual_node.origin.upgrade_force().get_representative_vertex())
                             }),
                         });
                     }

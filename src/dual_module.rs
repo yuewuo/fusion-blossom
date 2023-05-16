@@ -56,20 +56,21 @@ pub struct SyncRequest {
     /// the vertex index to be synchronized
     pub vertex_index: VertexIndex,
     /// propagated dual node index and the dual variable of the propagated dual node;
-    /// this field is necessary to differentiate between normal shrink and the one that needs to report VertexShrinkStop event, when the syndrome is on the interface
-    pub propagated_dual_node: Option<(DualNodeWeak, Weight)>,
+    /// this field is necessary to differentiate between normal shrink and the one that needs to report VertexShrinkStop event, when the syndrome is on the interface;
+    /// it also includes the representative vertex of the dual node, so that parents can keep track of whether it should be elevated
+    pub propagated_dual_node: Option<(DualNodeWeak, Weight, VertexIndex)>,
     /// propagated grandson node: must be a syndrome node
-    pub propagated_grandson_dual_node: Option<(DualNodeWeak, Weight)>,
+    pub propagated_grandson_dual_node: Option<(DualNodeWeak, Weight, VertexIndex)>,
 }
 
 impl SyncRequest {
 
     /// update all the interface nodes to be up-to-date, only necessary when there are fusion
     pub fn update(&self) {
-        if let Some((weak, _)) = &self.propagated_dual_node {
+        if let Some((weak, ..)) = &self.propagated_dual_node {
             weak.upgrade_force().update();
         }
-        if let Some((weak, _)) = &self.propagated_grandson_dual_node {
+        if let Some((weak, ..)) = &self.propagated_grandson_dual_node {
             weak.upgrade_force().update();
         }
     }

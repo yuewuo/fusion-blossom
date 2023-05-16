@@ -781,21 +781,8 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     fn iterative_remove_blossom(&mut self, dual_node_ptr: &DualNodePtr, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(representative_vertex) {
-            if !self.elevated_dual_nodes.contains(dual_node_ptr) {
-                return  // no descendant related to this dual node
-            } else {
-                // also elevate every children of this blossom whose is not naturally in the range
-                if let DualNodeClass::Blossom { nodes_circle, .. } = &dual_node_ptr.read_recursive().class {
-                    for child_node_weak in nodes_circle.iter() {
-                        let child_node_ptr = child_node_weak.upgrade_force();
-                        let children_representative_vertex = child_node_ptr.get_representative_vertex();
-                        if !self.whole_range.contains(children_representative_vertex) {
-                            self.elevated_dual_nodes.insert(child_node_ptr);
-                        }
-                    }
-                } else { unreachable!() }
-            }
+        if !self.whole_range.contains(representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
+            return  // no descendant related to this dual node
         }
         self.has_active_node = true;
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {
@@ -1003,8 +990,13 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleImpl for DualModulePa
         }
         // if I'm not on the representative path of this dual node, I need to register the propagated_dual_node
         // note that I don't need to register propagated_grandson_dual_node because it's never gonna grow inside the blossom
-        if !self.whole_range.contains(sync_event.vertex_index) {
-            if let Some((propagated_dual_node_weak, _)) = sync_event.propagated_dual_node.as_ref() {
+        if let Some((propagated_dual_node_weak, _, representative_vertex)) = sync_event.propagated_dual_node.as_ref() {
+            if !self.whole_range.contains(*representative_vertex) {
+                self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
+            }
+        }
+        if let Some((propagated_dual_node_weak, _, representative_vertex)) = sync_event.propagated_grandson_dual_node.as_ref() {
+            if !self.whole_range.contains(*representative_vertex) {
                 self.elevated_dual_nodes.insert(propagated_dual_node_weak.upgrade_force());
             }
         }
