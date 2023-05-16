@@ -11,7 +11,7 @@ p = 0.005
 total_rounds = 100
 small_T_vec = [i for i in range(1, 10)] + [i * 10 for i in range(1, 11)]
 noisy_measurements_vec = small_T_vec + [300, 1000, 3000, 10000, 30000, 100000]
-noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
+#noisy_measurements_vec = small_T_vec + [300, 1000, 3000]  # small-scale debug
 
 # first generate graph
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +30,7 @@ compile_code_if_necessary()
 
 data_file = os.path.join(script_dir, "data_fusion.txt")
 with open(data_file, "w", encoding="utf8") as data_f:
-    data_f.write("<noisy_measurements> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect>\n")
+    data_f.write("<noisy_measurements> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>\n")
 
     for noisy_measurements in noisy_measurements_vec:
         syndrome_file_path = os.path.join(tmp_dir, f"generated.T{noisy_measurements}.syndromes")
@@ -76,10 +76,12 @@ with open(data_file, "w", encoding="utf8") as data_f:
         print("    average_decoding_time_per_round:", profile.average_decoding_time() / (noisy_measurements + 1))
         print("    average_decoding_time_per_defect:", profile.average_decoding_time_per_defect())
         print("    average_defect_per_measurement:", profile.sum_defect_num() / (noisy_measurements + 1) / len(profile.entries))
-        data_f.write("%d %.5e %.5e %.5e\n" % (
+        print("    decoding_time_relative_dev:", profile.decoding_time_relative_dev())
+        data_f.write("%d %.5e %.5e %.5e %.3e\n" % (
             noisy_measurements,
             profile.average_decoding_time(),
             profile.average_decoding_time() / (noisy_measurements + 1),
             profile.average_decoding_time_per_defect(),
+            profile.decoding_time_relative_dev(),
         ))
         data_f.flush()

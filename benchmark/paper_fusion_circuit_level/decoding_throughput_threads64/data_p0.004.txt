@@ -1,0 +1,7 @@
+<d> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>
+11 3.50617e-02 3.50613e-07 1.06469e-07 1.427e-01
+13 5.40894e-02 5.40888e-07 1.15330e-07 8.148e-02
+15 7.97980e-02 7.97972e-07 1.25948e-07 5.403e-02
+17 1.17898e-01 1.17897e-06 1.43365e-07 2.120e-02
+19 1.87425e-01 1.87423e-06 1.80933e-07 3.124e-02
+21 2.71388e-01 2.71385e-06 2.13028e-07 1.971e-02

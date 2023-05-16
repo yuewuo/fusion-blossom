@@ -8,3 +8,4 @@
 *.pdf
 *.eps
 tmp/
+raw-data-*/

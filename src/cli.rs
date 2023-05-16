@@ -7,11 +7,12 @@ use super::example_partition;
 use super::mwpm_solver::*;
 use pbr::ProgressBar;
 use rand::{Rng, thread_rng};
-
 use clap::{ValueEnum, Parser, Subcommand};
 use serde::Serialize;
 use serde_json::json;
 use std::env;
+#[cfg(feature="qecp_integrate")]
+use crate::qecp;
 
 const TEST_EACH_ROUNDS: usize = 100;
 
@@ -49,8 +50,8 @@ pub struct BenchmarkParameters {
     #[clap(short = 'c', long, value_enum, default_value_t = ExampleCodeType::CodeCapacityPlanarCode)]
     code_type: ExampleCodeType,
     /// the configuration of the code builder
-    #[clap(long, default_value_t = json!({}))]
-    code_config: serde_json::Value,
+    #[clap(long, default_value_t = ("{}").to_string())]
+    code_config: String,
     /// logging to the default visualizer file at visualize/data/visualizer.json
     #[clap(long, action)]
     enable_visualizer: bool,
@@ -67,14 +68,14 @@ pub struct BenchmarkParameters {
     #[clap(short = 'p', long, value_enum, default_value_t = PrimalDualType::Serial)]
     primal_dual_type: PrimalDualType,
     /// the configuration of primal and dual module
-    #[clap(long, default_value_t = json!({}))]
-    primal_dual_config: serde_json::Value,
+    #[clap(long, default_value_t = ("{}").to_string())]
+    primal_dual_config: String,
     /// partition strategy
     #[clap(long, value_enum, default_value_t = PartitionStrategy::None)]
     partition_strategy: PartitionStrategy,
     /// the configuration of the partition strategy
-    #[clap(long, default_value_t = json!({}))]
-    partition_config: serde_json::Value,
+    #[clap(long, default_value_t = ("{}").to_string())]
+    partition_config: String,
     /// message on the progress bar
     #[clap(long, default_value_t = format!(""))]
     pb_message: String,
@@ -94,6 +95,8 @@ pub struct BenchmarkParameters {
 enum Commands {
     /// benchmark the speed (and also correctness if enabled)
     Benchmark(BenchmarkParameters),
+    #[cfg(feature="qecp_integrate")]
+    Qecp(qecp::cli::BenchmarkParameters),
     /// built-in tests
     Test {
         #[clap(subcommand)]
@@ -172,6 +175,10 @@ pub enum ExampleCodeType {
     CircuitLevelPlanarCodeParallel,
     /// read from error pattern file, generated using option `--primal-dual-type error-pattern-logger`
     ErrorPatternReader,
+    /// rotated surface code with perfect stabilizer measurement
+    CodeCapacityRotatedCode,
+    /// rotated surface code with phenomenological noise model
+    PhenomenologicalRotatedCode,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -186,6 +193,8 @@ pub enum PartitionStrategy {
     CodeCapacityRepetitionCodePartitionHalf,
     /// partition a phenomenological (or circuit-level) planar code with time axis
     PhenomenologicalPlanarCodeTimePartition,
+    /// partition a phenomenological (or circuit-level) rotated code with time axis
+    PhenomenologicalRotatedCodeTimePartition,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -198,6 +207,8 @@ pub enum PrimalDualType {
     Parallel,
     /// log error into a file for later fetch
     ErrorPatternLogger,
+    /// solver using traditional blossom V
+    BlossomV
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -216,6 +227,9 @@ impl Cli {
             Commands::Benchmark( BenchmarkParameters { d, p, pe, noisy_measurements, max_half_weight, code_type, enable_visualizer, verifier, total_rounds, primal_dual_type
                     , partition_strategy, pb_message, primal_dual_config, code_config, partition_config, use_deterministic_seed
                     , benchmark_profiler_output, print_syndrome_pattern, starting_iteration, .. }) => {
+                let code_config: serde_json::Value = serde_json::from_str(&code_config).unwrap();
+                let primal_dual_config: serde_json::Value = serde_json::from_str(&primal_dual_config).unwrap();
+                let partition_config: serde_json::Value = serde_json::from_str(&partition_config).unwrap();
                 // check for dependency early
                 if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
                     panic!("need blossom V library, see README.md")
@@ -319,6 +333,7 @@ impl Cli {
                         let command_head = vec![format!(""), format!("benchmark")];
                         let mut command_tail = vec!["--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
+                        else { command_tail.append(&mut vec![format!("--verifier"), format!("none")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
@@ -381,6 +396,7 @@ impl Cli {
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("dual-parallel")
                             , "--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
+                        else { command_tail.append(&mut vec![format!("--verifier"), format!("none")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
@@ -443,6 +459,7 @@ impl Cli {
                         let mut command_tail = vec![format!("--primal-dual-type"), format!("parallel")
                             , "--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom { command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]); }
+                        else { command_tail.append(&mut vec![format!("--verifier"), format!("none")]); }
                         if enable_visualizer { command_tail.append(&mut vec![format!("--enable-visualizer")]); }
                         if print_syndrome_pattern { command_tail.append(&mut vec![format!("--print-syndrome-pattern")]); }
                         for parameter in parameters.iter() {
@@ -450,6 +467,10 @@ impl Cli {
                         }
                     },
                 }
+            },
+            #[cfg(feature="qecp_integrate")]
+            Commands::Qecp(benchmark_parameters) => {
+                benchmark_parameters.run().unwrap();
             },
         }
     }
@@ -508,6 +529,14 @@ impl ExampleCodeType {
             Self::ErrorPatternReader => {
                 Box::new(ErrorPatternReader::new(code_config))
             },
+            Self::CodeCapacityRotatedCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(CodeCapacityRotatedCode::new(d, p, max_half_weight))
+            },
+            Self::PhenomenologicalRotatedCode => {
+                assert_eq!(code_config, json!({}), "config not supported");
+                Box::new(PhenomenologicalRotatedCode::new(d, noisy_measurements, p, max_half_weight))
+            },
             _ => unimplemented!()
         }
     }
@@ -551,6 +580,24 @@ impl PartitionStrategy {
                 PhenomenologicalPlanarCodeTimePartition::new_tree(d, noisy_measurements, partition_num
                         , enable_tree_fusion, maximum_tree_leaf_size).build_apply(code)
             },
+            Self::PhenomenologicalRotatedCodeTimePartition => {
+                let config = partition_config.as_object_mut().expect("config must be JSON object");
+                let mut partition_num = 10;
+                let mut enable_tree_fusion = false;
+                let mut maximum_tree_leaf_size = usize::MAX;
+                if let Some(value) = config.remove("partition_num") {
+                    partition_num = value.as_u64().expect("partition_num: usize") as usize;
+                }
+                if let Some(value) = config.remove("enable_tree_fusion") {
+                    enable_tree_fusion = value.as_bool().expect("enable_tree_fusion: bool");
+                }
+                if let Some(value) = config.remove("maximum_tree_leaf_size") {
+                    maximum_tree_leaf_size = value.as_u64().expect("maximum_tree_leaf_size: usize") as usize;
+                }
+                if !config.is_empty() { panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>()); }
+                PhenomenologicalRotatedCodeTimePartition::new_tree(d, noisy_measurements, partition_num
+                        , enable_tree_fusion, maximum_tree_leaf_size).build_apply(code)
+            },
         };
         (code.get_initializer(), partition_config)
     }
@@ -572,7 +619,10 @@ impl PrimalDualType {
                 Box::new(SolverParallel::new(initializer, partition_info, primal_dual_config))
             },
             Self::ErrorPatternLogger => {
-                Box::new(SolverErrorPatternLogger::new(initializer, code, primal_dual_config))
+                Box::new(SolverErrorPatternLogger::new(initializer, &code.get_positions(), primal_dual_config))
+            },
+            Self::BlossomV => {
+                Box::new(SolverBlossomV::new(initializer))
             },
         }
     }

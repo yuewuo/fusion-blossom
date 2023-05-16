@@ -781,8 +781,21 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallelUnit<SerialMo
     }
 
     fn iterative_remove_blossom(&mut self, dual_node_ptr: &DualNodePtr, representative_vertex: VertexIndex) {
-        if !self.whole_range.contains(representative_vertex) && !self.elevated_dual_nodes.contains(dual_node_ptr) {
-            return  // no descendant related to this dual node
+        if !self.whole_range.contains(representative_vertex) {
+            if !self.elevated_dual_nodes.contains(dual_node_ptr) {
+                return  // no descendant related to this dual node
+            } else {
+                // also elevate every children of this blossom whose is not naturally in the range
+                if let DualNodeClass::Blossom { nodes_circle, .. } = &dual_node_ptr.read_recursive().class {
+                    for child_node_weak in nodes_circle.iter() {
+                        let child_node_ptr = child_node_weak.upgrade_force();
+                        let children_representative_vertex = child_node_ptr.get_representative_vertex();
+                        if !self.whole_range.contains(children_representative_vertex) {
+                            self.elevated_dual_nodes.insert(child_node_ptr);
+                        }
+                    }
+                } else { unreachable!() }
+            }
         }
         self.has_active_node = true;
         if let Some((left_child_weak, right_child_weak)) = self.children.as_ref() {

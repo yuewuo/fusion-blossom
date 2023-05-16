@@ -1,4 +1,4 @@
-import json, subprocess, os, sys, tempfile
+import json, subprocess, os, sys, tempfile, math, scipy
 
 
 class Profile:
@@ -34,6 +34,12 @@ class Profile:
         for entry in self.entries:
             decoding_time += entry["events"]["decoded"]
         return decoding_time
+    def decoding_time_relative_dev(self):
+        dev_sum = 0
+        avr_decoding_time = self.average_decoding_time()
+        for entry in self.entries:
+            dev_sum += (entry["events"]["decoded"] - avr_decoding_time) ** 2
+        return math.sqrt(dev_sum / len(self.entries)) / avr_decoding_time
     def average_decoding_time(self):
         return self.sum_decoding_time() / len(self.entries)
     def sum_defect_num(self):
@@ -67,12 +73,15 @@ class VertexRange:
         self.range = (start, end)
     def __repr__(self):
         return f"[{self.range[0]}, {self.range[1]}]"
+    def length(self):
+        return self.range[1] - self.range[0]
 
 class PartitionConfig:
     def __init__(self, vertex_num):
         self.vertex_num = vertex_num
         self.partitions = [VertexRange(0, vertex_num)]
         self.fusions = []
+        self.parents = [None]
     def __repr__(self):
         return f"PartitionConfig {{ vertex_num: {self.vertex_num}, partitions: {self.partitions}, fusions: {self.fusions} }}"
     @staticmethod
@@ -80,11 +89,33 @@ class PartitionConfig:
         vertex_num = value['vertex_num']
         config = PartitionConfig(vertex_num)
         config.partitions.clear()
-        for range in value['partitions']:
-            config.partitions.append(VertexRange(range[0], range[1]))
+        for vertex_range in value['partitions']:
+            config.partitions.append(VertexRange(vertex_range[0], vertex_range[1]))
         for pair in value['fusions']:
             config.fusions.append((pair[0], pair[1]))
+        assert len(config.partitions) == len(config.fusions) + 1
+        unit_count = len(config.partitions) * 2 - 1
+        # build parent references
+        parents = [None] * unit_count
+        for fusion_index, (left_index, right_index) in enumerate(config.fusions):
+            unit_index = fusion_index + len(config.partitions)
+            assert left_index < unit_index
+            assert right_index < unit_index
+            assert parents[left_index] is None
+            assert parents[right_index] is None
+            parents[left_index] = unit_index
+            parents[right_index] = unit_index
+        for unit_index in range(unit_count - 1):
+            assert parents[unit_index] is not None
+        assert parents[unit_count - 1] is None
+        config.parents = parents
         return config
+    def unit_depth(self, unit_index):
+        depth = 0
+        while self.parents[unit_index] is not None:
+            unit_index = self.parents[unit_index]
+            depth += 1
+        return depth
 
 git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(__file__))
     , shell=True, check=True, capture_output=True).stdout.decode(sys.stdout.encoding).strip(" \r\n")
@@ -101,7 +132,7 @@ def compile_code_if_necessary(additional_build_parameters=None):
     if FUSION_BLOSSOM_COMPILATION_DONE is False:
         build_parameters = ["cargo", "build", "--release"]
         if FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER:
-            build_parameters += ["--features", "dangerous_pointer,u32_index,i32_weight"]
+            build_parameters += ["--features", "dangerous_pointer,u32_index,i32_weight,qecp_integrate"]
         if additional_build_parameters is not None:
             build_parameters += additional_build_parameters
         # print(build_parameters)
@@ -110,11 +141,14 @@ def compile_code_if_necessary(additional_build_parameters=None):
         assert process.returncode == 0, "compile has error"
         FUSION_BLOSSOM_COMPILATION_DONE = True
 
+def fusion_blossom_command():
+    fusion_path = os.path.join(rust_dir, "target", "release", "fusion_blossom")
+    return [fusion_path]
+
 def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, noisy_measurements=None, n=None):
     assert d is not None
     assert p is not None
-    fusion_path = os.path.join(rust_dir, "target", "release", "fusion_blossom")
-    command = [fusion_path, "benchmark", f"{d}", f"{p}"]
+    command = fusion_blossom_command() + ["benchmark", f"{d}", f"{p}"]
     if total_rounds is not None:
         command += ["-r", f"{total_rounds}"]
     elif r is not None:
@@ -123,6 +157,15 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
         command += ["-n", f"{noisy_measurements}"]
     elif n is not None:
         command += ["-n", f"{n}"]
+    return command
+
+def fusion_blossom_qecp_generate_command(d, p, total_rounds, noisy_measurements):
+    command = fusion_blossom_command() + ["qecp", f"[{d}]", f"[{noisy_measurements}]", f"[{p}]", f"-m{total_rounds}"]
+    return command
+
+def fusion_blossom_bin_command(bin):
+    fusion_path = os.path.join(rust_dir, "target", "release", bin)
+    command = [fusion_path]
     return command
 
 FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = False
@@ -153,3 +196,27 @@ def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_t
             stdout = f.read()
         os.remove(out_filename)
     return stdout, process.returncode
+
+
+class GnuplotData:
+    def __init__(self, filename):
+        assert isinstance(filename, str)
+        with open(filename, "r", encoding="utf8") as f:
+            lines = f.readlines()
+        self.titles = []
+        if lines[0].startswith("<"):  # title line
+            line = lines[0].strip("\r\n ")
+            titles = line.split(" ")
+            for title in titles:
+                # assert title.startswith("<") and title.endswith(">")
+                self.titles.append(title[1:-1])
+            lines = lines[1:]
+        self.data = []
+        for line in lines:
+            line = line.strip("\r\n ")
+            self.data.append(line.split(" "))
+    def fit(self, x_column, y_column, x_func=lambda x:float(x), y_func=lambda y:float(y), starting_row=0, ending_row=None):
+        X = [x_func(line[x_column]) for line in self.data[starting_row:ending_row]]
+        Y = [y_func(line[y_column]) for line in self.data[starting_row:ending_row]]
+        slope, intercept, r, _, _ = scipy.stats.linregress(X, Y)
+        return slope, intercept, r

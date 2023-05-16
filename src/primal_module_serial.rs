@@ -744,7 +744,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         module.remove_node(primal_node_internal.index);
                     }
                 },
-                MaxUpdateLength::VertexShrinkStop(_node_ptr) => {
+                MaxUpdateLength::VertexShrinkStop(_) => {
                     if current_conflict_index == 1 {
                         // if this happens, then debug the sorting of conflict events and also check alternating tree: a vertex should never be a floating "-" node
                         unreachable!("VertexShrinkStop conflict cannot be solved by primal module, and should be sorted to the last of the heap")

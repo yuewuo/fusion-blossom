@@ -13,7 +13,7 @@ use super::visualize::*;
 use super::dual_module::*;
 use std::sync::{Arc, Mutex, Condvar};
 use std::ops::DerefMut;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use super::pointers::*;
 
 
@@ -27,7 +27,7 @@ pub struct PrimalModuleParallel {
     /// thread pool used to execute async functions in parallel
     pub thread_pool: Arc<rayon::ThreadPool>,
     /// the time of calling [`PrimalModuleParallel::parallel_solve_step_callback`] method
-    pub last_solve_start_time: Instant,
+    pub last_solve_start_time: ArcRwLock<Instant>,
 }
 
 pub struct PrimalModuleParallelUnit {
@@ -47,6 +47,8 @@ pub struct PrimalModuleParallelUnit {
     pub parent: Option<PrimalModuleParallelUnitWeak>,
     /// record the time of events
     pub event_time: Option<PrimalModuleParallelUnitEventTime>,
+    /// streaming decode mocker, if exists, base partition will wait until specified time and then start decoding
+    pub streaming_decode_mocker: Option<StreamingDecodeMocker>,
 }
 
 pub type PrimalModuleParallelUnitPtr = ArcManualSafeLock<PrimalModuleParallelUnit>;
@@ -104,9 +106,16 @@ pub struct PrimalModuleParallelConfig {
     /// schedule base partition tasks in the front
     #[serde(default = "primal_module_parallel_default_configs::prioritize_base_partition")]
     pub prioritize_base_partition: bool,
+    #[serde(default = "primal_module_parallel_default_configs::interleaving_base_fusion")]
+    pub interleaving_base_fusion: usize,
     /// pin threads to cores sequentially
     #[serde(default = "primal_module_parallel_default_configs::pin_threads_to_cores")]
     pub pin_threads_to_cores: bool,
+    /// streaming decode mocker
+    pub streaming_decode_mock_measure_interval: Option<f64>,
+    /// streaming decoder using spin lock instead of threads.sleep to avoid context switch
+    #[serde(default = "primal_module_parallel_default_configs::streaming_decode_use_spin_lock")]
+    pub streaming_decode_use_spin_lock: bool,
 }
 
 impl Default for PrimalModuleParallelConfig {
@@ -119,6 +128,13 @@ pub mod primal_module_parallel_default_configs {
     pub fn debug_sequential() -> bool { false }  // by default enabled: only disable when you need to debug and get visualizer to work
     pub fn pin_threads_to_cores() -> bool { false }  // pin threads to cores to achieve most stable results
     pub fn prioritize_base_partition() -> bool { true }  // by default enable because this is faster by placing time-consuming tasks in the front
+    pub fn interleaving_base_fusion() -> usize { usize::MAX }  // starts interleaving base and fusion after this unit_index
+    pub fn streaming_decode_use_spin_lock() -> bool { false }  // by default use threads.sleep; enable only when benchmarking latency
+}
+
+pub struct StreamingDecodeMocker {
+    /// indicating the syndrome ready time = `last_solve_start_time` + bias
+    pub bias: Duration,
 }
 
 impl PrimalModuleParallel {
@@ -159,13 +175,20 @@ impl PrimalModuleParallel {
             if let Some(parent_index) = &partition_info.units[unit_index].parent {
                 unit.parent = Some(units[*parent_index].downgrade());
             }
+            if let Some(measure_interval) = config.streaming_decode_mock_measure_interval {
+                if unit_index < partition_info.config.partitions.len() {  // only base partition is blocked by mock hardware syndrome measurement
+                    unit.streaming_decode_mocker = Some(StreamingDecodeMocker {
+                        bias: Duration::from_secs_f64(measure_interval * (unit_index + 1) as f64),
+                    })
+                }
+            }
         }
         Self {
             units,
             config,
             partition_info,
             thread_pool: Arc::new(thread_pool),
-            last_solve_start_time: Instant::now(),
+            last_solve_start_time: ArcRwLock::new_value(Instant::now()),
         }
     }
 
@@ -255,7 +278,7 @@ impl PrimalModuleParallel {
             (&mut self, syndrome_pattern: &SyndromePattern, parallel_dual_module: &mut DualModuleParallel<DualSerialModule>, mut callback: F)
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
         let thread_pool = Arc::clone(&self.thread_pool);
-        self.last_solve_start_time = Instant::now();
+        *self.last_solve_start_time.write() = Instant::now();
         if self.config.prioritize_base_partition {
             if self.config.debug_sequential {
                 for unit_index in 0..self.partition_info.units.len() {
@@ -264,38 +287,75 @@ impl PrimalModuleParallel {
                         , parallel_dual_module, &mut Some(&mut callback));
                 }
             } else {
+                use std::sync::atomic::{AtomicUsize, Ordering};
                 let ready_vec: Vec<_> = {
-                    (0..self.partition_info.units.len()).map(|_| Arc::new((Mutex::new(false), Condvar::new()))).collect()
+                    (0..self.partition_info.units.len()).map(|_| Arc::new((Mutex::new(false), Condvar::new(), Arc::new(AtomicUsize::new(0))))).collect()
                 };
                 thread_pool.scope_fifo(|s| {
-                    for unit_index in 0..self.partition_info.units.len() {
+                    let issue_unit = |unit_index: usize| {
                         let ready_vec = &ready_vec;
                         let units = &self.units;
                         let partition_info = &self.partition_info;
                         let parallel_unit = &self;
                         let parallel_dual_module = &parallel_dual_module;
+                        let streaming_decode_use_spin_lock = self.config.streaming_decode_use_spin_lock;
                         s.spawn_fifo(move |_| {
                             let ready_pair = ready_vec[unit_index].clone();
-                            let &(ref ready, ref condvar) = &*ready_pair;
-                            let mut is_ready = ready.lock().unwrap();
-                            let unit_ptr = units[unit_index].clone();
-                            if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
-                                let fusion_index = unit_index - partition_info.config.partitions.len();
-                                let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
-                                for child_unit_index in [left_unit_index, right_unit_index] {
-                                    let child_ready_pair = ready_vec[child_unit_index].clone();
-                                    let &(ref child_ready, ref child_condvar) = &*child_ready_pair;
-                                    let mut child_is_ready = child_ready.lock().unwrap();
-                                    while !*child_is_ready {  // hopefully this asserts false at the beginning
-                                        child_is_ready = child_condvar.wait(child_is_ready).unwrap();
+                            let &(ref ready, ref condvar, ref spin_ready) = &*ready_pair;
+                            if streaming_decode_use_spin_lock {
+                                let unit_ptr = units[unit_index].clone();
+                                if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
+                                    let fusion_index = unit_index - partition_info.config.partitions.len();
+                                    let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
+                                    for child_unit_index in [left_unit_index, right_unit_index] {
+                                        let child_ready_pair = ready_vec[child_unit_index].clone();
+                                        let &(_, _, ref child_spin_ready) = &*child_ready_pair;
+                                        while child_spin_ready.load(Ordering::SeqCst) != 1 {  // hopefully this asserts false at the beginning
+                                            std::hint::spin_loop();
+                                            // println!("spin_loop");
+                                        }
                                     }
                                 }
+                                unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
+                                    , parallel_dual_module, &mut None);
+                                spin_ready.store(1, Ordering::SeqCst);
+                            } else {
+                                let mut is_ready = ready.lock().unwrap();
+                                let unit_ptr = units[unit_index].clone();
+                                if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
+                                    let fusion_index = unit_index - partition_info.config.partitions.len();
+                                    let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
+                                    for child_unit_index in [left_unit_index, right_unit_index] {
+                                        let child_ready_pair = ready_vec[child_unit_index].clone();
+                                        let &(ref child_ready, ref child_condvar, _) = &*child_ready_pair;
+                                        let mut child_is_ready = child_ready.lock().unwrap();
+                                        while !*child_is_ready {  // hopefully this asserts false at the beginning
+                                            child_is_ready = child_condvar.wait(child_is_ready).unwrap();
+                                        }
+                                    }
+                                }
+                                unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
+                                    , parallel_dual_module, &mut None);
+                                *is_ready = true;
+                                condvar.notify_one();
                             }
-                            unit_ptr.children_ready_solve::<DualSerialModule, F>(parallel_unit, PartitionedSyndromePattern::new(syndrome_pattern)
-                                , parallel_dual_module, &mut None);
-                            *is_ready = true;
-                            condvar.notify_one();
                         })
+                    };
+                    if self.config.interleaving_base_fusion >= self.partition_info.config.fusions.len() {
+                        for unit_index in 0..self.partition_info.units.len() {
+                            issue_unit(unit_index);
+                        }
+                    } else {
+                        for unit_index in 0..self.partition_info.config.partitions.len() {
+                            if unit_index >= self.config.interleaving_base_fusion {
+                                let fusion_index = self.partition_info.config.partitions.len() + (unit_index - self.config.interleaving_base_fusion);
+                                issue_unit(fusion_index);
+                            }
+                            issue_unit(unit_index);
+                        }
+                        for bias_index in 1..self.config.interleaving_base_fusion {
+                            issue_unit(self.partition_info.units.len() - self.config.interleaving_base_fusion + bias_index);
+                        }
                     }
                 });
             }
@@ -347,6 +407,7 @@ impl PrimalModuleParallelUnitPtr {
             children: None,  // to be filled later
             parent: None,  // to be filled later
             event_time: None,
+            streaming_decode_mocker: None,
         })
     }
 
@@ -354,9 +415,22 @@ impl PrimalModuleParallelUnitPtr {
     fn children_ready_solve<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
                 , partitioned_syndrome_pattern: PartitionedSyndromePattern, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
-        let mut event_time = PrimalModuleParallelUnitEventTime::new();
-        event_time.start = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
         let mut primal_unit = self.write();
+        if let Some(mocker) = &primal_unit.streaming_decode_mocker {
+            if primal_module_parallel.config.streaming_decode_use_spin_lock {
+                while primal_module_parallel.last_solve_start_time.read_recursive().elapsed() < mocker.bias {
+                    std::hint::spin_loop();  // spin to avoid context switch
+                }
+            } else {
+                let mut elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
+                while elapsed < mocker.bias {
+                    std::thread::sleep(mocker.bias - elapsed);
+                    elapsed = primal_module_parallel.last_solve_start_time.read_recursive().elapsed();
+                }
+            }
+        }
+        let mut event_time = PrimalModuleParallelUnitEventTime::new();
+        event_time.start = primal_module_parallel.last_solve_start_time.read_recursive().elapsed().as_secs_f64();
         let dual_module_ptr = parallel_dual_module.get_unit(primal_unit.unit_index);
         let mut dual_unit = dual_module_ptr.write();
         let partition_unit_info = &primal_unit.partition_info.units[primal_unit.unit_index];
@@ -403,7 +477,7 @@ impl PrimalModuleParallelUnitPtr {
             }
         }
         primal_unit.is_active = true;
-        event_time.end = primal_module_parallel.last_solve_start_time.elapsed().as_secs_f64();
+        event_time.end = primal_module_parallel.last_solve_start_time.read_recursive().elapsed().as_secs_f64();
         primal_unit.event_time = Some(event_time);
     }
 

@@ -19,3 +19,5 @@
 - [Blossom Algorithm](demo/blossom-algorithm.md)
 
 [Visualizer Usage](visualizer-usage.md)
+
+[Developer Notes](developer-notes.md)

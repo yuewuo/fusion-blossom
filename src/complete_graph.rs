@@ -2,6 +2,7 @@ use super::util::*;
 use crate::priority_queue::PriorityQueue;
 use std::collections::BTreeMap;
 use super::dual_module::EdgeWeightModifier;
+use crate::rayon::prelude::*;
 
 
 /// build complete graph out of skeleton graph using Dijkstra's algorithm
@@ -169,6 +170,98 @@ impl CompleteGraph {
         path.reverse();
         (path, edges[&b].1)
     }
+}
+
+#[derive(Clone)]
+pub struct PrebuiltCompleteGraph {
+    /// number of vertices
+    pub vertex_num: VertexNum,
+    /// all edge weights, if set to Weight::MAX then this edge does not exist
+    pub edges: Vec<BTreeMap<VertexIndex, Weight>>,
+    /// the virtual boundary weight
+    pub virtual_boundary_weight: Vec<Option<(VertexIndex, Weight)>>,
+}
+
+impl PrebuiltCompleteGraph {
+
+    pub fn new_threaded(initializer: &SolverInitializer, thread_pool_size: usize) -> Self {
+        let mut thread_pool_builder = rayon::ThreadPoolBuilder::new();
+        if thread_pool_size != 0 {
+            thread_pool_builder = thread_pool_builder.num_threads(thread_pool_size);
+        }
+        let thread_pool = thread_pool_builder.build().expect("creating thread pool failed");
+        let vertex_num = initializer.vertex_num as usize;
+        // first collect virtual vertices and real vertices
+        let mut is_virtual = vec![false; vertex_num];
+        for &virtual_vertex in initializer.virtual_vertices.iter() {
+            is_virtual[virtual_vertex as usize] = true;
+        }
+        let mut results: Vec<(BTreeMap<VertexIndex, Weight>, Option<(VertexIndex, Weight)>)> = vec![];
+        thread_pool.scope(|_| {
+            (0..vertex_num).into_par_iter().map(|vertex_index| {
+                let mut complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);
+                let mut edges = BTreeMap::new();
+                let mut virtual_boundary_weight = None;
+                if !is_virtual[vertex_index] {  // only build graph for non-virtual vertices
+                    let complete_graph_edges = complete_graph.all_edges(vertex_index as VertexIndex);
+                    let mut boundary: Option<(VertexIndex, Weight)> = None;
+                    for (&peer, &(_, weight)) in complete_graph_edges.iter() {
+                        if !is_virtual[peer as usize] {
+                            edges.insert(peer, weight);
+                        }
+                        if is_virtual[peer as usize] && (boundary.is_none() || weight < boundary.as_ref().unwrap().1) {
+                            boundary = Some((peer, weight));
+                        }
+                    }
+                    virtual_boundary_weight = boundary;
+                }
+                (edges, virtual_boundary_weight)
+            }).collect_into_vec(&mut results);
+        });
+        // optimization: remove edges in the middle
+        let (mut edges, virtual_boundary_weight): (Vec<BTreeMap<VertexIndex, Weight>>, Vec<Option<(VertexIndex, Weight)>>) = results.into_iter().unzip();
+        let mut to_be_removed_vec: Vec<Vec<VertexIndex>> = vec![];
+        thread_pool.scope(|_| {
+            (0..vertex_num).into_par_iter().map(|vertex_index| {
+                let mut to_be_removed = vec![];
+                if !is_virtual[vertex_index] {
+                    for (&peer, &weight) in edges[vertex_index].iter() {
+                        let boundary_weight = if let Some((_, weight)) = virtual_boundary_weight[vertex_index as usize] { weight } else { Weight::MAX };
+                        let boundary_weight_peer = if let Some((_, weight)) = virtual_boundary_weight[peer as usize] { weight } else { Weight::MAX };
+                        if boundary_weight != Weight::MAX && boundary_weight_peer != Weight::MAX {
+                            if weight > boundary_weight + boundary_weight_peer {
+                                to_be_removed.push(peer);
+                            }
+                        }
+                    }
+                }
+                to_be_removed
+            }).collect_into_vec(&mut to_be_removed_vec);
+        });
+        for vertex_index in 0..vertex_num {
+            for peer in to_be_removed_vec[vertex_index].iter() {
+                edges[vertex_index].remove(peer);
+            }
+        }
+        Self {
+            vertex_num: initializer.vertex_num,
+            edges,
+            virtual_boundary_weight,
+        }
+    }
+
+    pub fn new(initializer: &SolverInitializer) -> Self {
+        Self::new_threaded(initializer, 1)
+    }
+
+    pub fn get_edge_weight(&self, vertex_1: VertexIndex, vertex_2: VertexIndex) -> Option<Weight> {
+        self.edges[vertex_1 as usize].get(&vertex_2).cloned()
+    }
+
+    pub fn get_boundary_weight(&self, vertex_index: VertexIndex) -> Option<(VertexIndex, Weight)> {
+        self.virtual_boundary_weight[vertex_index as usize].clone()
+    }
+
 }
 
 #[derive(Eq, Debug)]

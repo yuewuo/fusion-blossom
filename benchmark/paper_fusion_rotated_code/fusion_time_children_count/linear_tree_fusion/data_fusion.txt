@@ -1,0 +1,2 @@
+<noisy_measurements> <average_decoding_time> <average_decoding_time_per_round> <average_decoding_time_per_defect> <decoding_time_relative_dev>
+100000 1.27745e+00 1.27744e-05 2.04566e-06 5.456e-03

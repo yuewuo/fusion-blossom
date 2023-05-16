@@ -10,10 +10,13 @@ use super::primal_module::{PrimalModuleImpl, SubGraphBuilder, PerfectMatching, V
 use super::dual_module_serial::DualModuleSerial;
 use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::dual_module_parallel::*;
-use super::example_codes::*;
 use super::primal_module_parallel::*;
 use super::visualize::*;
+use crate::complete_graph::*;
 use crate::derivative::Derivative;
+use crate::blossom_v;
+use crate::dual_module::*;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
@@ -470,7 +473,7 @@ pub struct SolverErrorPatternLogger {
 bind_trait_primal_dual_solver!{SolverErrorPatternLogger}
 
 impl SolverErrorPatternLogger {
-    pub fn new(initializer: &SolverInitializer, code: &dyn ExampleCode, mut config: serde_json::Value) -> Self {
+    pub fn new(initializer: &SolverInitializer, positions: &Vec<VisualizePosition>, mut config: serde_json::Value) -> Self {
         let mut filename = "tmp/syndrome_patterns.txt".to_string();
         let config = config.as_object_mut().expect("config must be JSON object");
         if let Some(value) = config.remove("filename") {
@@ -482,7 +485,7 @@ impl SolverErrorPatternLogger {
         file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n").unwrap();
         serde_json::to_writer(&mut file, &initializer).unwrap();  // large object write to file directly
         file.write_all(b"\n").unwrap();
-        serde_json::to_writer(&mut file, &code.get_positions()).unwrap();
+        serde_json::to_writer(&mut file, &positions).unwrap();
         file.write_all(b"\n").unwrap();
         Self {
             file,
@@ -507,6 +510,141 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
         json!({})
     }
 }
+
+/// an exact solver calling blossom V library for benchmarking comparison
+#[derive(Clone)]
+pub struct SolverBlossomV {
+    initializer: SolverInitializer,
+    prebuilt_complete_graph: PrebuiltCompleteGraph,
+    subgraph_builder: SubGraphBuilder,
+    matched_pairs: Vec<(VertexIndex, VertexIndex)>,
+}
+
+impl SolverBlossomV {
+    pub fn new(initializer: &SolverInitializer) -> Self {
+        Self {
+            initializer: initializer.clone(),
+            prebuilt_complete_graph: PrebuiltCompleteGraph::new_threaded(&initializer, 0),
+            subgraph_builder: SubGraphBuilder::new(initializer),
+            matched_pairs: vec![],
+        }
+    }
+}
+
+impl PrimalDualSolver for SolverBlossomV {
+    fn clear(&mut self) {
+        self.matched_pairs.clear();
+        self.subgraph_builder.clear();
+    }
+    fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        assert!(visualizer.is_none(), "not supported");
+        assert!(syndrome_pattern.erasures.is_empty(), "doesn't support erasure for now");
+        let defect_vertices = &syndrome_pattern.defect_vertices;
+        if defect_vertices.is_empty() {
+            return
+        }
+        let mut mapping_to_defect_vertices: BTreeMap<VertexIndex, usize> = BTreeMap::new();
+        for (i, &defect_vertex) in defect_vertices.iter().enumerate() {
+            mapping_to_defect_vertices.insert(defect_vertex, i);
+        }
+        // for each real vertex, add a corresponding virtual vertex to be matched
+        let defect_num = defect_vertices.len();
+        let legacy_vertex_num = defect_num * 2;
+        let mut legacy_weighted_edges = Vec::<(usize, usize, u32)>::new();
+        for i in 0..defect_num-1 {
+            for j in i+1..defect_num {
+                if let Some(weight) = self.prebuilt_complete_graph.get_edge_weight(defect_vertices[i], defect_vertices[j]) {
+                    legacy_weighted_edges.push((i, j, weight as u32));
+                }
+            }
+        }
+        for i in 0..defect_num {
+            if let Some((_, weight)) = self.prebuilt_complete_graph.get_boundary_weight(defect_vertices[i]) {
+                // connect this real vertex to it's corresponding virtual vertex
+                legacy_weighted_edges.push((i, i + defect_num, weight as u32));
+            }
+        }
+        for i in 0..defect_num-1 {
+            for j in i+1..defect_num {
+                // virtual boundaries are always fully connected with weight 0
+                legacy_weighted_edges.push((i + defect_num, j + defect_num, 0));
+            }
+        }
+        // run blossom V to get matchings
+        // println!("[debug] legacy_vertex_num: {:?}", legacy_vertex_num);
+        // println!("[debug] legacy_weighted_edges: {:?}", legacy_weighted_edges);
+        let matchings = blossom_v::safe_minimum_weight_perfect_matching(legacy_vertex_num, &legacy_weighted_edges);
+        let mut matched_pairs = Vec::new();
+        for i in 0..defect_num {
+            let j = matchings[i];
+            if j < defect_num {  // match to a real vertex
+                if i < j {  // avoid duplicate matched pair
+                    matched_pairs.push((defect_vertices[i], defect_vertices[j]));
+                }
+            } else {
+                assert_eq!(j, i + defect_num, "if not matched to another real vertex, it must match to it's corresponding virtual vertex");
+                matched_pairs.push((defect_vertices[i], self.prebuilt_complete_graph.get_boundary_weight(defect_vertices[i])
+                    .expect("boundary must exist if match to virtual vertex").0));
+            }
+        }
+        self.matched_pairs = matched_pairs;
+    }
+    fn perfect_matching_visualizer(&mut self, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
+        assert!(visualizer.is_none(), "not supported");
+        let virtual_vertices: BTreeSet<VertexIndex> = self.initializer.virtual_vertices.iter().cloned().collect();
+        let mut perfect_matching = PerfectMatching::new();
+        let mut counter = 0;
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        let mut create_dual_node = |vertex_index: VertexIndex| {
+            counter += 1;
+            DualNodePtr::new_value(DualNode {
+                index: counter,
+                class: DualNodeClass::DefectVertex {
+                    defect_index: vertex_index,
+                },
+                grow_state: DualNodeGrowState::Grow,
+                parent_blossom: None,
+                dual_variable_cache: (0, 0),
+                belonging: interface_ptr.downgrade(),
+            })
+        };
+        for &(vertex_1, vertex_2) in self.matched_pairs.iter() {
+            assert!(!virtual_vertices.contains(&vertex_1));  // 1 is not virtual
+            if virtual_vertices.contains(&vertex_2) {
+                perfect_matching.virtual_matchings.push((create_dual_node(vertex_1), vertex_2));
+            } else {
+                perfect_matching.peer_matchings.push((create_dual_node(vertex_1), create_dual_node(vertex_2)));
+            }
+            self.subgraph_builder.add_matching(vertex_1, vertex_2);
+        }
+        perfect_matching
+    }
+    fn subgraph_visualizer(&mut self, visualizer: Option<&mut Visualizer>) -> Vec<EdgeIndex> {
+        assert!(visualizer.is_none(), "not supported");
+        self.subgraph_builder.clear();
+        for &(vertex_1, vertex_2) in self.matched_pairs.iter() {
+            self.subgraph_builder.add_matching(vertex_1, vertex_2);
+        }
+        self.subgraph_builder.subgraph.iter().copied().collect()
+    }
+    fn sum_dual_variables(&self) -> Weight {
+        let mut subgraph_builder = self.subgraph_builder.clone();
+        subgraph_builder.clear();
+        for &(vertex_1, vertex_2) in self.matched_pairs.iter() {
+            subgraph_builder.add_matching(vertex_1, vertex_2);
+        }
+        let subgraph: Vec<EdgeIndex> = subgraph_builder.subgraph.iter().copied().collect();
+        let mut weight = 0;
+        for &edge_index in subgraph.iter() {
+            weight += self.initializer.weighted_edges[edge_index as usize].2;
+        }
+        weight
+    }
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        json!({})
+    }
+}
+
 
 #[cfg(feature="python_binding")]
 #[pyfunction]
