@@ -404,6 +404,12 @@ impl SubGraphBuilder {
         self.complete_graph.load_erasures(erasures);
     }
 
+    /// temporarily set erasure edges to 0 weight as well as other dynamic weights;
+    /// when it resets, those edges will be reverted back to the original weight
+    pub fn load_dynamic_weights(&mut self, erasures: &[EdgeIndex], dynamic_weight: &[(EdgeIndex, Weight)]) {
+        self.complete_graph.load_dynamic_weights(erasures, dynamic_weight);
+    }
+
     /// load perfect matching to the subgraph builder
     pub fn load_perfect_matching(&mut self, perfect_matching: &PerfectMatching) {
         self.subgraph.clear();

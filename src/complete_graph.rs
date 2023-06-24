@@ -79,6 +79,14 @@ impl CompleteGraph {
         self.load_edge_modifier(&edge_modifier);
     }
 
+    /// temporarily set erasure edges to 0 weight as well as other dynamic weights;
+    /// when it resets, those edges will be reverted back to the original weight
+    pub fn load_dynamic_weights(&mut self, erasures: &[EdgeIndex], dynamic_weight: &[(EdgeIndex, Weight)]) {
+        let edge_modifier: Vec<_> = erasures.iter().map(|edge_index| (*edge_index, 0))
+            .chain(dynamic_weight.iter().cloned()).collect();
+        self.load_edge_modifier(&edge_modifier);
+    }
+
     /// invalidate Dijkstra's algorithm state from previous call
     pub fn invalidate_previous_dijkstra(&mut self) -> usize {
         if self.active_timestamp == FastClearTimestamp::MAX {  // rarely happens

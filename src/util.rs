@@ -63,14 +63,22 @@ pub struct SyndromePattern {
     /// the vertices corresponding to defect measurements
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub defect_vertices: Vec<VertexIndex>,
-    /// the edges that experience erasures, i.e. known errors
+    /// the edges that experience erasures, i.e. known errors;
+    /// note that erasure decoding can also be implemented using `dynamic_weights`,
+    /// but for user convenience we keep this interface
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub erasures: Vec<EdgeIndex>,
+    /// general dynamically weighted edges
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    pub dynamic_weights: Vec<(EdgeIndex, Weight)>,
 }
 
 impl SyndromePattern {
     pub fn new(defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
-        Self { defect_vertices, erasures }
+        Self { defect_vertices, erasures, dynamic_weights: vec![] }
+    }
+    pub fn new_dynamic_weights(defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>, dynamic_weights: Vec<(EdgeIndex, Weight)>) -> Self {
+        Self { defect_vertices, erasures, dynamic_weights }
     }
 }
 
@@ -78,13 +86,14 @@ impl SyndromePattern {
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", pyo3(signature = (defect_vertices=vec![], erasures=vec![], syndrome_vertices=None)))]
-    pub fn py_new(mut defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>, syndrome_vertices: Option<Vec<VertexIndex>>) -> Self {
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (defect_vertices=vec![], erasures=vec![], dynamic_weights=vec![], syndrome_vertices=None)))]
+    pub fn py_new(mut defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>
+            , dynamic_weights: Vec<(EdgeIndex, Weight)>, syndrome_vertices: Option<Vec<VertexIndex>>) -> Self {
         if let Some(syndrome_vertices) = syndrome_vertices {
             assert!(defect_vertices.is_empty(), "do not pass both `syndrome_vertices` and `defect_vertices` since they're aliasing");
             defect_vertices = syndrome_vertices;
         }
-        Self { defect_vertices, erasures }
+        Self::new_dynamic_weights(defect_vertices, erasures, dynamic_weights)
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_vertices(defect_vertices: Vec<VertexIndex>) -> Self {

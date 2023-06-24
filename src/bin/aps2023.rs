@@ -39,8 +39,7 @@ fn demo_aps2023_decoding_graph_growing() {
 
 type MinPaths = std::collections::HashMap<(VertexIndex, VertexIndex), Weight>;
 fn get_min_paths(code: &impl ExampleCode) -> MinPaths {
-    use crate::petgraph::{prelude::*};
-    use crate::petgraph::graph::{NodeIndex, UnGraph};
+    use crate::petgraph::prelude::*;
     use crate::petgraph::algo::floyd_warshall;
     use std::collections::HashMap;
     let mut graph = UnGraph::<(), ()>::new_undirected();
