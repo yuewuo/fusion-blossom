@@ -253,8 +253,12 @@ impl PrimalDualSolver for SolverSerial {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        if !syndrome_pattern.erasures.is_empty() || !syndrome_pattern.dynamic_weights.is_empty() {
-            self.subgraph_builder.load_dynamic_weights(&syndrome_pattern.erasures, &syndrome_pattern.dynamic_weights);
+        if !syndrome_pattern.erasures.is_empty() {
+            assert!(syndrome_pattern.dynamic_weights.is_empty(), "erasures and dynamic_weights cannot be provided at the same time");
+            self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
+        }
+        if !syndrome_pattern.dynamic_weights.is_empty() {
+            self.subgraph_builder.load_dynamic_weights(&syndrome_pattern.dynamic_weights);
         }
         self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);
     }
@@ -336,8 +340,12 @@ impl PrimalDualSolver for SolverDualParallel {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
-        if !syndrome_pattern.erasures.is_empty() || !syndrome_pattern.dynamic_weights.is_empty() {
-            self.subgraph_builder.load_dynamic_weights(&syndrome_pattern.erasures, &syndrome_pattern.dynamic_weights);
+        if !syndrome_pattern.erasures.is_empty() {
+            assert!(syndrome_pattern.dynamic_weights.is_empty(), "erasures and dynamic_weights cannot be provided at the same time");
+            self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
+        }
+        if !syndrome_pattern.dynamic_weights.is_empty() {
+            self.subgraph_builder.load_dynamic_weights(&syndrome_pattern.dynamic_weights);
         }
         self.dual_module.static_fuse_all();
         self.primal_module.solve_visualizer(&self.interface_ptr, syndrome_pattern, &mut self.dual_module, visualizer);

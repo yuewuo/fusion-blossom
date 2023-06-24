@@ -564,6 +564,11 @@ pub trait DualModuleImpl {
         self.load_edge_modifier(&edge_modifier);
     }
 
+    fn load_dynamic_weights(&mut self, dynamic_weights: &[(EdgeIndex, Weight)]) {
+        let edge_modifier: Vec<_> = dynamic_weights.iter().cloned().collect();
+        self.load_edge_modifier(&edge_modifier);
+    }
+
     /// prepare a list of nodes as shrinking state; useful in creating a blossom
     fn prepare_nodes_shrink(&mut self, _nodes_circle: &[DualNodePtr]) -> &mut Vec<SyncRequest> {
         panic!("the dual module implementation doesn't support this function, please use another dual module")
@@ -757,7 +762,11 @@ impl DualModuleInterfacePtr {
             self.create_defect_node(*vertex_idx, dual_module_impl);
         }
         if !syndrome_pattern.erasures.is_empty() {
+            assert!(syndrome_pattern.dynamic_weights.is_empty(), "erasures and dynamic_weights cannot be provided at the same time");
             dual_module_impl.load_erasures(&syndrome_pattern.erasures);
+        }
+        if !syndrome_pattern.dynamic_weights.is_empty() {
+            dual_module_impl.load_dynamic_weights(&syndrome_pattern.dynamic_weights);
         }
     }
 

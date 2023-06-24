@@ -93,6 +93,7 @@ impl SyndromePattern {
             assert!(defect_vertices.is_empty(), "do not pass both `syndrome_vertices` and `defect_vertices` since they're aliasing");
             defect_vertices = syndrome_vertices;
         }
+        assert!(erasures.is_empty() || dynamic_weights.is_empty(), "erasures and dynamic_weights cannot be provided at the same time");
         Self::new_dynamic_weights(defect_vertices, erasures, dynamic_weights)
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]

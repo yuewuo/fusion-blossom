@@ -53,9 +53,9 @@ impl CompleteGraph {
             let (edge_index, original_weight) = self.edge_modifier.pop_modified_edge();
             let (vertex_idx_1, vertex_idx_2, _) = &self.weighted_edges[edge_index as usize];
             let vertex_1 = &mut self.vertices[*vertex_idx_1 as usize];
-            assert_eq!(vertex_1.edges.insert(*vertex_idx_2, original_weight), Some(0), "previous weight should be 0");
+            vertex_1.edges.insert(*vertex_idx_2, original_weight);
             let vertex_2 = &mut self.vertices[*vertex_idx_2 as usize];
-            assert_eq!(vertex_2.edges.insert(*vertex_idx_1, original_weight), Some(0), "previous weight should be 0");
+            vertex_2.edges.insert(*vertex_idx_1, original_weight);
             self.weighted_edges[edge_index as usize] = (*vertex_idx_1, *vertex_idx_2, original_weight);
         }
     }
@@ -79,11 +79,8 @@ impl CompleteGraph {
         self.load_edge_modifier(&edge_modifier);
     }
 
-    /// temporarily set erasure edges to 0 weight as well as other dynamic weights;
-    /// when it resets, those edges will be reverted back to the original weight
-    pub fn load_dynamic_weights(&mut self, erasures: &[EdgeIndex], dynamic_weight: &[(EdgeIndex, Weight)]) {
-        let edge_modifier: Vec<_> = erasures.iter().map(|edge_index| (*edge_index, 0))
-            .chain(dynamic_weight.iter().cloned()).collect();
+    pub fn load_dynamic_weights(&mut self, dynamic_weights: &[(EdgeIndex, Weight)]) {
+        let edge_modifier: Vec<_> = dynamic_weights.iter().cloned().collect();
         self.load_edge_modifier(&edge_modifier);
     }
 
