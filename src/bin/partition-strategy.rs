@@ -1,8 +1,7 @@
 use clap::{Parser, Subcommand};
-use fusion_blossom::util::*;
-use fusion_blossom::example_partition::*;
 use fusion_blossom::example_codes::*;
-
+use fusion_blossom::example_partition::*;
+use fusion_blossom::util::*;
 
 #[derive(Parser, Clone)]
 #[clap(author = clap::crate_authors!(", "))]
@@ -45,27 +44,41 @@ impl PartitionStrategyCli {
     pub fn run(self) {
         match self.partition_strategy {
             PartitionStrategy::PhenomenologicalRotatedCodeTimePartition(mut partition) => {
-                let mut code = PhenomenologicalRotatedCode::new(partition.d, partition.noisy_measurements
-                    , 0.01, 1);
+                let mut code = PhenomenologicalRotatedCode::new(partition.d, partition.noisy_measurements, 0.01, 1);
                 let partition_config = partition.build_apply(&mut code);
                 println!("{}", serde_json::to_string(&partition_config).unwrap());
-            },
-            PartitionStrategy::PhenomenologicalRotatedCodeTimePartitionVec { d, noisy_measurements, partition_num_vec
-                    , enable_tree_fusion, maximum_tree_leaf_size_vec } => {
+            }
+            PartitionStrategy::PhenomenologicalRotatedCodeTimePartitionVec {
+                d,
+                noisy_measurements,
+                partition_num_vec,
+                enable_tree_fusion,
+                maximum_tree_leaf_size_vec,
+            } => {
                 let partition_num_vec: Vec<usize> = serde_json::from_str(&partition_num_vec).expect("should be [a,b,c,...]");
-                let maximum_tree_leaf_size_vec: Vec<usize> = serde_json::from_str(&maximum_tree_leaf_size_vec).expect("should be [a,b,c,...]");
+                let maximum_tree_leaf_size_vec: Vec<usize> =
+                    serde_json::from_str(&maximum_tree_leaf_size_vec).expect("should be [a,b,c,...]");
                 // build a single code for public use
                 let mut code = PhenomenologicalRotatedCode::new(d, noisy_measurements, 0.01, 1);
                 for &partition_num in partition_num_vec.iter() {
                     for &maximum_tree_leaf_size in maximum_tree_leaf_size_vec.iter() {
-                        let mut partition = PhenomenologicalRotatedCodeTimePartition::new_tree(d, noisy_measurements, partition_num, enable_tree_fusion, maximum_tree_leaf_size);
-                        assert!(partition.build_reordered_vertices(&code).is_none(), "should not reorder vertices");
+                        let mut partition = PhenomenologicalRotatedCodeTimePartition::new_tree(
+                            d,
+                            noisy_measurements,
+                            partition_num,
+                            enable_tree_fusion,
+                            maximum_tree_leaf_size,
+                        );
+                        assert!(
+                            partition.build_reordered_vertices(&code).is_none(),
+                            "should not reorder vertices"
+                        );
                         let partition_config = partition.build_apply(&mut code);
                         println!("{}", serde_json::to_string(&partition).unwrap());
                         println!("{}", serde_json::to_string(&partition_config).unwrap());
                     }
                 }
-            },
+            }
         }
     }
 }

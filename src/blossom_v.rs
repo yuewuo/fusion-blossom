@@ -1,6 +1,5 @@
 use super::cfg_if;
 
-
 cfg_if::cfg_if! {
     if #[cfg(feature="blossom_v")] {
 
@@ -64,7 +63,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn blossom_v_test_1() {  // cargo test blossom_v_test_1 -- --nocapture
+    fn blossom_v_test_1() {
+        // cargo test blossom_v_test_1 -- --nocapture
         let node_num = 4;
         let edges: Vec<(usize, usize, u32)> = vec![(0, 1, 100), (2, 3, 110), (0, 2, 500), (1, 3, 300)];
         let output = safe_minimum_weight_perfect_matching(node_num, &edges);

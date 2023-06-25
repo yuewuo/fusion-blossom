@@ -1,19 +1,18 @@
 //! Primal Module
-//! 
+//!
 //! Generics for primal modules, defining the necessary interfaces for a primal module
 //!
 
-#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
-use super::util::*;
-use super::dual_module::*;
-use crate::derivative::Derivative;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+#![cfg_attr(feature = "unsafe_pointer", allow(dropping_references))]
 use super::complete_graph::*;
-use super::visualize::*;
+use super::dual_module::*;
 use super::pointers::*;
-#[cfg(feature="python_binding")]
+use super::util::*;
+use super::visualize::*;
+use crate::derivative::Derivative;
+#[cfg(feature = "python_binding")]
 use pyo3::prelude::*;
-
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -39,7 +38,6 @@ pub struct PerfectMatching {
 
 /// common trait that must be implemented for each implementation of primal module
 pub trait PrimalModuleImpl {
-
     /// create a primal module given the dual module
     fn new_empty(solver_initializer: &SolverInitializer) -> Self;
 
@@ -49,11 +47,20 @@ pub trait PrimalModuleImpl {
     fn load_defect_dual_node(&mut self, dual_node_ptr: &DualNodePtr);
 
     /// load a single syndrome and update the dual module and the interface
-    fn load_defect<D: DualModuleImpl>(&mut self, defect_vertex: VertexIndex, interface_ptr: &DualModuleInterfacePtr, dual_module: &mut D) {
+    fn load_defect<D: DualModuleImpl>(
+        &mut self,
+        defect_vertex: VertexIndex,
+        interface_ptr: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+    ) {
         interface_ptr.create_defect_node(defect_vertex, dual_module);
         let interface = interface_ptr.read_recursive();
         let index = interface.nodes_length - 1;
-        self.load_defect_dual_node(interface.nodes[index].as_ref().expect("must load a fresh dual module interface, found empty node"))
+        self.load_defect_dual_node(
+            interface.nodes[index]
+                .as_ref()
+                .expect("must load a fresh dual module interface, found empty node"),
+        )
     }
 
     /// load a new decoding problem given dual interface: note that all nodes MUST be syndrome node
@@ -61,14 +68,23 @@ pub trait PrimalModuleImpl {
     fn load(&mut self, interface_ptr: &DualModuleInterfacePtr) {
         let interface = interface_ptr.read_recursive();
         debug_assert!(interface.parent.is_none(), "cannot load an interface that is already fused");
-        debug_assert!(interface.children.is_none(), "please customize load function if interface is fused");
+        debug_assert!(
+            interface.children.is_none(),
+            "please customize load function if interface is fused"
+        );
         for index in 0..interface.nodes_length as NodeIndex {
             let node = &interface.nodes[index as usize];
             debug_assert!(node.is_some(), "must load a fresh dual module interface, found empty node");
             let node_ptr = node.as_ref().unwrap();
             let node = node_ptr.read_recursive();
-            debug_assert!(matches!(node.class, DualNodeClass::DefectVertex{ .. }), "must load a fresh dual module interface, found a blossom");
-            debug_assert_eq!(node.index, index, "must load a fresh dual module interface, found index out of order");
+            debug_assert!(
+                matches!(node.class, DualNodeClass::DefectVertex { .. }),
+                "must load a fresh dual module interface, found a blossom"
+            );
+            debug_assert_eq!(
+                node.index, index,
+                "must load a fresh dual module interface, found index out of order"
+            );
             self.load_defect_dual_node(node_ptr);
         }
     }
@@ -77,50 +93,102 @@ pub trait PrimalModuleImpl {
     /// and then tell dual module what to do to resolve these conflicts;
     /// note that this function doesn't necessarily resolve all the conflicts, but can return early if some major change is made.
     /// when implementing this function, it's recommended that you resolve as many conflicts as possible.
-    fn resolve<D: DualModuleImpl>(&mut self, group_max_update_length: GroupMaxUpdateLength, interface: &DualModuleInterfacePtr, dual_module: &mut D);
+    fn resolve<D: DualModuleImpl>(
+        &mut self,
+        group_max_update_length: GroupMaxUpdateLength,
+        interface: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+    );
 
     /// return a matching that can possibly include blossom nodes: this does not affect dual module
-    fn intermediate_matching<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D) -> IntermediateMatching;
+    fn intermediate_matching<D: DualModuleImpl>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+    ) -> IntermediateMatching;
 
     /// break down the blossoms to find the final matching; this function will take more time on the dual module
-    fn perfect_matching<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D) -> PerfectMatching {
+    fn perfect_matching<D: DualModuleImpl>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+    ) -> PerfectMatching {
         let intermediate_matching = self.intermediate_matching(interface, dual_module);
         intermediate_matching.get_perfect_matching()
     }
 
-    fn solve<D: DualModuleImpl>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D) {
+    fn solve<D: DualModuleImpl>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        syndrome_pattern: &SyndromePattern,
+        dual_module: &mut D,
+    ) {
         self.solve_step_callback(interface, syndrome_pattern, dual_module, |_, _, _, _| {})
     }
 
-    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D
-            , visualizer: Option<&mut Visualizer>) where Self: FusionVisualizer + Sized {
+    fn solve_visualizer<D: DualModuleImpl + FusionVisualizer>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        syndrome_pattern: &SyndromePattern,
+        dual_module: &mut D,
+        visualizer: Option<&mut Visualizer>,
+    ) where
+        Self: FusionVisualizer + Sized,
+    {
         if let Some(visualizer) = visualizer {
-            self.solve_step_callback(interface, syndrome_pattern, dual_module, |interface, dual_module, primal_module, group_max_update_length| {
-                if cfg!(debug_assertions) {
-                    println!("group_max_update_length: {:?}", group_max_update_length);
-                }
-                if let Some(length) = group_max_update_length.get_none_zero_growth() {
-                    visualizer.snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module]).unwrap();
-                } else {
-                    let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
-                    visualizer.snapshot_combined(format!("resolve {first_conflict}"), vec![interface, dual_module, primal_module]).unwrap();
-                };
-            });
-            visualizer.snapshot_combined("solved".to_string(), vec![interface, dual_module, self]).unwrap();
+            self.solve_step_callback(
+                interface,
+                syndrome_pattern,
+                dual_module,
+                |interface, dual_module, primal_module, group_max_update_length| {
+                    if cfg!(debug_assertions) {
+                        println!("group_max_update_length: {:?}", group_max_update_length);
+                    }
+                    if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                        visualizer
+                            .snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module])
+                            .unwrap();
+                    } else {
+                        let first_conflict = format!("{:?}", group_max_update_length.peek().unwrap());
+                        visualizer
+                            .snapshot_combined(
+                                format!("resolve {first_conflict}"),
+                                vec![interface, dual_module, primal_module],
+                            )
+                            .unwrap();
+                    };
+                },
+            );
+            visualizer
+                .snapshot_combined("solved".to_string(), vec![interface, dual_module, self])
+                .unwrap();
         } else {
             self.solve(interface, syndrome_pattern, dual_module);
         }
     }
 
-    fn solve_step_callback<D: DualModuleImpl, F>(&mut self, interface: &DualModuleInterfacePtr, syndrome_pattern: &SyndromePattern, dual_module: &mut D, callback: F)
-            where F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength) {
+    fn solve_step_callback<D: DualModuleImpl, F>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        syndrome_pattern: &SyndromePattern,
+        dual_module: &mut D,
+        callback: F,
+    ) where
+        F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength),
+    {
         interface.load(syndrome_pattern, dual_module);
         self.load(interface);
         self.solve_step_callback_interface_loaded(interface, dual_module, callback);
     }
 
-    fn solve_step_callback_interface_loaded<D: DualModuleImpl, F>(&mut self, interface: &DualModuleInterfacePtr, dual_module: &mut D, mut callback: F)
-            where F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength) {
+    fn solve_step_callback_interface_loaded<D: DualModuleImpl, F>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+        mut callback: F,
+    ) where
+        F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength),
+    {
         let mut group_max_update_length = dual_module.compute_maximum_update_length();
         while !group_max_update_length.is_empty() {
             callback(interface, dual_module, self, &group_max_update_length);
@@ -134,8 +202,9 @@ pub trait PrimalModuleImpl {
     }
 
     /// performance profiler report
-    fn generate_profiler_report(&self) -> serde_json::Value { json!({}) }
-
+    fn generate_profiler_report(&self) -> serde_json::Value {
+        json!({})
+    }
 }
 
 impl Default for IntermediateMatching {
@@ -147,7 +216,6 @@ impl Default for IntermediateMatching {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl IntermediateMatching {
-
     #[cfg_attr(feature = "python_binding", new)]
     pub fn new() -> Self {
         Self {
@@ -168,41 +236,61 @@ impl IntermediateMatching {
         for ((dual_node_ptr_1, touching_weak_1), (dual_node_ptr_2, touching_weak_2)) in self.peer_matchings.iter() {
             let touching_ptr_1 = touching_weak_1.upgrade_force();
             let touching_ptr_2 = touching_weak_2.upgrade_force();
-            perfect_matching.peer_matchings.extend(Self::expand_peer_matching(dual_node_ptr_1, &touching_ptr_1, dual_node_ptr_2, &touching_ptr_2));
+            perfect_matching.peer_matchings.extend(Self::expand_peer_matching(
+                dual_node_ptr_1,
+                &touching_ptr_1,
+                dual_node_ptr_2,
+                &touching_ptr_2,
+            ));
         }
         // handle virtual matchings
         for ((dual_node_ptr, touching_weak), virtual_vertex) in self.virtual_matchings.iter() {
             let touching_ptr = touching_weak.upgrade_force();
-            perfect_matching.peer_matchings.extend(Self::expand_blossom(dual_node_ptr, &touching_ptr));
+            perfect_matching
+                .peer_matchings
+                .extend(Self::expand_blossom(dual_node_ptr, &touching_ptr));
             perfect_matching.virtual_matchings.push((touching_ptr, *virtual_vertex));
         }
         perfect_matching
     }
 
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 
     #[cfg(feature = "python_binding")]
     #[getter]
     pub fn get_peer_matchings(&self) -> Vec<((NodeIndex, NodeIndex), (NodeIndex, NodeIndex))> {
-        self.peer_matchings.iter().map(|((a, b), (c, d))|
-            ((a.updated_index(), b.upgrade_force().updated_index()), (c.updated_index(), d.upgrade_force().updated_index()))).collect()
+        self.peer_matchings
+            .iter()
+            .map(|((a, b), (c, d))| {
+                (
+                    (a.updated_index(), b.upgrade_force().updated_index()),
+                    (c.updated_index(), d.upgrade_force().updated_index()),
+                )
+            })
+            .collect()
     }
 
     #[cfg(feature = "python_binding")]
     #[getter]
     pub fn get_virtual_matchings(&self) -> Vec<((NodeIndex, NodeIndex), VertexIndex)> {
-        self.virtual_matchings.iter().map(|((a, b), c)|
-            ((a.updated_index(), b.upgrade_force().updated_index()), *c)).collect()
+        self.virtual_matchings
+            .iter()
+            .map(|((a, b), c)| ((a.updated_index(), b.upgrade_force().updated_index()), *c))
+            .collect()
     }
-
 }
 
 impl IntermediateMatching {
-
     /// break down a single matched pair to find the perfect matching
-    pub fn expand_peer_matching(dual_node_ptr_1: &DualNodePtr, touching_ptr_1: &DualNodePtr, dual_node_ptr_2: &DualNodePtr
-            , touching_ptr_2: &DualNodePtr) -> Vec<(DualNodePtr, DualNodePtr)> {
+    pub fn expand_peer_matching(
+        dual_node_ptr_1: &DualNodePtr,
+        touching_ptr_1: &DualNodePtr,
+        dual_node_ptr_2: &DualNodePtr,
+        touching_ptr_2: &DualNodePtr,
+    ) -> Vec<(DualNodePtr, DualNodePtr)> {
         // println!("expand_peer_matching ({:?}, {:?}), ({:?}, {:?}) {{", dual_node_ptr_1, touching_ptr_1, dual_node_ptr_2, touching_ptr_2);
         let mut perfect_matching = vec![];
         perfect_matching.extend(Self::expand_blossom(dual_node_ptr_1, touching_ptr_1));
@@ -223,29 +311,43 @@ impl IntermediateMatching {
             if let Some(parent_blossom_weak) = child.parent_blossom.as_ref() {
                 let parent_blossom_ptr = parent_blossom_weak.upgrade_force();
                 let parent_blossom = parent_blossom_ptr.read_recursive();
-                if let DualNodeClass::Blossom{ nodes_circle, touching_children } = &parent_blossom.class {
-                    let idx = nodes_circle.iter().position(|ptr| ptr == &child_weak).expect("should find child");
-                    debug_assert!(nodes_circle.len() % 2 == 1 && nodes_circle.len() >= 3, "must be a valid blossom");
-                    for i in (0..(nodes_circle.len()-1)).step_by(2) {
+                if let DualNodeClass::Blossom {
+                    nodes_circle,
+                    touching_children,
+                } = &parent_blossom.class
+                {
+                    let idx = nodes_circle
+                        .iter()
+                        .position(|ptr| ptr == &child_weak)
+                        .expect("should find child");
+                    debug_assert!(
+                        nodes_circle.len() % 2 == 1 && nodes_circle.len() >= 3,
+                        "must be a valid blossom"
+                    );
+                    for i in (0..(nodes_circle.len() - 1)).step_by(2) {
                         let idx_1 = (idx + i + 1) % nodes_circle.len();
                         let idx_2 = (idx + i + 2) % nodes_circle.len();
                         let dual_node_ptr_1 = nodes_circle[idx_1].upgrade_force();
                         let dual_node_ptr_2 = nodes_circle[idx_2].upgrade_force();
-                        let touching_ptr_1 = touching_children[idx_1].1.upgrade_force();  // match to right
-                        let touching_ptr_2 = touching_children[idx_2].0.upgrade_force();  // match to left
+                        let touching_ptr_1 = touching_children[idx_1].1.upgrade_force(); // match to right
+                        let touching_ptr_2 = touching_children[idx_2].0.upgrade_force(); // match to left
                         perfect_matching.extend(Self::expand_peer_matching(
-                            &dual_node_ptr_1, &touching_ptr_1, &dual_node_ptr_2, &touching_ptr_2
+                            &dual_node_ptr_1,
+                            &touching_ptr_1,
+                            &dual_node_ptr_2,
+                            &touching_ptr_2,
                         ))
                     }
                 }
                 drop(child);
                 child_ptr = parent_blossom_ptr.clone();
-            } else { panic!("cannot find parent of {}", child.index) }
+            } else {
+                panic!("cannot find parent of {}", child.index)
+            }
         }
         // println!("}},");
         perfect_matching
     }
-
 }
 
 impl Default for PerfectMatching {
@@ -257,7 +359,6 @@ impl Default for PerfectMatching {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl PerfectMatching {
-
     #[cfg_attr(feature = "python_binding", new)]
     pub fn new() -> Self {
         Self {
@@ -272,11 +373,19 @@ impl PerfectMatching {
         for (ptr_1, ptr_2) in self.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
-                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex { defect_index } = &node.class {
+                    *defect_index
+                } else {
+                    unreachable!("can only be syndrome")
+                }
             };
             let b_vid = {
                 let node = ptr_2.read_recursive();
-                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex { defect_index } = &node.class {
+                    *defect_index
+                } else {
+                    unreachable!("can only be syndrome")
+                }
             };
             peer_matching_maps.insert(a_vid, b_vid);
             peer_matching_maps.insert(b_vid, a_vid);
@@ -285,7 +394,11 @@ impl PerfectMatching {
         for (ptr, virtual_vertex) in self.virtual_matchings.iter() {
             let a_vid = {
                 let node = ptr.read_recursive();
-                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex { defect_index } = &node.class {
+                    *defect_index
+                } else {
+                    unreachable!("can only be syndrome")
+                }
             };
             virtual_matching_maps.insert(a_vid, *virtual_vertex);
         }
@@ -295,32 +408,35 @@ impl PerfectMatching {
                 mwpm_result.push(*a);
             } else if let Some(v) = virtual_matching_maps.get(defect_vertex) {
                 mwpm_result.push(*v);
-            } else { panic!("cannot find defect vertex {}", defect_vertex) }
+            } else {
+                panic!("cannot find defect vertex {}", defect_vertex)
+            }
         }
         mwpm_result
     }
 
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 
     #[cfg(feature = "python_binding")]
     #[getter]
     pub fn get_peer_matchings(&self) -> Vec<(NodeIndex, NodeIndex)> {
-        self.peer_matchings.iter().map(|(a, b)|
-            (a.updated_index(), b.updated_index())).collect()
+        self.peer_matchings
+            .iter()
+            .map(|(a, b)| (a.updated_index(), b.updated_index()))
+            .collect()
     }
 
     #[cfg(feature = "python_binding")]
     #[getter]
     pub fn get_virtual_matchings(&self) -> Vec<(NodeIndex, VertexIndex)> {
-        self.virtual_matchings.iter().map(|(a, b)|
-            (a.updated_index(), *b)).collect()
+        self.virtual_matchings.iter().map(|(a, b)| (a.updated_index(), *b)).collect()
     }
-
 }
 
 impl FusionVisualizer for PerfectMatching {
-
     #[allow(clippy::unnecessary_cast)]
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let primal_nodes = if self.peer_matchings.is_empty() && self.virtual_matchings.is_empty() {
@@ -367,7 +483,6 @@ impl FusionVisualizer for PerfectMatching {
             "primal_nodes": primal_nodes,
         })
     }
-
 }
 
 /// build a subgraph based on minimum-weight paths between matched pairs
@@ -384,7 +499,6 @@ pub struct SubGraphBuilder {
 }
 
 impl SubGraphBuilder {
-
     pub fn new(initializer: &SolverInitializer) -> Self {
         let mut vertex_pair_edges = HashMap::with_capacity(initializer.weighted_edges.len());
         for (edge_index, (i, j, _)) in initializer.weighted_edges.iter().enumerate() {
@@ -419,18 +533,30 @@ impl SubGraphBuilder {
         for (ptr_1, ptr_2) in perfect_matching.peer_matchings.iter() {
             let a_vid = {
                 let node = ptr_1.read_recursive();
-                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex { defect_index } = &node.class {
+                    *defect_index
+                } else {
+                    unreachable!("can only be syndrome")
+                }
             };
             let b_vid = {
                 let node = ptr_2.read_recursive();
-                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex { defect_index } = &node.class {
+                    *defect_index
+                } else {
+                    unreachable!("can only be syndrome")
+                }
             };
             self.add_matching(a_vid, b_vid);
         }
         for (ptr, virtual_vertex) in perfect_matching.virtual_matchings.iter() {
             let a_vid = {
                 let node = ptr.read_recursive();
-                if let DualNodeClass::DefectVertex{ defect_index } = &node.class { *defect_index } else { unreachable!("can only be syndrome") }
+                if let DualNodeClass::DefectVertex { defect_index } = &node.class {
+                    *defect_index
+                } else {
+                    unreachable!("can only be syndrome")
+                }
             };
             self.add_matching(a_vid, *virtual_vertex);
         }
@@ -467,7 +593,6 @@ impl SubGraphBuilder {
     pub fn get_subgraph(&self) -> Vec<EdgeIndex> {
         self.subgraph.iter().copied().collect()
     }
-
 }
 
 /// to visualize subgraph
@@ -477,9 +602,7 @@ pub struct VisualizeSubgraph<'a> {
 
 impl<'a> VisualizeSubgraph<'a> {
     pub fn new(subgraph: &'a Vec<EdgeIndex>) -> Self {
-        Self {
-            subgraph
-        }
+        Self { subgraph }
     }
 }
 
@@ -491,7 +614,7 @@ impl FusionVisualizer for VisualizeSubgraph<'_> {
     }
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 #[pyfunction]
 pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<IntermediateMatching>()?;
