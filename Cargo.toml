@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"

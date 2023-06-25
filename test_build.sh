@@ -2,7 +2,7 @@
 set -ex
 
 cargo clean
-cargo clippy  # A collection of lints to catch common mistakes and improve your Rust code.
+cargo clippy -- -Dwarnings  # A collection of lints to catch common mistakes and improve your Rust code.
 
 # check this first because it's easy to have errors
 cargo test --no-run --features u32_index

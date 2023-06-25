@@ -1,21 +1,18 @@
 //! Pointer Types
-//! 
+//!
 //! Since fusion blossom requires no synchronization with mutex, it's inefficient to wrap everything in a mutex.
 //! At the same time, I want to enjoy the safety check provided by Rust compiler, so I want to limit unsafe code to minimum.
 //! The solution is to write everything in safe Rust, and debug them.
 //! After this, one can enable the feature `unsafe_pointer` to remove the unnecessary locks, thus improving the performance.
-//! 
+//!
 
-
-use std::sync::{Arc, Weak};
-use crate::parking_lot::{RwLock, RawRwLock};
-use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
 use super::util::*;
-
+use crate::parking_lot::lock_api::{RwLockReadGuard, RwLockWriteGuard};
+use crate::parking_lot::{RawRwLock, RwLock};
+use std::sync::{Arc, Weak};
 
 /// allows fast reset of vector of objects without iterating over all objects each time: dynamically clear it
 pub trait FastClear {
-
     /// user provided method to actually clear the fields
     fn hard_clear(&mut self);
 
@@ -37,14 +34,19 @@ pub trait FastClear {
     /// when debugging your program, you can put this function every time you obtained a lock of a new object
     #[inline(always)]
     fn debug_assert_dynamic_cleared(&self, active_timestamp: FastClearTimestamp) {
-        debug_assert!(self.get_timestamp() == active_timestamp, "bug detected: not dynamically cleared, expected timestamp: {}, current timestamp: {}"
-            , active_timestamp, self.get_timestamp());
+        debug_assert!(
+            self.get_timestamp() == active_timestamp,
+            "bug detected: not dynamically cleared, expected timestamp: {}, current timestamp: {}",
+            active_timestamp,
+            self.get_timestamp()
+        );
     }
-
 }
 
-pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
-
+pub trait FastClearRwLockPtr<ObjType>
+where
+    ObjType: FastClear,
+{
     fn new_ptr(ptr: Arc<RwLock<ObjType>>) -> Self;
 
     fn new_value(obj: ObjType) -> Self;
@@ -56,11 +58,11 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
     #[inline(always)]
     fn read_recursive(&self, active_timestamp: FastClearTimestamp) -> RwLockReadGuard<RawRwLock, ObjType> {
         let ret = self.ptr().read_recursive();
-        ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+        ret.debug_assert_dynamic_cleared(active_timestamp); // only assert during debug modes
         ret
     }
 
-    /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+    /// without sanity check: this data might be outdated, so only use when you're read those immutable fields
     #[inline(always)]
     fn read_recursive_force(&self) -> RwLockReadGuard<RawRwLock, ObjType> {
         let ret = self.ptr().read_recursive();
@@ -70,7 +72,7 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
     #[inline(always)]
     fn write(&self, active_timestamp: FastClearTimestamp) -> RwLockWriteGuard<RawRwLock, ObjType> {
         let ret = self.ptr().write();
-        ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
+        ret.debug_assert_dynamic_cleared(active_timestamp); // only assert during debug modes
         ret
     }
 
@@ -91,11 +93,9 @@ pub trait FastClearRwLockPtr<ObjType> where ObjType: FastClear {
     fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(self.ptr(), other.ptr())
     }
-
 }
 
 pub trait RwLockPtr<ObjType> {
-
     fn new_ptr(ptr: Arc<RwLock<ObjType>>) -> Self;
 
     fn new_value(obj: ObjType) -> Self;
@@ -119,7 +119,6 @@ pub trait RwLockPtr<ObjType> {
     fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(self.ptr(), other.ptr())
     }
-
 }
 
 pub struct ArcRwLock<T> {
@@ -133,7 +132,7 @@ pub struct WeakRwLock<T> {
 impl<T> ArcRwLock<T> {
     pub fn downgrade(&self) -> WeakRwLock<T> {
         WeakRwLock::<T> {
-            ptr: Arc::downgrade(&self.ptr)
+            ptr: Arc::downgrade(&self.ptr),
         }
     }
 }
@@ -141,7 +140,7 @@ impl<T> ArcRwLock<T> {
 impl<T> WeakRwLock<T> {
     pub fn upgrade_force(&self) -> ArcRwLock<T> {
         ArcRwLock::<T> {
-            ptr: self.ptr.upgrade().unwrap()
+            ptr: self.ptr.upgrade().unwrap(),
         }
     }
     pub fn upgrade(&self) -> Option<ArcRwLock<T>> {
@@ -156,17 +155,29 @@ impl<T> Clone for ArcRwLock<T> {
 }
 
 impl<T> RwLockPtr<T> for ArcRwLock<T> {
-    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr }  }
-    fn new_value(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
+    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self {
+        Self { ptr }
+    }
+    fn new_value(obj: T) -> Self {
+        Self::new_ptr(Arc::new(RwLock::new(obj)))
+    }
+    #[inline(always)]
+    fn ptr(&self) -> &Arc<RwLock<T>> {
+        &self.ptr
+    }
+    #[inline(always)]
+    fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> {
+        &mut self.ptr
+    }
 }
 
 impl<T> PartialEq for ArcRwLock<T> {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr_eq(other)
+    }
 }
 
-impl<T> Eq for ArcRwLock<T> { }
+impl<T> Eq for ArcRwLock<T> {}
 
 impl<T> Clone for WeakRwLock<T> {
     fn clone(&self) -> Self {
@@ -175,10 +186,12 @@ impl<T> Clone for WeakRwLock<T> {
 }
 
 impl<T> PartialEq for WeakRwLock<T> {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr.ptr_eq(&other.ptr)
+    }
 }
 
-impl<T> Eq for WeakRwLock<T> { }
+impl<T> Eq for WeakRwLock<T> {}
 
 impl<T> std::ops::Deref for ArcRwLock<T> {
     type Target = RwLock<T>;
@@ -211,7 +224,7 @@ pub struct FastClearWeakRwLock<T: FastClear> {
 impl<T: FastClear> FastClearArcRwLock<T> {
     pub fn downgrade(&self) -> FastClearWeakRwLock<T> {
         FastClearWeakRwLock::<T> {
-            ptr: Arc::downgrade(&self.ptr)
+            ptr: Arc::downgrade(&self.ptr),
         }
     }
 }
@@ -219,7 +232,7 @@ impl<T: FastClear> FastClearArcRwLock<T> {
 impl<T: FastClear> FastClearWeakRwLock<T> {
     pub fn upgrade_force(&self) -> FastClearArcRwLock<T> {
         FastClearArcRwLock::<T> {
-            ptr: self.ptr.upgrade().unwrap()
+            ptr: self.ptr.upgrade().unwrap(),
         }
     }
     pub fn upgrade(&self) -> Option<FastClearArcRwLock<T>> {
@@ -234,17 +247,29 @@ impl<T: FastClear> Clone for FastClearArcRwLock<T> {
 }
 
 impl<T: FastClear> FastClearRwLockPtr<T> for FastClearArcRwLock<T> {
-    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self { Self { ptr }  }
-    fn new_value(obj: T) -> Self { Self::new_ptr(Arc::new(RwLock::new(obj))) }
-    #[inline(always)] fn ptr(&self) -> &Arc<RwLock<T>> { &self.ptr }
-    #[inline(always)] fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> { &mut self.ptr }
+    fn new_ptr(ptr: Arc<RwLock<T>>) -> Self {
+        Self { ptr }
+    }
+    fn new_value(obj: T) -> Self {
+        Self::new_ptr(Arc::new(RwLock::new(obj)))
+    }
+    #[inline(always)]
+    fn ptr(&self) -> &Arc<RwLock<T>> {
+        &self.ptr
+    }
+    #[inline(always)]
+    fn ptr_mut(&mut self) -> &mut Arc<RwLock<T>> {
+        &mut self.ptr
+    }
 }
 
 impl<T: FastClear> PartialEq for FastClearArcRwLock<T> {
-    fn eq(&self, other: &Self) -> bool { self.ptr_eq(other) }
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr_eq(other)
+    }
 }
 
-impl<T: FastClear> Eq for FastClearArcRwLock<T> { }
+impl<T: FastClear> Eq for FastClearArcRwLock<T> {}
 
 impl<T: FastClear> Clone for FastClearWeakRwLock<T> {
     fn clone(&self) -> Self {
@@ -253,10 +278,12 @@ impl<T: FastClear> Clone for FastClearWeakRwLock<T> {
 }
 
 impl<T: FastClear> PartialEq for FastClearWeakRwLock<T> {
-    fn eq(&self, other: &Self) -> bool { self.ptr.ptr_eq(&other.ptr) }
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr.ptr_eq(&other.ptr)
+    }
 }
 
-impl<T: FastClear> Eq for FastClearWeakRwLock<T> { }
+impl<T: FastClear> Eq for FastClearWeakRwLock<T> {}
 
 impl<T: FastClear> std::ops::Deref for FastClearArcRwLock<T> {
     type Target = RwLock<T>;
@@ -278,7 +305,6 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
     }
 }
 
-  
 /*
  * unsafe APIs, used for production environment where speed matters
  */
@@ -303,7 +329,7 @@ cfg_if::cfg_if! {
                 ret
             }
 
-            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields
             #[inline(always)]
             fn read_recursive_force(&self) -> &ObjType {
                 self.ptr()
@@ -559,7 +585,7 @@ cfg_if::cfg_if! {
                 }
             }
 
-            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields 
+            /// without sanity check: this data might be outdated, so only use when you're read those immutable fields
             #[inline(always)]
             fn read_recursive_force(&self) -> &ObjType {
                 unsafe {
@@ -613,7 +639,7 @@ cfg_if::cfg_if! {
 
         unsafe impl<T: FastClear> Send for FastClearArcUnsafeDangerous<T> {}
         unsafe impl<T: FastClear> Sync for FastClearArcUnsafeDangerous<T> {}
-    
+
         unsafe impl<T: FastClear> Send for FastClearWeakUnsafeDangerous<T> {}
         unsafe impl<T: FastClear> Sync for FastClearWeakUnsafeDangerous<T> {}
 
@@ -752,7 +778,6 @@ cfg_if::cfg_if! {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -779,7 +804,8 @@ mod tests {
     }
 
     #[test]
-    fn pointers_test_1() {  // cargo test pointers_test_1 -- --nocapture
+    fn pointers_test_1() {
+        // cargo test pointers_test_1 -- --nocapture
         let ptr = TesterPtr::new_value(Tester { idx: 0 });
         let weak = ptr.downgrade();
         ptr.write().idx = 1;
@@ -788,29 +814,28 @@ mod tests {
         assert_eq!(ptr.read_recursive().idx, 2);
     }
 
-cfg_if::cfg_if! {
-    if #[cfg(feature="unsafe_pointer")] {
+    cfg_if::cfg_if! {
+        if #[cfg(feature="unsafe_pointer")] {
 
-        type TesterUnsafePtr = ArcRwLock<Tester>;
+            type TesterUnsafePtr = ArcRwLock<Tester>;
 
-        #[test]
-        fn pointers_test_2() {  // cargo test pointers_test_2 --features unsafe_pointer -- --nocapture
-            let ptr = TesterUnsafePtr::new_value(Tester { idx: 0 });
-            let weak = ptr.downgrade();
-            ptr.write().idx = 1;
-            assert_eq!(weak.upgrade_force().read_recursive().idx, 1);
-            weak.upgrade_force().write().idx = 2;
-            assert_eq!(ptr.read_recursive().idx, 2);
+            #[test]
+            fn pointers_test_2() {  // cargo test pointers_test_2 --features unsafe_pointer -- --nocapture
+                let ptr = TesterUnsafePtr::new_value(Tester { idx: 0 });
+                let weak = ptr.downgrade();
+                ptr.write().idx = 1;
+                assert_eq!(weak.upgrade_force().read_recursive().idx, 1);
+                weak.upgrade_force().write().idx = 2;
+                assert_eq!(ptr.read_recursive().idx, 2);
+            }
+
+            #[test]
+            fn pointers_test_3() {  // cargo test pointers_test_3 --features dangerous_pointer -- --nocapture
+                println!("{}", std::mem::size_of::<ArcManualSafeLock<Tester>>());
+                println!("{}", std::mem::size_of::<Arc<Tester>>());
+                println!("{}", std::mem::size_of::<*const Tester>());
+            }
+
         }
-
-        #[test]
-        fn pointers_test_3() {  // cargo test pointers_test_3 --features dangerous_pointer -- --nocapture
-            println!("{}", std::mem::size_of::<ArcManualSafeLock<Tester>>());
-            println!("{}", std::mem::size_of::<Arc<Tester>>());
-            println!("{}", std::mem::size_of::<*const Tester>());
-        }
-
     }
-}
-
 }
