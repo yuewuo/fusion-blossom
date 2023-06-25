@@ -3,6 +3,7 @@
 //! Generics for dual modules, defining the necessary interfaces for a dual module
 //!
 
+#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
 use super::util::*;
 #[cfg(not(feature="dangerous_pointer"))]
 use std::sync::Arc;

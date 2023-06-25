@@ -4,6 +4,7 @@
 //! where traditional matching is too time consuming because of their |E| = O(|V|^2) scaling.
 //!
 
+#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
 use super::util::*;
 use crate::derivative::Derivative;
 use super::primal_module::*;

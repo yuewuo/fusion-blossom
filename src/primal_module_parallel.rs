@@ -3,6 +3,7 @@
 //! A parallel implementation of the primal module, by calling functions provided by the serial primal module
 //!
 
+#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
 use super::util::*;
 use serde::{Serialize, Deserialize};
 use crate::rayon::prelude::*;

@@ -4,6 +4,10 @@ use std::path::Path;
 
 fn main() {
 
+    if cfg!(feature = "unsafe_pointer") {
+        println!("cargo:allow=dropping_references");
+    }
+
     // even if the blossom V library exists, sometimes we don't want to compile it
     let mut try_include_blossom_v = true;
     if cfg!(feature = "remove_blossom_v") {

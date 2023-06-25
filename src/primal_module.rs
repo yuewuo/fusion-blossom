@@ -3,6 +3,7 @@
 //! Generics for primal modules, defining the necessary interfaces for a primal module
 //!
 
+#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
 use super::util::*;
 use super::dual_module::*;
 use crate::derivative::Derivative;

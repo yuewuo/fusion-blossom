@@ -12,6 +12,7 @@
 //! using https://docs.rs/rayon/latest/rayon/. 
 //!
 
+#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
 use super::util::*;
 use std::sync::{Arc, Weak};
 use super::dual_module::*;

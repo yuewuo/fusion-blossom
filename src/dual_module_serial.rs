@@ -8,6 +8,7 @@
 //! operation is unfriendly to cache.
 //!
 
+#![cfg_attr(feature="unsafe_pointer", allow(dropping_references))]
 use super::util::*;
 use crate::derivative::Derivative;
 use super::dual_module::*;
