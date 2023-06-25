@@ -992,7 +992,7 @@ impl CodeCapacityRotatedCode {
         for row in 0..d + 1 {
             let pos_i = row as f64;
             for i in 0..row_vertex_num {
-                let pos_bias = if row % 2 == 0 { 1 } else { 0 };
+                let pos_bias = (row % 2 == 0) as VertexNum;
                 positions.push(VisualizePosition::new(pos_i, (i * 2 + pos_bias) as f64, 0.));
             }
         }
@@ -1105,7 +1105,7 @@ impl PhenomenologicalRotatedCode {
             for row in 0..d + 1 {
                 let pos_i = row as f64;
                 for i in 0..row_vertex_num {
-                    let pos_bias = if row % 2 == 0 { 1 } else { 0 };
+                    let pos_bias = (row % 2 == 0) as VertexNum;
                     positions.push(VisualizePosition::new(pos_i, (i * 2 + pos_bias) as f64, pos_t));
                 }
             }
