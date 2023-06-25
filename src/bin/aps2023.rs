@@ -11,36 +11,35 @@ use primal_module_serial::*;
 use primal_module::*;
 use std::fs::File;
 use std::io::Write;
-use serde_json;
 use serde_json::*;
-use petgraph;
 
 const APS2023_DECODING_GRAPH_SYNDROME_GRAPH_DEFECT_VERTICES: [VertexIndex; 16] = [ 64, 62, 37, 26, 15, 17, 30, 43, 56, 80, 91, 102, 113, 111, 98, 85 ];
 
 fn demo_aps2023_decoding_graph_growing() {
-    let visualize_filename = format!("demo_aps2023_decoding_graph_growing.json");
+    let visualize_filename = "demo_aps2023_decoding_graph_growing.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     // create dual module
     let initializer = code.get_initializer();
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let syndrome = SyndromePattern::new_vertices(APS2023_DECODING_GRAPH_SYNDROME_GRAPH_DEFECT_VERTICES.into());
     let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
-    visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("syndrome".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     // create dual nodes and grow them by half length
     let dual_node_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
     for _ in 0..2 {
         dual_module.grow_dual_node(&dual_node_ptr, 2 * half_weight);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+        visualizer.snapshot_combined("grow".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     }
 }
 
 type MinPaths = std::collections::HashMap<(VertexIndex, VertexIndex), Weight>;
+#[allow(clippy::unnecessary_cast)]
 fn get_min_paths(code: &impl ExampleCode) -> MinPaths {
-    use crate::petgraph::prelude::*;
-    use crate::petgraph::algo::floyd_warshall;
+    use petgraph::prelude::*;
+    use petgraph::algo::floyd_warshall;
     use std::collections::HashMap;
     let mut graph = UnGraph::<(), ()>::new_undirected();
     let mut nodes = vec![];
@@ -51,7 +50,7 @@ fn get_min_paths(code: &impl ExampleCode) -> MinPaths {
     let mut weight_map = HashMap::<(NodeIndex, NodeIndex), Weight>::new();
     for edge in edges.iter() {
         let pair = (nodes[edge.vertices.0 as usize], nodes[edge.vertices.1 as usize]);
-        graph.extend_with_edges(&[pair]);
+        graph.extend_with_edges([pair]);
         weight_map.insert(pair, edge.half_weight * 2);
     }
     let res = floyd_warshall(&graph, |edge| {
@@ -71,6 +70,7 @@ fn get_min_paths(code: &impl ExampleCode) -> MinPaths {
     min_paths
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn get_nearest_virtual(min_paths: &MinPaths, code: &impl ExampleCode, source_vertex_index: VertexIndex) -> Option<VertexIndex> {
     assert!(!code.is_virtual(source_vertex_index as usize));
     let (vertices, _edges) = code.immutable_vertices_edges();
@@ -88,6 +88,7 @@ fn get_nearest_virtual(min_paths: &MinPaths, code: &impl ExampleCode, source_ver
     nearest_virtual
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn demo_construct_syndrome_graph(code: &impl ExampleCode, defect_vertices: &[VertexIndex]) -> (SolverInitializer, SyndromePattern, Vec<VisualizePosition>) {
     use std::collections::{BTreeMap};
     let min_paths = get_min_paths(code);
@@ -114,9 +115,7 @@ fn demo_construct_syndrome_graph(code: &impl ExampleCode, defect_vertices: &[Ver
     for &defect_vertex in defect_vertices {
         let virtual_vertex = get_nearest_virtual(&min_paths, code, defect_vertex);
         if let Some(virtual_vertex) = virtual_vertex {
-            if !virtual_vertices_map.contains_key(&virtual_vertex) {
-                virtual_vertices_map.insert(virtual_vertex, vec![]);
-            }
+            virtual_vertices_map.entry(virtual_vertex).or_insert_with(Vec::new);
             virtual_vertices_map.get_mut(&virtual_vertex).as_mut().unwrap().push((defect_vertex, *min_paths.get(&(defect_vertex, virtual_vertex)).unwrap()));
         }
     }
@@ -140,7 +139,7 @@ fn demo_construct_syndrome_graph(code: &impl ExampleCode, defect_vertices: &[Ver
 } 
 
 fn demo_aps2023_syndrome_graph_growing() {
-    let visualize_filename = format!("demo_aps2023_syndrome_graph_growing.json");
+    let visualize_filename = "demo_aps2023_syndrome_graph_growing.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(11, 0.1, half_weight);
     // construct the syndrome graph
@@ -148,39 +147,39 @@ fn demo_aps2023_syndrome_graph_growing() {
     // create dual module
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
-    visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("syndrome".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     // create dual nodes and grow them by half length
     let dual_node_ptr = interface_ptr.read_recursive().nodes[0].clone().unwrap();
     for _ in 0..2 {
         dual_module.grow_dual_node(&dual_node_ptr, 2 * half_weight);
-        visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+        visualizer.snapshot_combined("grow".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     }
 }
 
 fn demo_aps2023_decoding_graph_static() {
-    let visualize_filename = format!("demo_aps2023_decoding_graph_static.json");
+    let visualize_filename = "demo_aps2023_decoding_graph_static.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     // create dual module
     let initializer = code.get_initializer();
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let syndrome = SyndromePattern::new_vertices(vec![]);
     let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
-    visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("syndrome".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
 }
 
 const APS2023_EXAMPLE_DEFECT_VERTICES: [VertexIndex; 7] = [ 14, 13, 6, 3, 21, 25, 18 ];
 
 fn demo_aps2023_example_decoding_graph() {
-    let visualize_filename = format!("demo_aps2023_example_decoding_graph.json");
+    let visualize_filename = "demo_aps2023_example_decoding_graph.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     // create dual module
     let initializer = code.get_initializer();
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
@@ -197,14 +196,14 @@ fn demo_aps2023_example_decoding_graph() {
 }
 
 fn demo_aps2023_example_syndrome_graph() {
-    let visualize_filename = format!("demo_aps2023_example_syndrome_graph.json");
+    let visualize_filename = "demo_aps2023_example_syndrome_graph.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
     // construct the syndrome graph
     let (initializer, syndrome, positions) = demo_construct_syndrome_graph(&code, &APS2023_EXAMPLE_DEFECT_VERTICES);
     // create dual module
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
     let interface_ptr = DualModuleInterfacePtr::new_empty();
@@ -217,9 +216,10 @@ fn demo_aps2023_example_syndrome_graph() {
         , &perfect_matching, &VisualizeSubgraph::new(&subgraph)]).unwrap();
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn demo_aps2023_example_syndrome_graph_edges() {
     use std::collections::{BTreeMap, BTreeSet};
-    let filename = format!("demo_aps2023_example_syndrome_graph_edges.json");
+    let filename = "demo_aps2023_example_syndrome_graph_edges.json".to_string();
     let filepath = visualize_data_folder() + filename.as_str();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
@@ -326,27 +326,27 @@ fn demo_aps2023_example_syndrome_graph_edges() {
 }
 
 fn demo_aps2023_example_decoding_graph_grow_single() {
-    let visualize_filename = format!("demo_aps2023_example_decoding_graph_grow_single.json");
+    let visualize_filename = "demo_aps2023_example_decoding_graph_grow_single.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     // create dual module
     let initializer = code.get_initializer();
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let syndrome = SyndromePattern::new_vertices(APS2023_EXAMPLE_DEFECT_VERTICES.into());
     let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
-    visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("syndrome".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     let dual_node_ptr = interface_ptr.read_recursive().nodes[2].clone().unwrap();
     dual_module.grow_dual_node(&dual_node_ptr, 2 * half_weight);
-    visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("grow".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     let dual_node_ptr_2 = interface_ptr.read_recursive().nodes[1].clone().unwrap();
     dual_module.grow_dual_node(&dual_node_ptr_2, 2 * half_weight);
-    visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("grow".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
 }
 
 fn demo_aps2023_example_syndrome_graph_grow_single() {
-    let visualize_filename = format!("demo_aps2023_example_syndrome_graph_grow_single.json");
+    let visualize_filename = "demo_aps2023_example_syndrome_graph_grow_single.json".to_string();
     let half_weight = 500;
     let code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
     // construct the syndrome graph
@@ -354,22 +354,22 @@ fn demo_aps2023_example_syndrome_graph_grow_single() {
     // create dual module
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
-    visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("syndrome".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     let dual_node_ptr = interface_ptr.read_recursive().nodes[2].clone().unwrap();
     dual_module.grow_dual_node(&dual_node_ptr, 2 * half_weight);
-    visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("grow".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
     let dual_node_ptr_2 = interface_ptr.read_recursive().nodes[1].clone().unwrap();
     dual_module.grow_dual_node(&dual_node_ptr_2, 2 * half_weight);
-    visualizer.snapshot_combined(format!("grow"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("grow".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
 }
 
 fn demo_aps2023_example_partition() {
     use crate::example_partition::*;
     use crate::dual_module_parallel::*;
     use crate::primal_module_parallel::*;
-    let visualize_filename = format!("demo_aps2023_example_partition.json");
+    let visualize_filename = "demo_aps2023_example_partition.json".to_string();
     let half_weight = 500;
     let mut code = CodeCapacityPlanarCode::new(5, 0.1, half_weight);
     let mut partition = CodeCapacityPlanarCodeVerticalPartitionHalf::new(5, 3);
@@ -377,13 +377,12 @@ fn demo_aps2023_example_partition() {
     println!("defect_vertices: {defect_vertices:?}");
     let partition_config = partition.build_apply(&mut code);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     let initializer = code.get_initializer();
     let partition_info = partition_config.info();
     // create dual module
     let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
-    let mut primal_config = PrimalModuleParallelConfig::default();
-    primal_config.debug_sequential = true;
+    let primal_config = PrimalModuleParallelConfig { debug_sequential: true, .. Default::default() };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
     primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
@@ -403,7 +402,7 @@ fn demo_aps2023_large_demo() {
     use crate::example_partition::*;
     use crate::dual_module_parallel::*;
     use crate::primal_module_parallel::*;
-    let visualize_filename = format!("demo_aps2023_large_demo.json");
+    let visualize_filename = "demo_aps2023_large_demo.json".to_string();
     let half_weight = 500;
     let noisy_measurements = 10 * 4;
     let d = 5;
@@ -414,13 +413,12 @@ fn demo_aps2023_large_demo() {
     let defect_vertices = partition.re_index_defect_vertices(&code, &random_syndrome.defect_vertices);
     let partition_config = partition.build_apply(&mut code);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     let initializer = code.get_initializer();
     let partition_info = partition_config.info();
     // create dual module
     let mut dual_module = DualModuleParallel::<DualModuleSerial>::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
-    let mut primal_config = PrimalModuleParallelConfig::default();
-    primal_config.debug_sequential = true;
+    let primal_config = PrimalModuleParallelConfig { debug_sequential: true, .. Default::default() };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
     primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
@@ -435,18 +433,18 @@ fn demo_aps2023_large_demo() {
 }
 
 fn demo_aps2023_large_demo_no_partition() {
-    let visualize_filename = format!("demo_aps2023_large_demo_no_partition.json");
+    let visualize_filename = "demo_aps2023_large_demo_no_partition.json".to_string();
     let half_weight = 500;
     let noisy_measurements = 10 * 4;
     let d = 5;
     let mut code = PhenomenologicalPlanarCode::new(d, noisy_measurements, 0.03, half_weight);
     let syndrome = code.generate_random_errors(DEMO_APS2023_LARGE_DEMO_RNG_SEED);
     let mut visualizer = Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), code.get_positions(), true).unwrap();
-    print_visualize_link(visualize_filename.clone());
+    print_visualize_link(visualize_filename);
     let initializer = code.get_initializer();
     let mut dual_module = DualModuleSerial::new_empty(&initializer);
     let interface_ptr = DualModuleInterfacePtr::new_load(&syndrome, &mut dual_module);
-    visualizer.snapshot_combined(format!("syndrome"), vec![&interface_ptr, &dual_module]).unwrap();
+    visualizer.snapshot_combined("syndrome".to_string(), vec![&interface_ptr, &dual_module]).unwrap();
 }
 
 fn main() {

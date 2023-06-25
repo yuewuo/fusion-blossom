@@ -565,7 +565,7 @@ pub trait DualModuleImpl {
     }
 
     fn load_dynamic_weights(&mut self, dynamic_weights: &[(EdgeIndex, Weight)]) {
-        let edge_modifier: Vec<_> = dynamic_weights.iter().cloned().collect();
+        let edge_modifier = dynamic_weights.to_vec();
         self.load_edge_modifier(&edge_modifier);
     }
 
@@ -694,6 +694,7 @@ impl DualModuleInterface {
     }
 
     /// get node ptr by index; if calling from the ancestor interface, node_index is absolute, otherwise it's relative
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_node(&self, relative_node_index: NodeIndex) -> Option<DualNodePtr> {
         debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this interface");
         let mut bias = 0;
@@ -711,6 +712,7 @@ impl DualModuleInterface {
     }
 
     /// set the corresponding node index to None
+    #[allow(clippy::unnecessary_cast)]
     pub fn remove_node(&mut self, relative_node_index: NodeIndex) {
         debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this interface");
         let mut bias = 0;
@@ -1045,6 +1047,7 @@ impl DualModuleInterfacePtr {
     }
 
     /// fuse two interfaces by copying the nodes in `other` into myself
+    #[allow(clippy::unnecessary_cast)]
     pub fn slow_fuse(&self, left: &Self, right: &Self) {
         let mut interface = self.write();
         interface.is_fusion = true;  // for safety
@@ -1102,6 +1105,7 @@ impl DualModuleInterfacePtr {
 
     /// do a sanity check of if all the nodes are in consistent state
     #[inline(never)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn sanity_check(&self) -> Result<Vec<Option<DualNodePtr>>, String> {
         let mut flattened_nodes = vec![];
         self.flatten_nodes(&mut flattened_nodes);

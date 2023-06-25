@@ -199,6 +199,7 @@ impl std::fmt::Debug for EdgeWeak {
 impl DualModuleImpl for DualModuleSerial {
 
     /// initialize the dual module, which is supposed to be reused for multiple decoding tasks with the same structure
+    #[allow(clippy::unnecessary_cast)]
     fn new_empty(initializer: &SolverInitializer) -> Self {
         let active_timestamp = 0;
         // create vertices
@@ -281,6 +282,7 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     /// clear all growth and existing dual nodes
+    #[allow(clippy::unnecessary_cast)]
     fn clear(&mut self) {
         // recover erasure edges first
         while self.edge_modifier.has_modified_edges() {
@@ -299,6 +301,7 @@ impl DualModuleImpl for DualModuleSerial {
     }
 
     /// add a new dual node from dual module root
+    #[allow(clippy::unnecessary_cast)]
     fn add_dual_node(&mut self, dual_node_ptr: &DualNodePtr) {
         self.register_dual_node_ptr(dual_node_ptr);
         let active_timestamp = self.active_timestamp;
@@ -389,6 +392,7 @@ impl DualModuleImpl for DualModuleSerial {
         self.nodes[node_index as usize] = Some(node_internal_ptr);
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn remove_blossom(&mut self, dual_node_ptr: DualNodePtr) {
         let active_timestamp = self.active_timestamp;
         self.prepare_dual_node_growth(&dual_node_ptr, false);  // prepare the blossom into shrinking
@@ -712,6 +716,7 @@ impl DualModuleImpl for DualModuleSerial {
         }
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         debug_assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         let active_timestamp = self.active_timestamp;
@@ -777,6 +782,7 @@ impl DualModuleImpl for DualModuleSerial {
         self.get_dual_node_index(dual_node_ptr).is_some()
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn new_partitioned(partitioned_initializer: &PartitionedSolverInitializer) -> Self {
         let active_timestamp = 0;
         // create vertices
@@ -1105,6 +1111,7 @@ impl DualModuleSerial {
     }
 
     /// increment the global cycle so that each node in the active list can be accessed exactly once
+    #[allow(clippy::unnecessary_cast)]
     fn renew_active_list(&mut self) {
         if self.current_cycle == usize::MAX {
             for i in 0..self.nodes_length {
@@ -1188,6 +1195,7 @@ impl DualModuleSerial {
     }
 
     /// do a sanity check of if all the nodes are in consistent state
+    #[allow(clippy::unnecessary_cast)]
     pub fn sanity_check(&self) -> Result<(), String> {
         let active_timestamp = self.active_timestamp;
         for vertex_ptr in self.vertices.iter() {
@@ -1234,6 +1242,8 @@ Implementing visualization functions
 */
 
 impl FusionVisualizer for DualModuleSerial {
+
+    #[allow(clippy::unnecessary_cast)]
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         // do the sanity check first before taking snapshot
         self.sanity_check().unwrap();
@@ -1320,6 +1330,7 @@ impl FusionVisualizer for DualModuleSerial {
         }
         value
     }
+
 }
 
 /*
@@ -1350,6 +1361,7 @@ impl DualModuleSerial {
     }
 
     /// get the local index of a dual node, thus has usize type
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_dual_node_index(&self, dual_node_ptr: &DualNodePtr) -> Option<usize> {
         let dual_node = dual_node_ptr.read_recursive();
         if let Some(unit_module_info) = self.unit_module_info.as_ref() {
@@ -1366,6 +1378,7 @@ impl DualModuleSerial {
     }
 
     /// get the local index of a vertex, thus has usize type
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_vertex_index(&self, vertex_index: VertexIndex) -> Option<usize> {
         if self.owning_range.contains(vertex_index) {
             return Some((vertex_index - self.owning_range.start()) as usize)
@@ -1392,6 +1405,7 @@ impl DualModuleSerial {
     }
 
     /// possibly add dual node only when sync_event is provided
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_otherwise_add_dual_node(&mut self, dual_node_ptr: &DualNodePtr, dual_variable: Weight) -> DualNodeInternalPtr {
         let dual_node_index = self.get_dual_node_index(dual_node_ptr).unwrap_or_else(|| {
             // add a new internal dual node corresponding to the dual_node_ptr

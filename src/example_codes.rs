@@ -176,6 +176,7 @@ pub trait ExampleCode {
     }
 
     /// automatically create vertices given edges
+    #[allow(clippy::unnecessary_cast)]
     fn fill_vertices(&mut self, vertex_num: VertexNum) {
         let (vertices, edges) = self.vertices_edges();
         vertices.clear();
@@ -229,6 +230,7 @@ pub trait ExampleCode {
 
     /// set defect vertices (non-trivial measurement result in case of single round of measurement, 
     /// or different result from the previous round in case of multiple rounds of measurement)
+    #[allow(clippy::unnecessary_cast)]
     fn set_defect_vertices(&mut self, defect_vertices: &[VertexIndex]) {
         let (vertices, _edges) = self.vertices_edges();
         for vertex in vertices.iter_mut() {
@@ -241,6 +243,7 @@ pub trait ExampleCode {
     }
 
     /// set erasure edges
+    #[allow(clippy::unnecessary_cast)]
     fn set_erasures(&mut self, erasures: &[EdgeIndex]) {
         let (_vertices, edges) = self.vertices_edges();
         for edge in edges.iter_mut() {
@@ -288,6 +291,7 @@ pub trait ExampleCode {
     }
 
     /// generate random errors based on the edge probabilities and a seed for pseudo number generator
+    #[allow(clippy::unnecessary_cast)]
     fn generate_random_errors(&mut self, seed: u64) -> SyndromePattern {
         let mut rng = DeterministicRng::seed_from_u64(seed);
         let (vertices, edges) = self.vertices_edges();
@@ -317,6 +321,7 @@ pub trait ExampleCode {
         self.get_syndrome()
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn generate_errors(&mut self, edge_indices: &[EdgeIndex]) -> SyndromePattern {
         let (vertices, edges) = self.vertices_edges();
         for &edge_index in edge_indices {
@@ -355,6 +360,7 @@ pub trait ExampleCode {
     }
 
     /// reorder the vertices such that new vertices (the indices of the old order) is sequential
+    #[allow(clippy::unnecessary_cast)]
     fn reorder_vertices(&mut self, sequential_vertices: &Vec<VertexIndex>) {
         let (vertices, edges) = self.vertices_edges();
         assert_eq!(vertices.len(), sequential_vertices.len(), "amount of vertices must be same");
@@ -487,6 +493,7 @@ impl CodeCapacityRepetitionCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn create_code(d: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let vertex_num = (d - 1) + 2;  // two virtual vertices at left and right
@@ -553,6 +560,7 @@ impl CodeCapacityPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn create_code(d: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -634,6 +642,7 @@ impl PhenomenologicalPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn create_code(d: VertexNum, noisy_measurements: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -734,6 +743,7 @@ impl CircuitLevelPlanarCode {
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
     #[cfg_attr(feature = "python_binding", pyo3(signature = (d, noisy_measurements, p, max_half_weight = 500, diagonal_p = None)))]
+    #[allow(clippy::unnecessary_cast)]
     pub fn new_diagonal(d: VertexNum, noisy_measurements: VertexNum, p: f64, max_half_weight: Weight, diagonal_p: Option<f64>) -> Self {
         let mut code = Self::create_code(d, noisy_measurements);
         code.set_probability(p);
@@ -754,6 +764,7 @@ impl CircuitLevelPlanarCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn create_code(d: VertexNum, noisy_measurements: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) + 2;  // two virtual nodes at left and right
@@ -863,6 +874,7 @@ impl CodeCapacityRotatedCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn create_code(d: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) / 2 + 1;  // a virtual node at either left or right
@@ -954,6 +966,7 @@ impl PhenomenologicalRotatedCode {
     }
 
     #[cfg_attr(feature = "python_binding", staticmethod)]
+    #[allow(clippy::unnecessary_cast)]
     pub fn create_code(d: VertexNum, noisy_measurements: VertexNum) -> Self {
         assert!(d >= 3 && d % 2 == 1, "d must be odd integer >= 3");
         let row_vertex_num = (d-1) / 2 + 1;  // a virtual node at either left or right
@@ -1072,6 +1085,7 @@ impl ExampleCode for ErrorPatternReader {
 
 impl ErrorPatternReader {
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn new(mut config: serde_json::Value) -> Self {
         let mut filename = "tmp/syndrome_patterns.txt".to_string();
         let config = config.as_object_mut().expect("config must be JSON object");

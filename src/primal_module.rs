@@ -56,6 +56,7 @@ pub trait PrimalModuleImpl {
     }
 
     /// load a new decoding problem given dual interface: note that all nodes MUST be syndrome node
+    #[allow(clippy::unnecessary_cast)]
     fn load(&mut self, interface_ptr: &DualModuleInterfacePtr) {
         let interface = interface_ptr.read_recursive();
         debug_assert!(interface.parent.is_none(), "cannot load an interface that is already fused");
@@ -318,6 +319,8 @@ impl PerfectMatching {
 }
 
 impl FusionVisualizer for PerfectMatching {
+
+    #[allow(clippy::unnecessary_cast)]
     fn snapshot(&self, abbrev: bool) -> serde_json::Value {
         let primal_nodes = if self.peer_matchings.is_empty() && self.virtual_matchings.is_empty() {
             vec![]
@@ -363,6 +366,7 @@ impl FusionVisualizer for PerfectMatching {
             "primal_nodes": primal_nodes,
         })
     }
+
 }
 
 /// build a subgraph based on minimum-weight paths between matched pairs
@@ -449,6 +453,7 @@ impl SubGraphBuilder {
     }
 
     /// get the total weight of the subgraph
+    #[allow(clippy::unnecessary_cast)]
     pub fn total_weight(&self) -> Weight {
         let mut weight = 0;
         for edge_index in self.subgraph.iter() {

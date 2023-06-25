@@ -119,6 +119,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> std::fmt::Debug for DualModuleP
 impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule> {
 
     /// recommended way to create a new instance, given a customized configuration
+    #[allow(clippy::unnecessary_cast)]
     pub fn new_config(initializer: &SolverInitializer, partition_info: &PartitionInfo, config: DualModuleParallelConfig) -> Self {
         let partition_info = Arc::new(partition_info.clone());
         let mut thread_pool_builder = rayon::ThreadPoolBuilder::new();
@@ -314,6 +315,7 @@ impl<SerialModule: DualModuleImpl + Send + Sync> DualModuleParallel<SerialModule
         self.find_active_ancestor_option(dual_node_ptr).unwrap()
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn find_active_ancestor_option(&self, dual_node_ptr: &DualNodePtr) -> Option<DualModuleParallelUnitPtr<SerialModule>> {
         // find the first active ancestor unit that should handle this dual node
         let representative_vertex = dual_node_ptr.get_representative_vertex();

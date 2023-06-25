@@ -269,6 +269,7 @@ impl PhenomenologicalPlanarCodeTimePartition {
 }
 
 impl ExamplePartition for PhenomenologicalPlanarCodeTimePartition {
+    #[allow(clippy::unnecessary_cast)]
     fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
         let (d, noisy_measurements, partition_num) = (self.d, self.noisy_measurements, self.partition_num);
         let round_vertex_num = d * (d + 1);
@@ -393,6 +394,7 @@ impl PhenomenologicalRotatedCodeTimePartition {
 }
 
 impl ExamplePartition for PhenomenologicalRotatedCodeTimePartition {
+    #[allow(clippy::unnecessary_cast)]
     fn build_partition(&mut self, code: &dyn ExampleCode) -> PartitionConfig {
         let (d, noisy_measurements, partition_num) = (self.d, self.noisy_measurements, self.partition_num);
         let row_vertex_num = (d-1) / 2 + 1;

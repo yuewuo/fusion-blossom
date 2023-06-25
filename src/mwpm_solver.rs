@@ -128,6 +128,7 @@ pub trait PrimalDualSolver {
     fn subgraph(&mut self) -> Vec<EdgeIndex> { self.subgraph_visualizer(None) }
     fn sum_dual_variables(&self) -> Weight;
     fn generate_profiler_report(&self) -> serde_json::Value;
+    #[allow(clippy::unnecessary_cast)]
     fn stim_integration_predict_bit_packed_data(&mut self, in_file: String, out_file: String, edge_masks: &[usize], num_shots: usize
             , num_dets: usize, num_obs: usize) {
         let mut in_reader = std::io::BufReader::new(File::open(&in_file).expect("in_file not found"));
@@ -532,7 +533,7 @@ impl SolverBlossomV {
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
             initializer: initializer.clone(),
-            prebuilt_complete_graph: PrebuiltCompleteGraph::new_threaded(&initializer, 0),
+            prebuilt_complete_graph: PrebuiltCompleteGraph::new_threaded(initializer, 0),
             subgraph_builder: SubGraphBuilder::new(initializer),
             matched_pairs: vec![],
         }
@@ -566,8 +567,8 @@ impl PrimalDualSolver for SolverBlossomV {
                 }
             }
         }
-        for i in 0..defect_num {
-            if let Some((_, weight)) = self.prebuilt_complete_graph.get_boundary_weight(defect_vertices[i]) {
+        for (i, &defect_vertex) in defect_vertices.iter().enumerate() {
+            if let Some((_, weight)) = self.prebuilt_complete_graph.get_boundary_weight(defect_vertex) {
                 // connect this real vertex to it's corresponding virtual vertex
                 legacy_weighted_edges.push((i, i + defect_num, weight as u32));
             }
@@ -635,6 +636,7 @@ impl PrimalDualSolver for SolverBlossomV {
         }
         self.subgraph_builder.subgraph.iter().copied().collect()
     }
+    #[allow(clippy::unnecessary_cast)]
     fn sum_dual_variables(&self) -> Weight {
         let mut subgraph_builder = self.subgraph_builder.clone();
         subgraph_builder.clear();

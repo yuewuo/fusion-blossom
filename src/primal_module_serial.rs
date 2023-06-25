@@ -855,6 +855,7 @@ impl PrimalModuleSerial {
     }
 
     /// get node ptr by index; if calling from the ancestor module, node_index is absolute, otherwise it's relative
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_node(&self, relative_node_index: NodeIndex) -> Option<PrimalNodeInternalPtr> {
         debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this module");
         let mut bias = 0;
@@ -872,6 +873,7 @@ impl PrimalModuleSerial {
     }
 
     /// set the corresponding node index to None
+    #[allow(clippy::unnecessary_cast)]
     pub fn remove_node(&mut self, relative_node_index: NodeIndex) {
         debug_assert!(relative_node_index < self.nodes_count(), "cannot find node in this module");
         let mut bias = 0;
@@ -1072,6 +1074,7 @@ impl PrimalModuleSerialPtr {
     }
 
     /// DFS flatten the nodes
+    #[allow(clippy::unnecessary_cast)]
     pub fn flatten_nodes(&self, flattened_nodes: &mut Vec<Option<PrimalNodeInternalPtr>>) {
         let module = self.read_recursive();
         let flattened_nodes_length = flattened_nodes.len();
@@ -1092,6 +1095,7 @@ impl PrimalModuleSerialPtr {
     }
 
     /// fuse two modules by copying the nodes in `other` into myself
+    #[allow(clippy::unnecessary_cast)]
     pub fn slow_fuse(&self, left: &Self, right: &Self) {
         let mut module = self.write();
         module.is_fusion = true;  // for safety

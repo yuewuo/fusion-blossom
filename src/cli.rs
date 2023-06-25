@@ -657,6 +657,7 @@ struct VerifierBlossomV {
 }
 
 impl ResultVerifier for VerifierBlossomV {
+    #[allow(clippy::unnecessary_cast)]
     fn verify(&mut self, primal_dual_solver: &mut Box<dyn PrimalDualSolver>, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
         // prepare modified weighted edges
         let mut edge_modifier = EdgeWeightModifier::new();

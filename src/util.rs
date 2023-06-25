@@ -159,6 +159,7 @@ impl IndexRange {
     pub fn is_empty(&self) -> bool {
         self.range[1] == self.range[0]
     }
+    #[allow(clippy::unnecessary_cast)]
     pub fn len(&self) -> usize {
         (self.range[1] - self.range[0]) as usize
     }
@@ -269,6 +270,7 @@ impl PartitionConfig {
     #[cfg(feature = "python_binding")]
     fn __repr__(&self) -> String { format!("{:?}", self) }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn info(&self) -> PartitionInfo {
         assert!(!self.partitions.is_empty(), "at least one partition must exist");
         let mut whole_ranges = vec![];
@@ -364,6 +366,7 @@ impl PartitionInfo {
 
     /// split a sequence of syndrome into multiple parts, each corresponds to a unit;
     /// this is a slow method and should only be used when the syndrome pattern is not well-ordered
+    #[allow(clippy::unnecessary_cast)]
     pub fn partition_syndrome_unordered(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
         let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| SyndromePattern::new_empty()).collect();
         for defect_vertex in syndrome_pattern.defect_vertices.iter() {
@@ -382,6 +385,7 @@ impl PartitionInfo {
 impl<'a> PartitionedSyndromePattern<'a> {
 
     /// partition the syndrome pattern into 2 partitioned syndrome pattern and my whole range
+    #[allow(clippy::unnecessary_cast)]
     pub fn partition(&self, partition_unit_info: &PartitionUnitInfo) -> (Self, (Self, Self)) {
         // first binary search the start of owning defect vertices
         let owning_start_index = {
@@ -425,6 +429,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
         }))
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn expand(&self) -> SyndromePattern {
         let mut defect_vertices = Vec::with_capacity(self.whole_defect_range.len());
         for defect_index in self.whole_defect_range.iter() {
@@ -489,6 +494,7 @@ pub struct PartitionedSolverInitializer {
 }
 
 /// perform index transformation
+#[allow(clippy::unnecessary_cast)]
 pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<VertexIndex>> {
     let mut old_to_new: Vec<Option<VertexIndex>> = (0..reordered_vertices.len()).map(|_| None).collect();
     for (new_index, old_index) in reordered_vertices.iter().enumerate() {
@@ -499,6 +505,7 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<Ver
 }
 
 /// translate defect vertices into the current new index given reordered_vertices
+#[allow(clippy::unnecessary_cast)]
 pub fn translated_defect_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
     old_defect_vertices.iter().map(|old_index| {

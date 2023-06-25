@@ -301,7 +301,7 @@ impl PrimalModuleParallel {
                         let streaming_decode_use_spin_lock = self.config.streaming_decode_use_spin_lock;
                         s.spawn_fifo(move |_| {
                             let ready_pair = ready_vec[unit_index].clone();
-                            let &(ref ready, ref condvar, ref spin_ready) = &*ready_pair;
+                            let (ready, condvar, spin_ready) = &*ready_pair;
                             if streaming_decode_use_spin_lock {
                                 let unit_ptr = units[unit_index].clone();
                                 if unit_index >= partition_info.config.partitions.len() {  // wait for children to complete
@@ -309,7 +309,7 @@ impl PrimalModuleParallel {
                                     let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
                                     for child_unit_index in [left_unit_index, right_unit_index] {
                                         let child_ready_pair = ready_vec[child_unit_index].clone();
-                                        let &(_, _, ref child_spin_ready) = &*child_ready_pair;
+                                        let (_, _, child_spin_ready) = &*child_ready_pair;
                                         while child_spin_ready.load(Ordering::SeqCst) != 1 {  // hopefully this asserts false at the beginning
                                             std::hint::spin_loop();
                                             // println!("spin_loop");
@@ -327,7 +327,7 @@ impl PrimalModuleParallel {
                                     let (left_unit_index, right_unit_index) = partition_info.config.fusions[fusion_index];
                                     for child_unit_index in [left_unit_index, right_unit_index] {
                                         let child_ready_pair = ready_vec[child_unit_index].clone();
-                                        let &(ref child_ready, ref child_condvar, _) = &*child_ready_pair;
+                                        let (child_ready, child_condvar, _) = &*child_ready_pair;
                                         let mut child_is_ready = child_ready.lock().unwrap();
                                         while !*child_is_ready {  // hopefully this asserts false at the beginning
                                             child_is_ready = child_condvar.wait(child_is_ready).unwrap();
@@ -412,6 +412,7 @@ impl PrimalModuleParallelUnitPtr {
     }
 
     /// call this only if children is guaranteed to be ready and solved
+    #[allow(clippy::unnecessary_cast)]
     fn children_ready_solve<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(&self, primal_module_parallel: &PrimalModuleParallel
                 , partitioned_syndrome_pattern: PartitionedSyndromePattern, parallel_dual_module: &DualModuleParallel<DualSerialModule>, callback: &mut Option<&mut F>)
             where F: FnMut(&DualModuleInterfacePtr, &DualModuleParallelUnit<DualSerialModule>, &PrimalModuleSerialPtr, Option<&GroupMaxUpdateLength>) {
@@ -526,6 +527,7 @@ impl PrimalModuleParallelUnit {
     }
 
     /// break the matched pairs of interface vertices
+    #[allow(clippy::unnecessary_cast)]
     pub fn break_matching_with_mirror(&mut self, dual_module: &mut impl DualModuleImpl) {
         // use `possible_break` to efficiently break those
         let mut possible_break = vec![];

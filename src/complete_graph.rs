@@ -31,6 +31,7 @@ pub struct CompleteGraphVertex {
 impl CompleteGraph {
 
     /// create complete graph given skeleton graph
+    #[allow(clippy::unnecessary_cast)]
     pub fn new(vertex_num: VertexNum, weighted_edges: &[(VertexIndex, VertexIndex, Weight)]) -> Self {
         let mut vertices: Vec<CompleteGraphVertex> = (0..vertex_num).map(|_| CompleteGraphVertex { edges: BTreeMap::new(), timestamp: 0, }).collect();
         for &(i, j, weight) in weighted_edges.iter() {
@@ -47,6 +48,7 @@ impl CompleteGraph {
     }
 
     /// reset any temporary changes like erasure edges
+    #[allow(clippy::unnecessary_cast)]
     pub fn reset(&mut self) {
         // recover erasure edges
         while self.edge_modifier.has_modified_edges() {
@@ -60,6 +62,7 @@ impl CompleteGraph {
         }
     }
 
+    #[allow(clippy::unnecessary_cast)]
     fn load_edge_modifier(&mut self, edge_modifier: &[(EdgeIndex, Weight)]) {
         assert!(!self.edge_modifier.has_modified_edges(), "the current erasure modifier is not clean, probably forget to clean the state?");
         for (edge_index, target_weight) in edge_modifier.iter() {
@@ -80,11 +83,12 @@ impl CompleteGraph {
     }
 
     pub fn load_dynamic_weights(&mut self, dynamic_weights: &[(EdgeIndex, Weight)]) {
-        let edge_modifier: Vec<_> = dynamic_weights.iter().cloned().collect();
+        let edge_modifier = dynamic_weights.to_vec();
         self.load_edge_modifier(&edge_modifier);
     }
 
     /// invalidate Dijkstra's algorithm state from previous call
+    #[allow(clippy::unnecessary_cast)]
     pub fn invalidate_previous_dijkstra(&mut self) -> usize {
         if self.active_timestamp == FastClearTimestamp::MAX {  // rarely happens
             self.active_timestamp = 0;
@@ -97,6 +101,7 @@ impl CompleteGraph {
     }
 
     /// get all complete graph edges from the specific vertex, but will terminate if `terminate` vertex is found
+    #[allow(clippy::unnecessary_cast)]
     pub fn all_edges_with_terminate(&mut self, vertex: VertexIndex, terminate: VertexIndex) -> BTreeMap<VertexIndex, (VertexIndex, Weight)> {
         let active_timestamp = self.invalidate_previous_dijkstra();
         let mut pq = PriorityQueue::<EdgeIndex, PriorityElement>::new();
@@ -189,6 +194,7 @@ pub struct PrebuiltCompleteGraph {
 
 impl PrebuiltCompleteGraph {
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn new_threaded(initializer: &SolverInitializer, thread_pool_size: usize) -> Self {
         let mut thread_pool_builder = rayon::ThreadPoolBuilder::new();
         if thread_pool_size != 0 {
@@ -201,7 +207,8 @@ impl PrebuiltCompleteGraph {
         for &virtual_vertex in initializer.virtual_vertices.iter() {
             is_virtual[virtual_vertex as usize] = true;
         }
-        let mut results: Vec<(BTreeMap<VertexIndex, Weight>, Option<(VertexIndex, Weight)>)> = vec![];
+        type Result = (BTreeMap<VertexIndex, Weight>, Option<(VertexIndex, Weight)>);
+        let mut results: Vec<Result> = vec![];
         thread_pool.scope(|_| {
             (0..vertex_num).into_par_iter().map(|vertex_index| {
                 let mut complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);
@@ -224,7 +231,8 @@ impl PrebuiltCompleteGraph {
             }).collect_into_vec(&mut results);
         });
         // optimization: remove edges in the middle
-        let (mut edges, virtual_boundary_weight): (Vec<BTreeMap<VertexIndex, Weight>>, Vec<Option<(VertexIndex, Weight)>>) = results.into_iter().unzip();
+        type UnzipResult = (Vec<BTreeMap<VertexIndex, Weight>>, Vec<Option<(VertexIndex, Weight)>>);
+        let (mut edges, virtual_boundary_weight): UnzipResult = results.into_iter().unzip();
         let mut to_be_removed_vec: Vec<Vec<VertexIndex>> = vec![];
         thread_pool.scope(|_| {
             (0..vertex_num).into_par_iter().map(|vertex_index| {
@@ -233,10 +241,8 @@ impl PrebuiltCompleteGraph {
                     for (&peer, &weight) in edges[vertex_index].iter() {
                         let boundary_weight = if let Some((_, weight)) = virtual_boundary_weight[vertex_index as usize] { weight } else { Weight::MAX };
                         let boundary_weight_peer = if let Some((_, weight)) = virtual_boundary_weight[peer as usize] { weight } else { Weight::MAX };
-                        if boundary_weight != Weight::MAX && boundary_weight_peer != Weight::MAX {
-                            if weight > boundary_weight + boundary_weight_peer {
-                                to_be_removed.push(peer);
-                            }
+                        if boundary_weight != Weight::MAX && boundary_weight_peer != Weight::MAX && weight > boundary_weight + boundary_weight_peer {
+                            to_be_removed.push(peer);
                         }
                     }
                 }
@@ -259,12 +265,14 @@ impl PrebuiltCompleteGraph {
         Self::new_threaded(initializer, 1)
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_edge_weight(&self, vertex_1: VertexIndex, vertex_2: VertexIndex) -> Option<Weight> {
         self.edges[vertex_1 as usize].get(&vertex_2).cloned()
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn get_boundary_weight(&self, vertex_index: VertexIndex) -> Option<(VertexIndex, Weight)> {
-        self.virtual_boundary_weight[vertex_index as usize].clone()
+        self.virtual_boundary_weight[vertex_index as usize]
     }
 
 }
