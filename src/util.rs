@@ -66,10 +66,20 @@ pub struct SyndromePattern {
     /// note that erasure decoding can also be implemented using `dynamic_weights`,
     /// but for user convenience we keep this interface
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    #[serde(default = "default_erasures")]
     pub erasures: Vec<EdgeIndex>,
     /// general dynamically weighted edges
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    #[serde(default = "default_dynamic_weights")]
     pub dynamic_weights: Vec<(EdgeIndex, Weight)>,
+}
+
+pub fn default_dynamic_weights() -> Vec<(EdgeIndex, Weight)> {
+    vec![]
+}
+
+pub fn default_erasures() -> Vec<EdgeIndex> {
+    vec![]
 }
 
 impl SyndromePattern {
