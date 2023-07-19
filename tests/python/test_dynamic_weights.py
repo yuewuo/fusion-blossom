@@ -75,7 +75,8 @@ def prepare_repetition_code_solver(measure_weight: int) -> Tuple[fb.SolverSerial
     initializer = fb.SolverInitializer(
         vertex_num, weighted_edges, virtual_vertices)
     # also initialize visualizer
-    positions = [fb.VisualizePosition(i // 4, i % 4, 0)
+    scale = 3
+    positions = [fb.VisualizePosition((i // 4) * scale, (i % 4) * scale, 0)
                  for i in range(vertex_num)]
     git_root_dir = subprocess.run("git rev-parse --show-toplevel",
                                   cwd=os.path.dirname(
