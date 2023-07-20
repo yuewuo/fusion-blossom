@@ -99,3 +99,7 @@ def test_repetition_code():
         solver, visualizer = prepare_repetition_code_solver(measure_weight)
         solver.solve_visualizer(fb.SyndromePattern([5, 2]), visualizer)
         solver.subgraph(visualizer)
+
+    solver, visualizer = prepare_repetition_code_solver(100)
+    solver.solve_visualizer(fb.SyndromePattern([]), visualizer)
+    solver.subgraph(visualizer)
