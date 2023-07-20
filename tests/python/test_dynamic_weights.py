@@ -75,7 +75,7 @@ def prepare_repetition_code_solver(measure_weight: int) -> Tuple[fb.SolverSerial
     initializer = fb.SolverInitializer(
         vertex_num, weighted_edges, virtual_vertices)
     # also initialize visualizer
-    scale = 3
+    scale = 1
     positions = [fb.VisualizePosition((i // 4) * scale, (i % 4) * scale, 0)
                  for i in range(vertex_num)]
     git_root_dir = subprocess.run("git rev-parse --show-toplevel",
@@ -95,7 +95,7 @@ def prepare_repetition_code_solver(measure_weight: int) -> Tuple[fb.SolverSerial
 
 
 def test_repetition_code():
-    for measure_weight in [20, 70, 100]:
+    for measure_weight in [80, 100, 120]:
         solver, visualizer = prepare_repetition_code_solver(measure_weight)
-        solver.solve_visualizer(fb.SyndromePattern([9, 2]), visualizer)
+        solver.solve_visualizer(fb.SyndromePattern([5, 2]), visualizer)
         solver.subgraph(visualizer)
