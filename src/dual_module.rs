@@ -216,7 +216,7 @@ impl GroupMaxUpdateLength {
             },
             Self::Conflicts((list, pending_stops)) => {
                 if let Self::Conflicts((other_list, other_pending_stops)) = other {
-                    list.extend(other_list.into_iter());
+                    list.extend(other_list);
                     for (_, max_update_length) in other_pending_stops.into_iter() {
                         Self::add_pending_stop(list, pending_stops, max_update_length);
                     }

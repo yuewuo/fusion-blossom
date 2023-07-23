@@ -581,11 +581,13 @@ pub mod tests {
         let partition_info = partition_config.info();
         let mut dual_module =
             DualModuleParallel::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
-        let mut primal_config = PrimalModuleParallelConfig::default();
-        primal_config.debug_sequential = true;
+        let primal_config = PrimalModuleParallelConfig {
+            debug_sequential: true,
+            ..Default::default()
+        };
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
         code.set_defect_vertices(&defect_vertices);
-        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, visualizer.as_mut());
         let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
         let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -643,7 +645,7 @@ pub mod tests {
     #[test]
     fn example_partition_basic_1() {
         // cargo test example_partition_basic_1 -- --nocapture
-        let visualize_filename = format!("example_partition_basic_1.json");
+        let visualize_filename = "example_partition_basic_1.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         example_partition_standard_syndrome(
@@ -660,7 +662,7 @@ pub mod tests {
     #[test]
     fn example_partition_basic_2() {
         // cargo test example_partition_basic_2 -- --nocapture
-        let visualize_filename = format!("example_partition_basic_2.json");
+        let visualize_filename = "example_partition_basic_2.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         example_partition_standard_syndrome(
@@ -677,7 +679,7 @@ pub mod tests {
     #[test]
     fn example_partition_basic_3() {
         // cargo test example_partition_basic_3 -- --nocapture
-        let visualize_filename = format!("example_partition_basic_3.json");
+        let visualize_filename = "example_partition_basic_3.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![2, 3, 4, 5, 6, 7, 8]; // indices are before the reorder
         let half_weight = 500;
@@ -698,7 +700,7 @@ pub mod tests {
     #[test]
     fn example_partition_basic_4() {
         // cargo test example_partition_basic_4 -- --nocapture
-        let visualize_filename = format!("example_partition_basic_4.json");
+        let visualize_filename = "example_partition_basic_4.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -720,7 +722,7 @@ pub mod tests {
     #[test]
     fn example_partition_basic_5() {
         // cargo test example_partition_basic_5 -- --nocapture
-        let visualize_filename = format!("example_partition_basic_5.json");
+        let visualize_filename = "example_partition_basic_5.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![352, 365]; // indices are before the reorder
         let half_weight = 500;
@@ -739,7 +741,7 @@ pub mod tests {
     #[test]
     fn example_partition_demo_1() {
         // cargo test example_partition_demo_1 -- --nocapture
-        let visualize_filename = format!("example_partition_demo_1.json");
+        let visualize_filename = "example_partition_demo_1.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![
             57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884,
@@ -763,7 +765,7 @@ pub mod tests {
     #[test]
     fn example_partition_demo_2() {
         // cargo test example_partition_demo_2 -- --nocapture
-        let visualize_filename = format!("example_partition_demo_2.json");
+        let visualize_filename = "example_partition_demo_2.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![
             57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884,
@@ -787,7 +789,7 @@ pub mod tests {
     #[test]
     fn example_partition_demo_3() {
         // cargo test example_partition_demo_3 -- --nocapture
-        let visualize_filename = format!("example_partition_demo_3.json");
+        let visualize_filename = "example_partition_demo_3.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![
             57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884,
@@ -811,7 +813,7 @@ pub mod tests {
     #[test]
     fn example_partition_demo_4() {
         // cargo test example_partition_demo_4 -- --nocapture
-        let visualize_filename = format!("example_partition_demo_4.json");
+        let visualize_filename = "example_partition_demo_4.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![
             57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884,
@@ -835,7 +837,7 @@ pub mod tests {
     #[test]
     fn example_partition_demo_5() {
         // cargo test example_partition_demo_5 -- --nocapture
-        let visualize_filename = format!("example_partition_demo_5.json");
+        let visualize_filename = "example_partition_demo_5.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![
             57, 113, 289, 304, 305, 331, 345, 387, 485, 493, 528, 536, 569, 570, 587, 588, 696, 745, 801, 833, 834, 884,

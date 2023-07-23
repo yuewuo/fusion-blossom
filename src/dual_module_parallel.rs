@@ -1453,7 +1453,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_1() {
         // cargo test dual_module_parallel_basic_1 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_basic_1.json");
+        let visualize_filename = "dual_module_parallel_basic_1.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         dual_module_parallel_standard_syndrome(
@@ -1472,7 +1472,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_2() {
         // cargo test dual_module_parallel_basic_2 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_basic_2.json");
+        let visualize_filename = "dual_module_parallel_basic_2.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         dual_module_parallel_standard_syndrome(
@@ -1497,7 +1497,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_3() {
         // cargo test dual_module_parallel_basic_3 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_basic_3.json");
+        let visualize_filename = "dual_module_parallel_basic_3.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         dual_module_parallel_standard_syndrome(
@@ -1522,7 +1522,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_4() {
         // cargo test dual_module_parallel_basic_4 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_basic_4.json");
+        let visualize_filename = "dual_module_parallel_basic_4.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -1540,7 +1540,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1), (2, 3), (4, 5)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 let split_horizontal = 6;
                 let split_vertical = 5;
@@ -1587,7 +1587,7 @@ pub mod tests {
                     reordered_vertices.push(i * 12 + 10);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1595,7 +1595,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_basic_5() {
         // cargo test dual_module_parallel_basic_5 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_basic_5.json");
+        let visualize_filename = "dual_module_parallel_basic_5.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -1613,7 +1613,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1), (2, 3), (4, 5)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 let split_horizontal = 5;
                 let split_vertical = 4;
@@ -1660,7 +1660,7 @@ pub mod tests {
                     reordered_vertices.push(i * 12 + 10);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1684,7 +1684,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 for j in 0..split_vertical {
                     reordered_vertices.push(j);
@@ -1694,7 +1694,7 @@ pub mod tests {
                     reordered_vertices.push(j);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1702,7 +1702,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_1() {
         // cargo test dual_module_parallel_debug_1 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_1.json");
+        let visualize_filename = "dual_module_parallel_debug_1.json".to_string();
         let defect_vertices = vec![2, 3, 4, 5, 6, 7, 8]; // indices are before the reorder
         dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 5);
     }
@@ -1716,7 +1716,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_2() {
         // cargo test dual_module_parallel_debug_2 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_2.json");
+        let visualize_filename = "dual_module_parallel_debug_2.json".to_string();
         let defect_vertices = vec![5, 6, 7]; // indices are before the reorder
         dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 4);
     }
@@ -1725,7 +1725,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_3() {
         // cargo test dual_module_parallel_debug_3 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_3.json");
+        let visualize_filename = "dual_module_parallel_debug_3.json".to_string();
         let defect_vertices = vec![3, 5, 7]; // indices are before the reorder
         dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 5);
     }
@@ -1735,7 +1735,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_4() {
         // cargo test dual_module_parallel_debug_4 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_4.json");
+        let visualize_filename = "dual_module_parallel_debug_4.json".to_string();
         let defect_vertices = vec![2, 3, 5, 6, 7]; // indices are before the reorder
         dual_module_parallel_debug_repetition_code_common(11, visualize_filename, defect_vertices, 5);
     }
@@ -1745,7 +1745,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_5() {
         // cargo test dual_module_parallel_debug_5 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_5.json");
+        let visualize_filename = "dual_module_parallel_debug_5.json".to_string();
         let defect_vertices = vec![0, 4, 7, 8, 9, 11]; // indices are before the reorder
         dual_module_parallel_debug_repetition_code_common(15, visualize_filename, defect_vertices, 7);
     }
@@ -1781,7 +1781,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_6() {
         // cargo test dual_module_parallel_debug_6 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_6.json");
+        let visualize_filename = "dual_module_parallel_debug_6.json".to_string();
         let defect_vertices = vec![10, 11, 13, 32, 36, 37, 40, 44]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(7, visualize_filename, defect_vertices, 5);
     }
@@ -1791,7 +1791,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_7() {
         // cargo test dual_module_parallel_debug_7 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_7.json");
+        let visualize_filename = "dual_module_parallel_debug_7.json".to_string();
         let defect_vertices = vec![3, 12, 21, 24, 27, 28, 33, 35, 36, 43, 50, 51]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(7, visualize_filename, defect_vertices, 10);
     }
@@ -1800,7 +1800,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_8() {
         // cargo test dual_module_parallel_debug_8 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_8.json");
+        let visualize_filename = "dual_module_parallel_debug_8.json".to_string();
         let defect_vertices = vec![1, 2, 3, 4, 9, 10, 13, 16, 17, 19, 24, 29, 33, 36, 37, 44, 48, 49, 51, 52]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(7, visualize_filename, defect_vertices, 13);
     }
@@ -1810,7 +1810,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_9() {
         // cargo test dual_module_parallel_debug_9 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_9.json");
+        let visualize_filename = "dual_module_parallel_debug_9.json".to_string();
         let defect_vertices = vec![60, 61, 72, 74, 84, 85, 109]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(11, visualize_filename, defect_vertices, 6);
     }
@@ -1820,7 +1820,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_10() {
         // cargo test dual_module_parallel_debug_10 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_10.json");
+        let visualize_filename = "dual_module_parallel_debug_10.json".to_string();
         let defect_vertices = vec![145, 146, 165, 166, 183, 185, 203, 204, 205, 225, 264]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(19, visualize_filename, defect_vertices, 11);
     }
@@ -1832,7 +1832,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_11() {
         // cargo test dual_module_parallel_debug_11 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_11.json");
+        let visualize_filename = "dual_module_parallel_debug_11.json".to_string();
         let defect_vertices = vec![192, 193, 194, 212, 214, 232, 233]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(19, visualize_filename, defect_vertices, 7);
     }
@@ -1842,7 +1842,7 @@ pub mod tests {
     #[test]
     fn dual_module_parallel_debug_12() {
         // cargo test dual_module_parallel_debug_12 -- --nocapture
-        let visualize_filename = format!("dual_module_parallel_debug_12.json");
+        let visualize_filename = "dual_module_parallel_debug_12.json".to_string();
         let defect_vertices = vec![197, 216, 235, 275, 296, 316]; // indices are before the reorder
         dual_module_parallel_debug_planar_code_common(19, visualize_filename, defect_vertices, 5);
     }

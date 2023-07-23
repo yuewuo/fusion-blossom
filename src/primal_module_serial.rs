@@ -1905,7 +1905,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_1() {
         // cargo test primal_module_serial_basic_1 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_1.json");
+        let visualize_filename = "primal_module_serial_basic_1.json".to_string();
         let defect_vertices = vec![18, 26, 34];
         primal_module_serial_basic_standard_syndrome(7, visualize_filename, defect_vertices, 4);
     }
@@ -1914,7 +1914,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_2() {
         // cargo test primal_module_serial_basic_2 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_2.json");
+        let visualize_filename = "primal_module_serial_basic_2.json".to_string();
         let defect_vertices = vec![16];
         primal_module_serial_basic_standard_syndrome(7, visualize_filename, defect_vertices, 1);
     }
@@ -1923,7 +1923,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_3() {
         // cargo test primal_module_serial_basic_3 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_3.json");
+        let visualize_filename = "primal_module_serial_basic_3.json".to_string();
         let defect_vertices = vec![16, 26];
         primal_module_serial_basic_standard_syndrome(7, visualize_filename, defect_vertices, 3);
     }
@@ -1932,7 +1932,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_4() {
         // cargo test primal_module_serial_basic_4 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_4.json");
+        let visualize_filename = "primal_module_serial_basic_4.json".to_string();
         let defect_vertices = vec![16, 52, 65, 76, 112];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 10);
     }
@@ -1941,7 +1941,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_5() {
         // cargo test primal_module_serial_basic_5 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_5.json");
+        let visualize_filename = "primal_module_serial_basic_5.json".to_string();
         let defect_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87, 67];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 6);
     }
@@ -1950,7 +1950,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_6() {
         // cargo test primal_module_serial_basic_6 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_6.json");
+        let visualize_filename = "primal_module_serial_basic_6.json".to_string();
         let defect_vertices = vec![39, 51, 61, 62, 63, 64, 65, 75, 87];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 6);
     }
@@ -1959,7 +1959,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_7() {
         // cargo test primal_module_serial_basic_7 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_7.json");
+        let visualize_filename = "primal_module_serial_basic_7.json".to_string();
         let defect_vertices = vec![37, 61, 63, 66, 68, 44];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 7);
     }
@@ -1968,7 +1968,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_8() {
         // cargo test primal_module_serial_basic_8 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_8.json");
+        let visualize_filename = "primal_module_serial_basic_8.json".to_string();
         let defect_vertices = vec![61, 64, 67];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 5);
     }
@@ -1977,7 +1977,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_9() {
         // cargo test primal_module_serial_basic_9 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_9.json");
+        let visualize_filename = "primal_module_serial_basic_9.json".to_string();
         let defect_vertices = vec![60, 63, 66, 30];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 6);
     }
@@ -1986,7 +1986,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_10() {
         // cargo test primal_module_serial_basic_10 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_10.json");
+        let visualize_filename = "primal_module_serial_basic_10.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 9);
     }
@@ -2005,7 +2005,7 @@ pub mod tests {
     #[test]
     fn primal_module_serial_basic_11() {
         // cargo test primal_module_serial_basic_11 -- --nocapture
-        let visualize_filename = format!("primal_module_serial_basic_11.json");
+        let visualize_filename = "primal_module_serial_basic_11.json".to_string();
         let defect_vertices = vec![
             13, 29, 52, 53, 58, 60, 71, 74, 76, 87, 96, 107, 112, 118, 121, 122, 134, 137, 141, 145, 152, 153, 154, 156,
             157, 169, 186, 202, 203, 204, 230, 231,
@@ -2017,7 +2017,7 @@ pub mod tests {
     #[test]
     fn primal_module_debug_1() {
         // cargo test primal_module_debug_1 -- --nocapture
-        let visualize_filename = format!("primal_module_debug_1.json");
+        let visualize_filename = "primal_module_debug_1.json".to_string();
         let defect_vertices = vec![
             34, 35, 84, 89, 92, 100, 141, 145, 149, 164, 193, 201, 205, 220, 235, 242, 243, 260, 261, 290, 300, 308, 309,
             315, 317,
@@ -2083,7 +2083,7 @@ pub mod tests {
     #[test]
     fn primal_module_debug_2() {
         // cargo test primal_module_debug_2 -- --nocapture
-        let visualize_filename = format!("primal_module_debug_2.json");
+        let visualize_filename = "primal_module_debug_2.json".to_string();
         let defect_vertices = vec![
             7, 8, 10, 22, 23, 24, 25, 37, 38, 39, 40, 42, 43, 69, 57, 59, 60, 72, 76, 93, 109, 121, 123, 125, 135, 136, 137,
             138, 139, 140, 141, 150, 151, 153, 154, 155, 166, 171, 172, 181, 183, 184, 188, 200, 204, 219, 233,
@@ -2148,7 +2148,7 @@ pub mod tests {
     #[test]
     fn primal_module_debug_3() {
         // cargo test primal_module_debug_3 -- --nocapture
-        let visualize_filename = format!("primal_module_debug_3.json");
+        let visualize_filename = "primal_module_debug_3.json".to_string();
         let defect_vertices = vec![
             17, 34, 36, 54, 55, 74, 95, 96, 112, 113, 114, 115, 116, 130, 131, 132, 134, 150, 151, 154, 156, 171, 172, 173,
             190,
@@ -2213,7 +2213,7 @@ pub mod tests {
     #[test]
     fn primal_module_debug_4() {
         // cargo test primal_module_debug_4 -- --nocapture
-        let visualize_filename = format!("primal_module_debug_4.json");
+        let visualize_filename = "primal_module_debug_4.json".to_string();
         let defect_vertices = vec![1, 3, 6, 8, 9, 11, 13];
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(15, 0.499, max_half_weight);
@@ -2275,7 +2275,7 @@ pub mod tests {
     #[test]
     fn primal_module_debug_5() {
         // cargo test primal_module_debug_5 -- --nocapture
-        let visualize_filename = format!("primal_module_debug_5.json");
+        let visualize_filename = "primal_module_debug_5.json".to_string();
         let defect_vertices = vec![0, 1, 3, 8, 9];
         let max_half_weight = 500;
         let mut code = CodeCapacityRepetitionCode::new(11, 0.03, max_half_weight);
@@ -2348,9 +2348,9 @@ pub mod tests {
     #[test]
     fn primal_module_debug_6() {
         // cargo test primal_module_debug_6 -- --nocapture
-        let visualize_filename = format!("primal_module_debug_6.json");
+        let visualize_filename = "primal_module_debug_6.json".to_string();
         let defect_vertices = vec![13, 34, 87, 107, 276, 296];
-        let erasures = vec![13, 33, 174, 516];
+        let erasures = [13, 33, 174, 516];
         let max_half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(19, 0., max_half_weight);
         code.set_erasure_probability(0.003);

@@ -1315,7 +1315,7 @@ mod tests {
             true,
         )
         .unwrap();
-        visualizer.snapshot(format!("code"), code).unwrap();
+        visualizer.snapshot("code".to_string(), code).unwrap();
         for round in 0..3 {
             code.generate_random_errors(round);
             visualizer.snapshot(format!("syndrome {}", round + 1), code).unwrap();
@@ -1327,7 +1327,7 @@ mod tests {
         // cargo test example_code_capacity_repetition_code -- --nocapture
         let mut code = CodeCapacityRepetitionCode::new(7, 0.2, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_code_capacity_repetition_code.json"));
+        visualize_code(&mut code, "example_code_capacity_repetition_code.json".to_string());
     }
 
     #[test]
@@ -1335,7 +1335,7 @@ mod tests {
         // cargo test example_code_capacity_planar_code -- --nocapture
         let mut code = CodeCapacityPlanarCode::new(7, 0.1, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_code_capacity_planar_code.json"));
+        visualize_code(&mut code, "example_code_capacity_planar_code.json".to_string());
     }
 
     #[test]
@@ -1343,7 +1343,7 @@ mod tests {
         // cargo test example_phenomenological_planar_code -- --nocapture
         let mut code = PhenomenologicalPlanarCode::new(7, 7, 0.01, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_phenomenological_planar_code.json"));
+        visualize_code(&mut code, "example_phenomenological_planar_code.json".to_string());
     }
 
     #[test]
@@ -1351,7 +1351,7 @@ mod tests {
         // cargo test example_large_phenomenological_planar_code -- --nocapture
         let mut code = PhenomenologicalPlanarCode::new(7, 30, 0.01, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_large_phenomenological_planar_code.json"));
+        visualize_code(&mut code, "example_large_phenomenological_planar_code.json".to_string());
     }
 
     #[test]
@@ -1359,7 +1359,7 @@ mod tests {
         // cargo test example_circuit_level_planar_code -- --nocapture
         let mut code = CircuitLevelPlanarCode::new(7, 7, 0.01, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_circuit_level_planar_code.json"));
+        visualize_code(&mut code, "example_circuit_level_planar_code.json".to_string());
     }
 
     #[test]
@@ -1367,7 +1367,7 @@ mod tests {
         // cargo test example_code_capacity_rotated_code -- --nocapture
         let mut code = CodeCapacityRotatedCode::new(5, 0.1, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_code_capacity_rotated_code.json"));
+        visualize_code(&mut code, "example_code_capacity_rotated_code.json".to_string());
     }
 
     #[test]
@@ -1375,6 +1375,6 @@ mod tests {
         // cargo test example_code_phenomenological_rotated_code -- --nocapture
         let mut code = PhenomenologicalRotatedCode::new(5, 5, 0.01, 500);
         code.sanity_check().unwrap();
-        visualize_code(&mut code, format!("example_code_phenomenological_rotated_code.json"));
+        visualize_code(&mut code, "example_code_phenomenological_rotated_code.json".to_string());
     }
 }

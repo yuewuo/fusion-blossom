@@ -280,7 +280,7 @@ impl PrimalModuleParallel {
     pub fn parallel_solve<DualSerialModule: DualModuleImpl + Send + Sync>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
-        parallel_dual_module: &mut DualModuleParallel<DualSerialModule>,
+        parallel_dual_module: &DualModuleParallel<DualSerialModule>,
     ) {
         self.parallel_solve_step_callback(syndrome_pattern, parallel_dual_module, |_, _, _, _| {})
     }
@@ -288,7 +288,7 @@ impl PrimalModuleParallel {
     pub fn parallel_solve_visualizer<DualSerialModule: DualModuleImpl + Send + Sync + FusionVisualizer>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
-        parallel_dual_module: &mut DualModuleParallel<DualSerialModule>,
+        parallel_dual_module: &DualModuleParallel<DualSerialModule>,
         visualizer: Option<&mut Visualizer>,
     ) {
         if let Some(visualizer) = visualizer {
@@ -335,7 +335,7 @@ impl PrimalModuleParallel {
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
-        parallel_dual_module: &mut DualModuleParallel<DualSerialModule>,
+        parallel_dual_module: &DualModuleParallel<DualSerialModule>,
         mut callback: F,
     ) where
         F: FnMut(
@@ -802,11 +802,13 @@ pub mod tests {
         let partition_info = partition_config.info();
         let mut dual_module =
             DualModuleParallel::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
-        let mut primal_config = PrimalModuleParallelConfig::default();
-        primal_config.debug_sequential = true;
+        let primal_config = PrimalModuleParallelConfig {
+            debug_sequential: true,
+            ..Default::default()
+        };
         let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
         code.set_defect_vertices(&defect_vertices);
-        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, visualizer.as_mut());
         let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
         let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -867,7 +869,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_1() {
         // cargo test primal_module_parallel_basic_1 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_1.json");
+        let visualize_filename = "primal_module_parallel_basic_1.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         primal_module_parallel_standard_syndrome(
@@ -886,7 +888,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_2() {
         // cargo test primal_module_parallel_basic_2 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_2.json");
+        let visualize_filename = "primal_module_parallel_basic_2.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         primal_module_parallel_standard_syndrome(
@@ -911,7 +913,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_3() {
         // cargo test primal_module_parallel_basic_3 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_3.json");
+        let visualize_filename = "primal_module_parallel_basic_3.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         primal_module_parallel_standard_syndrome(
@@ -936,7 +938,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_4() {
         // cargo test primal_module_parallel_basic_4 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_4.json");
+        let visualize_filename = "primal_module_parallel_basic_4.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -954,7 +956,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1), (2, 3), (4, 5)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 let split_horizontal = 6;
                 let split_vertical = 5;
@@ -1001,7 +1003,7 @@ pub mod tests {
                     reordered_vertices.push(i * 12 + 10);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1009,7 +1011,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_5() {
         // cargo test primal_module_parallel_basic_5 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_5.json");
+        let visualize_filename = "primal_module_parallel_basic_5.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -1027,7 +1029,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1), (2, 3), (4, 5)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 let split_horizontal = 5;
                 let split_vertical = 4;
@@ -1074,7 +1076,7 @@ pub mod tests {
                     reordered_vertices.push(i * 12 + 10);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1111,7 +1113,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_debug_1() {
         // cargo test primal_module_parallel_debug_1 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_debug_1.json");
+        let visualize_filename = "primal_module_parallel_debug_1.json".to_string();
         let defect_vertices = vec![88, 89, 102, 103, 105, 106, 118, 120, 122, 134, 138]; // indices are before the reorder
         primal_module_parallel_debug_planar_code_common(15, visualize_filename, defect_vertices, 10);
     }

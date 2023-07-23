@@ -546,7 +546,7 @@ impl PrimalDualSolver for SolverParallel {
             self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
         }
         self.primal_module
-            .parallel_solve_visualizer(syndrome_pattern, &mut self.dual_module, visualizer);
+            .parallel_solve_visualizer(syndrome_pattern, &self.dual_module, visualizer);
     }
     fn perfect_matching_visualizer(&mut self, visualizer: Option<&mut Visualizer>) -> PerfectMatching {
         let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
