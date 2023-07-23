@@ -254,7 +254,7 @@ fn fusion_paper_example_partition() {
     };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
-    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, Some(&mut visualizer));
     let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
     let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
     let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -310,7 +310,7 @@ fn fusion_paper_large_demo() {
     };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
-    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, Some(&mut visualizer));
     let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
     let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
     let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -386,7 +386,7 @@ fn fusion_paper_example_partition_16() {
     };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
-    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, Some(&mut visualizer));
     let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
     let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
     let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -453,7 +453,7 @@ fn fusion_paper_example_partition_8() {
     };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
-    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, Some(&mut visualizer));
     let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
     let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
     let mut subgraph_builder = SubGraphBuilder::new(&initializer);
