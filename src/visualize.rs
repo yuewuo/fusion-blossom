@@ -856,6 +856,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unnecessary_cast)]
     fn visualize_example_syndrome_graph() {
         // cargo test visualize_example_syndrome_graph -- --nocapture
         let visualize_filename = "visualize_example_syndrome_graph.json".to_string();
@@ -879,7 +880,7 @@ mod tests {
         let syndrome_graph_positions: Vec<_> = kept_vertices
             .iter()
             .map(|i| {
-                let mut position = positions[*i].clone();
+                let mut position = positions[*i as usize].clone();
                 position.i -= ci;
                 position.j -= cj;
                 position
