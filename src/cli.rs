@@ -936,7 +936,7 @@ impl Verifier {
                 initializer: initializer.clone(),
                 subgraph_builder: SubGraphBuilder::new(initializer),
             }),
-            _ => unimplemented!(),
+            Self::FusionSerial => Box::new(VerifierFusionSerial::new(initializer)),
         }
     }
 }
@@ -950,7 +950,7 @@ pub trait ResultVerifier {
     );
 }
 
-struct VerifierNone {}
+pub struct VerifierNone {}
 
 impl ResultVerifier for VerifierNone {
     fn verify(
@@ -962,9 +962,24 @@ impl ResultVerifier for VerifierNone {
     }
 }
 
-struct VerifierBlossomV {
+pub struct VerifierBlossomV {
     initializer: SolverInitializer,
     subgraph_builder: SubGraphBuilder,
+}
+
+pub fn get_primal_dual_solver_total_weight(
+    primal_dual_solver: &mut Box<dyn PrimalDualSolver>,
+    syndrome_pattern: &SyndromePattern,
+    initializer: &SolverInitializer,
+) -> (PerfectMatching, Weight) {
+    let mwpm = primal_dual_solver.perfect_matching();
+    let legacy_mwpm = mwpm.legacy_get_mwpm_result(syndrome_pattern.defect_vertices.clone());
+    let fusion_details = super::detailed_matching(initializer, &syndrome_pattern.defect_vertices, &legacy_mwpm);
+    let mut total_weight = 0;
+    for detail in fusion_details.iter() {
+        total_weight += detail.weight;
+    }
+    (mwpm, total_weight)
 }
 
 impl ResultVerifier for VerifierBlossomV {
@@ -997,14 +1012,8 @@ impl ResultVerifier for VerifierBlossomV {
             "unexpected final dual variable sum"
         );
         // also construct the perfect matching from fusion blossom to compare them
-        let fusion_mwpm = primal_dual_solver.perfect_matching();
-        let fusion_mwpm_result = fusion_mwpm.legacy_get_mwpm_result(syndrome_pattern.defect_vertices.clone());
-        let fusion_details =
-            super::detailed_matching(&self.initializer, &syndrome_pattern.defect_vertices, &fusion_mwpm_result);
-        let mut fusion_total_weight = 0;
-        for detail in fusion_details.iter() {
-            fusion_total_weight += detail.weight;
-        }
+        let (fusion_mwpm, fusion_total_weight) =
+            get_primal_dual_solver_total_weight(primal_dual_solver, syndrome_pattern, &self.initializer);
         // compare with ground truth from the blossom V algorithm
         assert_eq!(
             fusion_total_weight, blossom_total_weight,
@@ -1025,6 +1034,53 @@ impl ResultVerifier for VerifierBlossomV {
             self.subgraph_builder.total_weight(),
             blossom_total_weight,
             "unexpected final dual variable sum"
+        );
+        if visualizer.is_some() {
+            primal_dual_solver.subgraph_visualizer(visualizer);
+        }
+    }
+}
+
+pub struct VerifierFusionSerial {
+    pub solver: SolverSerial,
+    pub initializer: SolverInitializer,
+    pub subgraph_builder: SubGraphBuilder,
+}
+
+impl VerifierFusionSerial {
+    pub fn new(initializer: &SolverInitializer) -> Self {
+        Self {
+            solver: SolverSerial::new(initializer),
+            initializer: initializer.clone(),
+            subgraph_builder: SubGraphBuilder::new(initializer),
+        }
+    }
+}
+
+impl ResultVerifier for VerifierFusionSerial {
+    #[allow(clippy::unnecessary_cast)]
+    fn verify(
+        &mut self,
+        primal_dual_solver: &mut Box<dyn PrimalDualSolver>,
+        syndrome_pattern: &SyndromePattern,
+        visualizer: Option<&mut Visualizer>,
+    ) {
+        self.solver.clear();
+        self.solver.solve_visualizer(syndrome_pattern, None);
+        let standard_total_weight = self.solver.sum_dual_variables();
+        assert_eq!(
+            primal_dual_solver.sum_dual_variables(),
+            standard_total_weight,
+            "unexpected final dual variable sum"
+        );
+        self.subgraph_builder.clear();
+        self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
+        let mwpm = primal_dual_solver.perfect_matching();
+        self.subgraph_builder.load_perfect_matching(&mwpm);
+        assert_eq!(
+            self.subgraph_builder.total_weight(),
+            standard_total_weight,
+            "unexpected perfect matching weight"
         );
         if visualizer.is_some() {
             primal_dual_solver.subgraph_visualizer(visualizer);
