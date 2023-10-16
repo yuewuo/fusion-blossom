@@ -8,6 +8,7 @@ use super::visualize::*;
 #[cfg(feature = "qecp_integrate")]
 use crate::qecp;
 use clap::{Parser, Subcommand, ValueEnum};
+use derivative::Derivative;
 use pbr::ProgressBar;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
@@ -16,7 +17,7 @@ use std::env;
 
 const TEST_EACH_ROUNDS: usize = 100;
 
-#[derive(Parser, Clone)]
+#[derive(Parser, Clone, Debug)]
 #[clap(author = clap::crate_authors!(", "))]
 #[clap(version = env!("CARGO_PKG_VERSION"))]
 #[clap(about = "Fusion Blossom Algorithm for fast Quantum Error Correction Decoding")]
@@ -26,73 +27,74 @@ const TEST_EACH_ROUNDS: usize = 100;
 #[clap(arg_required_else_help = true)]
 pub struct Cli {
     #[clap(subcommand)]
-    command: Commands,
+    pub command: Commands,
 }
 
-#[derive(Parser, Clone)]
+#[derive(Parser, Clone, Debug)]
 pub struct BenchmarkParameters {
     /// code distance
     #[clap(value_parser)]
-    d: VertexNum,
+    pub d: VertexNum,
     /// physical error rate: the probability of each edge to
     #[clap(value_parser)]
-    p: f64,
+    pub p: f64,
     /// rounds of noisy measurement, valid only when multiple rounds
     #[clap(short = 'e', long, default_value_t = 0.)]
-    pe: f64,
+    pub pe: f64,
     /// rounds of noisy measurement, valid only when multiple rounds
     #[clap(short = 'n', long, default_value_t = 0)]
-    noisy_measurements: VertexNum,
+    pub noisy_measurements: VertexNum,
     /// maximum half weight of edges
     #[clap(long, default_value_t = 500)]
-    max_half_weight: Weight,
+    pub max_half_weight: Weight,
     /// example code type
     #[clap(short = 'c', long, value_enum, default_value_t = ExampleCodeType::CodeCapacityPlanarCode)]
-    code_type: ExampleCodeType,
+    pub code_type: ExampleCodeType,
     /// the configuration of the code builder
     #[clap(long, default_value_t = ("{}").to_string())]
-    code_config: String,
+    pub code_config: String,
     /// logging to the default visualizer file at visualize/data/visualizer.json
     #[clap(long, action)]
-    enable_visualizer: bool,
+    pub enable_visualizer: bool,
     /// print syndrome patterns
     #[clap(long, action)]
-    print_syndrome_pattern: bool,
+    pub print_syndrome_pattern: bool,
     /// the method to verify the correctness of the decoding result
     #[clap(long, value_enum, default_value_t = Verifier::BlossomV)]
-    verifier: Verifier,
+    pub verifier: Verifier,
     /// the number of iterations to run
     #[clap(short = 'r', long, default_value_t = 1000)]
-    total_rounds: usize,
+    pub total_rounds: usize,
     /// select the combination of primal and dual module
     #[clap(short = 'p', long, value_enum, default_value_t = PrimalDualType::Serial)]
-    primal_dual_type: PrimalDualType,
+    pub primal_dual_type: PrimalDualType,
     /// the configuration of primal and dual module
     #[clap(long, default_value_t = ("{}").to_string())]
-    primal_dual_config: String,
+    pub primal_dual_config: String,
     /// partition strategy
     #[clap(long, value_enum, default_value_t = PartitionStrategy::None)]
-    partition_strategy: PartitionStrategy,
+    pub partition_strategy: PartitionStrategy,
     /// the configuration of the partition strategy
     #[clap(long, default_value_t = ("{}").to_string())]
-    partition_config: String,
+    pub partition_config: String,
     /// message on the progress bar
     #[clap(long, default_value_t = format!(""))]
-    pb_message: String,
+    pub pb_message: String,
     /// use deterministic seed for debugging purpose
     #[clap(long, action)]
-    use_deterministic_seed: bool,
+    pub use_deterministic_seed: bool,
     /// the benchmark profile output file path
     #[clap(long)]
-    benchmark_profiler_output: Option<String>,
+    pub benchmark_profiler_output: Option<String>,
     /// skip some iterations, useful when debugging
     #[clap(long, default_value_t = 0)]
-    starting_iteration: usize,
+    pub starting_iteration: usize,
 }
 
-#[derive(Subcommand, Clone)]
+#[derive(Subcommand, Clone, Derivative)]
 #[allow(clippy::large_enum_variant)]
-enum Commands {
+#[derivative(Debug)]
+pub enum Commands {
     /// benchmark the speed (and also correctness if enabled)
     Benchmark(BenchmarkParameters),
     #[cfg(feature = "qecp_integrate")]
@@ -104,8 +106,8 @@ enum Commands {
     },
 }
 
-#[derive(Subcommand, Clone)]
-enum TestCommands {
+#[derive(Subcommand, Clone, Debug)]
+pub enum TestCommands {
     /// test serial implementation
     Serial {
         /// print out the command to test
@@ -221,109 +223,146 @@ pub enum Verifier {
     FusionSerial,
 }
 
+pub struct RunnableBenchmarkParameters {
+    pub code: Box<dyn ExampleCode>,
+    pub primal_dual_solver: Box<dyn PrimalDualSolver>,
+    pub result_verifier: Box<dyn ResultVerifier>,
+    pub benchmark_profiler: BenchmarkProfiler,
+    pub parameters: BenchmarkParameters,
+}
+
+impl From<BenchmarkParameters> for RunnableBenchmarkParameters {
+    fn from(parameters: BenchmarkParameters) -> Self {
+        let BenchmarkParameters {
+            d,
+            p,
+            pe,
+            noisy_measurements,
+            max_half_weight,
+            code_type,
+            enable_visualizer,
+            verifier,
+            primal_dual_type,
+            partition_strategy,
+            primal_dual_config,
+            code_config,
+            partition_config,
+            benchmark_profiler_output,
+            ..
+        } = parameters.clone();
+        let code_config: serde_json::Value = serde_json::from_str(&code_config).unwrap();
+        let primal_dual_config: serde_json::Value = serde_json::from_str(&primal_dual_config).unwrap();
+        let partition_config: serde_json::Value = serde_json::from_str(&partition_config).unwrap();
+        // check for dependency early
+        if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
+            panic!("need blossom V library, see README.md")
+        }
+        let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight, code_config);
+        if pe != 0. {
+            code.set_erasure_probability(pe);
+        }
+        if enable_visualizer {
+            // print visualizer file path only once
+            print_visualize_link(static_visualize_data_filename());
+        }
+        // create initializer and solver
+        let (initializer, partition_config) = partition_strategy.build(&mut *code, d, noisy_measurements, partition_config);
+        let partition_info = partition_config.info();
+        let primal_dual_solver = primal_dual_type.build(&initializer, &partition_info, &*code, primal_dual_config);
+        let benchmark_profiler =
+            BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, &partition_info)));
+        let result_verifier = verifier.build(&initializer);
+        Self {
+            code,
+            primal_dual_solver,
+            result_verifier,
+            benchmark_profiler,
+            parameters,
+        }
+    }
+}
+
+impl RunnableBenchmarkParameters {
+    pub fn run(self) {
+        let Self {
+            mut code,
+            mut primal_dual_solver,
+            mut result_verifier,
+            mut benchmark_profiler,
+            parameters:
+                BenchmarkParameters {
+                    starting_iteration,
+                    total_rounds,
+                    use_deterministic_seed,
+                    print_syndrome_pattern,
+                    pb_message,
+                    enable_visualizer,
+                    ..
+                },
+        } = self;
+        // whether to disable progress bar, useful when running jobs in background
+        let disable_progress_bar = env::var("DISABLE_PROGRESS_BAR").is_ok();
+        // prepare progress bar display
+        let mut pb = if !disable_progress_bar {
+            let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
+            pb.message(format!("{pb_message} ").as_str());
+            Some(pb)
+        } else {
+            if !pb_message.is_empty() {
+                print!("{pb_message} ");
+            }
+            None
+        };
+        let mut rng = thread_rng();
+        for round in (starting_iteration as u64)..(total_rounds as u64) {
+            pb.as_mut().map(|pb| pb.set(round));
+            let seed = if use_deterministic_seed { round } else { rng.gen() };
+            let syndrome_pattern = code.generate_random_errors(seed);
+            if print_syndrome_pattern {
+                println!("syndrome_pattern: {:?}", syndrome_pattern);
+            }
+            // create a new visualizer each round
+            let mut visualizer = None;
+            if enable_visualizer {
+                let new_visualizer = Visualizer::new(
+                    Some(visualize_data_folder() + static_visualize_data_filename().as_str()),
+                    code.get_positions(),
+                    true,
+                )
+                .unwrap();
+                visualizer = Some(new_visualizer);
+            }
+            benchmark_profiler.begin(&syndrome_pattern);
+            primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
+            benchmark_profiler.event("decoded".to_string());
+            result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern, visualizer.as_mut());
+            benchmark_profiler.event("verified".to_string());
+            primal_dual_solver.clear(); // also count the clear operation
+            benchmark_profiler.end(Some(&*primal_dual_solver));
+            if let Some(pb) = pb.as_mut() {
+                if pb_message.is_empty() {
+                    pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
+                }
+            }
+        }
+        if disable_progress_bar {
+            // always print out brief
+            println!("{}", benchmark_profiler.brief());
+        } else {
+            if let Some(pb) = pb.as_mut() {
+                pb.finish()
+            }
+            println!();
+        }
+    }
+}
+
 impl Cli {
     pub fn run(self) {
         match self.command {
-            Commands::Benchmark(BenchmarkParameters {
-                d,
-                p,
-                pe,
-                noisy_measurements,
-                max_half_weight,
-                code_type,
-                enable_visualizer,
-                verifier,
-                total_rounds,
-                primal_dual_type,
-                partition_strategy,
-                pb_message,
-                primal_dual_config,
-                code_config,
-                partition_config,
-                use_deterministic_seed,
-                benchmark_profiler_output,
-                print_syndrome_pattern,
-                starting_iteration,
-                ..
-            }) => {
-                let code_config: serde_json::Value = serde_json::from_str(&code_config).unwrap();
-                let primal_dual_config: serde_json::Value = serde_json::from_str(&primal_dual_config).unwrap();
-                let partition_config: serde_json::Value = serde_json::from_str(&partition_config).unwrap();
-                // check for dependency early
-                if matches!(verifier, Verifier::BlossomV) && cfg!(not(feature = "blossom_v")) {
-                    panic!("need blossom V library, see README.md")
-                }
-                // whether to disable progress bar, useful when running jobs in background
-                let disable_progress_bar = env::var("DISABLE_PROGRESS_BAR").is_ok();
-                let mut code: Box<dyn ExampleCode> = code_type.build(d, p, noisy_measurements, max_half_weight, code_config);
-                if pe != 0. {
-                    code.set_erasure_probability(pe);
-                }
-                if enable_visualizer {
-                    // print visualizer file path only once
-                    print_visualize_link(static_visualize_data_filename());
-                }
-                // create initializer and solver
-                let (initializer, partition_config) =
-                    partition_strategy.build(&mut *code, d, noisy_measurements, partition_config);
-                let partition_info = partition_config.info();
-                let mut primal_dual_solver =
-                    primal_dual_type.build(&initializer, &partition_info, &*code, primal_dual_config);
-                let mut result_verifier = verifier.build(&initializer);
-                let mut benchmark_profiler =
-                    BenchmarkProfiler::new(noisy_measurements, benchmark_profiler_output.map(|x| (x, &partition_info)));
-                // prepare progress bar display
-                let mut pb = if !disable_progress_bar {
-                    let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
-                    pb.message(format!("{pb_message} ").as_str());
-                    Some(pb)
-                } else {
-                    if !pb_message.is_empty() {
-                        print!("{pb_message} ");
-                    }
-                    None
-                };
-                let mut rng = thread_rng();
-                for round in (starting_iteration as u64)..(total_rounds as u64) {
-                    pb.as_mut().map(|pb| pb.set(round));
-                    let seed = if use_deterministic_seed { round } else { rng.gen() };
-                    let syndrome_pattern = code.generate_random_errors(seed);
-                    if print_syndrome_pattern {
-                        println!("syndrome_pattern: {:?}", syndrome_pattern);
-                    }
-                    // create a new visualizer each round
-                    let mut visualizer = None;
-                    if enable_visualizer {
-                        let new_visualizer = Visualizer::new(
-                            Some(visualize_data_folder() + static_visualize_data_filename().as_str()),
-                            code.get_positions(),
-                            true,
-                        )
-                        .unwrap();
-                        visualizer = Some(new_visualizer);
-                    }
-                    benchmark_profiler.begin(&syndrome_pattern);
-                    primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
-                    benchmark_profiler.event("decoded".to_string());
-                    result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern, visualizer.as_mut());
-                    benchmark_profiler.event("verified".to_string());
-                    primal_dual_solver.clear(); // also count the clear operation
-                    benchmark_profiler.end(Some(&*primal_dual_solver));
-                    if let Some(pb) = pb.as_mut() {
-                        if pb_message.is_empty() {
-                            pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
-                        }
-                    }
-                }
-                if disable_progress_bar {
-                    // always print out brief
-                    println!("{}", benchmark_profiler.brief());
-                } else {
-                    if let Some(pb) = pb.as_mut() {
-                        pb.finish()
-                    }
-                    println!();
-                }
+            Commands::Benchmark(benchmark_parameters) => {
+                let runnable = RunnableBenchmarkParameters::from(benchmark_parameters);
+                runnable.run();
             }
             Commands::Test { command } => {
                 match command {
@@ -902,7 +941,7 @@ impl Verifier {
     }
 }
 
-trait ResultVerifier {
+pub trait ResultVerifier {
     fn verify(
         &mut self,
         primal_dual_solver: &mut Box<dyn PrimalDualSolver>,

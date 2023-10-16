@@ -42,6 +42,7 @@ pub struct WeightedEdges {
     w: i64,
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn generate_example(name: &str, code: impl ExampleCode) {
     let folder = "micro-blossom-examples";
     fs::create_dir_all(folder).unwrap();
@@ -49,7 +50,7 @@ fn generate_example(name: &str, code: impl ExampleCode) {
 
     let initializer = code.get_initializer();
     let positions = code.get_positions();
-    assert_eq!(positions.len(), initializer.vertex_num);
+    assert_eq!(positions.len(), initializer.vertex_num as usize);
 
     let micro_blossom = MicroBlossomSingle {
         vertex_num: initializer.vertex_num.try_into().unwrap(),
@@ -60,7 +61,7 @@ fn generate_example(name: &str, code: impl ExampleCode) {
             .map(|e| WeightedEdges {
                 l: e.0.try_into().unwrap(),
                 r: e.1.try_into().unwrap(),
-                w: e.2,
+                w: e.2 as i64,
             })
             .collect(),
     };
