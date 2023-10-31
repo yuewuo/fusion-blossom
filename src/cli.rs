@@ -754,7 +754,7 @@ pub fn execute_in_cli<'a>(iter: impl Iterator<Item = &'a String> + Clone, print_
 }
 
 impl ExampleCodeType {
-    fn build(
+    pub fn build(
         &self,
         d: VertexNum,
         p: f64,
@@ -816,7 +816,7 @@ impl ExampleCodeType {
 }
 
 impl PartitionStrategy {
-    fn build(
+    pub fn build(
         &self,
         code: &mut dyn ExampleCode,
         d: VertexNum,
@@ -899,7 +899,7 @@ impl PartitionStrategy {
 }
 
 impl PrimalDualType {
-    fn build(
+    pub fn build(
         &self,
         initializer: &SolverInitializer,
         partition_info: &PartitionInfo,
@@ -929,7 +929,7 @@ impl PrimalDualType {
 }
 
 impl Verifier {
-    fn build(&self, initializer: &SolverInitializer) -> Box<dyn ResultVerifier> {
+    pub fn build(&self, initializer: &SolverInitializer) -> Box<dyn ResultVerifier> {
         match self {
             Self::None => Box::new(VerifierNone {}),
             Self::BlossomV => Box::new(VerifierBlossomV {

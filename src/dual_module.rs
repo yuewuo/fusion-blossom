@@ -956,7 +956,7 @@ impl DualModuleInterfacePtr {
             })
         };
         drop(interface);
-        for (i, node_ptr) in nodes_circle.iter().enumerate() {
+        for node_ptr in nodes_circle.iter() {
             debug_assert!(
                 self.check_ptr_belonging(node_ptr),
                 "this ptr doesn't belong to this interface"
@@ -965,15 +965,6 @@ impl DualModuleInterfacePtr {
             debug_assert!(
                 node.parent_blossom.is_none(),
                 "cannot create blossom on a node that already belongs to a blossom"
-            );
-            debug_assert!(
-                &node.grow_state
-                    == (if i % 2 == 0 {
-                        &DualNodeGrowState::Grow
-                    } else {
-                        &DualNodeGrowState::Shrink
-                    }),
-                "the nodes circle MUST starts with a growing node and ends with a shrinking node"
             );
             drop(node);
             // set state must happen before setting parent

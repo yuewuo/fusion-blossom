@@ -141,9 +141,8 @@ pub trait PrimalModuleImpl {
                 syndrome_pattern,
                 dual_module,
                 |interface, dual_module, primal_module, group_max_update_length| {
-                    if cfg!(debug_assertions) {
-                        println!("group_max_update_length: {:?}", group_max_update_length);
-                    }
+                    #[cfg(test)]
+                    println!("group_max_update_length: {:?}", group_max_update_length);
                     if let Some(length) = group_max_update_length.get_none_zero_growth() {
                         visualizer
                             .snapshot_combined(format!("grow {length}"), vec![interface, dual_module, primal_module])
