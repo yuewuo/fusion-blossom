@@ -1127,6 +1127,11 @@ impl DualModuleInterfacePtr {
     /// grow the dual module and update [`DualModuleInterface::sum_`]
     pub fn grow(&self, length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
         dual_module_impl.grow(length);
+        self.notify_grown(length);
+    }
+
+    /// if a dual module spontaneously grow some value (e.g. with primal offloading), this function should be called
+    pub fn notify_grown(&self, length: Weight) {
         let mut interface = self.write();
         interface.sum_dual_variables += length * interface.sum_grow_speed;
         interface.dual_variable_global_progress += length;

@@ -561,6 +561,11 @@ impl SubGraphBuilder {
         }
     }
 
+    pub fn load_subgraph(&mut self, subgraph: &[EdgeIndex]) {
+        self.subgraph.clear();
+        self.subgraph.extend(subgraph);
+    }
+
     /// add a matching, finding the minimum path and XOR them into the subgraph (if adding the same pair twice, they will cancel each other)
     pub fn add_matching(&mut self, vertex_1: VertexIndex, vertex_2: VertexIndex) {
         let (path, _) = self.complete_graph.get_path(vertex_1, vertex_2);
