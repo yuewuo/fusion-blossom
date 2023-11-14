@@ -161,7 +161,8 @@ pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap
                 // println!("obj_2: {obj_2:?}");
                 assert_eq!(
                     obj[key], obj_2[key],
-                    "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function"
+                    "cannot combine unknown fields of key `{}`: please modify `snapshot_combine_values` function",
+                    key
                 );
                 obj_2.remove(key).unwrap();
             }
@@ -313,6 +314,56 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                 assert_eq!(dual_node_2.len(), 0, "there should be nothing left");
             }
             value_2.remove("dual_nodes").unwrap();
+        }
+    }
+    match (value.contains_key("primal_nodes"), value_2.contains_key("primal_nodes")) {
+        (_, false) => {} // do nothing
+        (false, true) => {
+            value.insert("primal_nodes".to_string(), value_2.remove("primal_nodes").unwrap());
+        }
+        (true, true) => {
+            // combine
+            let primal_nodes = value
+                .get_mut("primal_nodes")
+                .unwrap()
+                .as_array_mut()
+                .expect("primal_nodes must be an array");
+            let primal_nodes_2 = value_2
+                .get_mut("primal_nodes")
+                .unwrap()
+                .as_array_mut()
+                .expect("primal_nodes must be an array");
+            // ideally, the two primal nodes should have the same length, but here we omit it
+            // assert!(primal_nodes.len() == primal_nodes_2.len(), "primal_nodes must be compatible");
+            if primal_nodes_2.len() > primal_nodes.len() {
+                std::mem::swap(primal_nodes, primal_nodes_2);
+            }
+            debug_assert!(primal_nodes.len() >= primal_nodes_2.len());
+            for (primal_node_idx, primal_node) in primal_nodes.iter_mut().enumerate() {
+                if primal_node_idx >= primal_nodes_2.len() {
+                    break;
+                }
+                let primal_node_2 = &mut primal_nodes_2[primal_node_idx];
+                if primal_node_2.is_null() {
+                    continue;
+                }
+                if primal_node.is_null() {
+                    std::mem::swap(primal_node, primal_node_2);
+                    continue;
+                }
+                let primal_node = primal_node.as_object_mut().expect("each primal_node must be an object");
+                let primal_node_2 = primal_node_2.as_object_mut().expect("each primal_node must be an object");
+                // list known keys
+                let key_tree_node = if abbrev { "t" } else { "tree_node" };
+                let key_temporary_match = if abbrev { "m" } else { "temporary_match" };
+                let known_keys = [key_tree_node, key_temporary_match];
+                for key in known_keys {
+                    snapshot_combine_object_known_key(primal_node, primal_node_2, key);
+                }
+                snapshot_copy_remaining_fields(primal_node, primal_node_2);
+                assert_eq!(primal_node_2.len(), 0, "there should be nothing left");
+            }
+            value_2.remove("primal_nodes").unwrap();
         }
     }
     snapshot_copy_remaining_fields(value, value_2);

@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
         /// use i32 to store weight to be compatible with blossom V library (c_int)
         pub type Weight = i32;
     } else {
-        pub type Weight = i64;
+        pub type Weight = isize;
     }
 }
 
