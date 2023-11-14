@@ -1,277 +1,330 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
     <title>Fusion Visualize</title>
     <link rel="icon" href="icon.svg">
-<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet" type="text/css">
-<link href="https://cdn.jsdelivr.net/npm/animate.css@^4.0.0/animate.min.css" rel="stylesheet" type="text/css">
-<link href="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.prod.css" rel="stylesheet" type="text/css">
-<style>
-body, html {
-    margin: 0;
-    overflow: hidden;
-    height: 100%;
-}
-:root {
-    --s: 1;  /* scale */
-    --control-visibility: hidden;
-}
-.control-bar {
-    position: fixed;
-    width: calc(600px * var(--s));
-    background-color: rgb(250, 250, 250);
-    height: 100%;
-    right: 0;
-    overflow-y: hidden;
-    overflow-x: hidden;
-    visibility: var(--control-visibility);
-}
-.control-bar-inner {
-    width: 600px;
-    height: calc(100% / var(--s));
-    transform: scale(var(--s));
-    transform-origin: 0 0;
-    font-size: 18px;
-}
-canvas {
-    display: block;
-}
-.slider {
-    margin-top: 0;
-    margin-left: 35px;
-    width: 530px;
-}
-.selector {
-    margin-top: 20px;
-    margin-left: 25px;
-    width: 550px;
-}
-h1 {
-    margin: 20px auto 0 auto;
-    text-align: center;
-    font-size: 40px;
-    line-height: 40px;
-}
-h3 {
-    margin: 0;
-    font-size: 25px;
-    line-height: 25px;
-    font-weight: bold;
-}
-.flex-center-div {
-    width: 600px;
-    margin-top: 10px;
-    display: flex;
-    justify-content: center;
-    flex-direction: row;
-}
-.select-info-div {
-    width: 580px;
-    padding: 10px;
-    margin: 10px;
-}
-.edge-visualizer {
-    display: inline-block;
-    height: 40px;
-    background-color: black;
-    margin: 0 10px 0 10px;
-}
-.left-grown, .unexplored, .right-grown {
-    margin: 0;
-    padding: 0;
-    display: inline-block;
-    height: 100%;
-    text-align: center;
-    font-size: 18px;
-    line-height: 40px;
-    transition: width 0.5s;
-}
-.left-grown {
-    background-color: #E8630A;
-}
-.unexplored {
-    background-color: grey;
-}
-.right-grown {
-    background-color: #FCD900;
-}
-.primal-div {
-    background-color: white;
-    width: 580px;
-    height: 580px;
-    margin: 10px;
-}
-</style>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900|Material+Icons" rel="stylesheet"
+        type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/animate.css@^4.0.0/animate.min.css" rel="stylesheet" type="text/css">
+    <link href="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.prod.css" rel="stylesheet" type="text/css">
+    <style>
+        body,
+        html {
+            margin: 0;
+            overflow: hidden;
+            height: 100%;
+        }
+
+        :root {
+            --s: 1;
+            /* scale */
+            --control-visibility: hidden;
+        }
+
+        .control-bar {
+            position: fixed;
+            width: calc(600px * var(--s));
+            background-color: rgb(250, 250, 250);
+            height: 100%;
+            right: 0;
+            overflow-y: hidden;
+            overflow-x: hidden;
+            visibility: var(--control-visibility);
+        }
+
+        .control-bar-inner {
+            width: 600px;
+            height: calc(100% / var(--s));
+            transform: scale(var(--s));
+            transform-origin: 0 0;
+            font-size: 18px;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        .slider {
+            margin-top: 0;
+            margin-left: 35px;
+            width: 530px;
+        }
+
+        .selector {
+            margin-top: 20px;
+            margin-left: 25px;
+            width: 550px;
+        }
+
+        h1 {
+            margin: 20px auto 0 auto;
+            text-align: center;
+            font-size: 40px;
+            line-height: 40px;
+        }
+
+        h3 {
+            margin: 0;
+            font-size: 25px;
+            line-height: 25px;
+            font-weight: bold;
+        }
+
+        .flex-center-div {
+            width: 600px;
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            flex-direction: row;
+        }
+
+        .select-info-div {
+            width: 580px;
+            padding: 10px;
+            margin: 10px;
+        }
+
+        .edge-visualizer {
+            display: inline-block;
+            height: 40px;
+            background-color: black;
+            margin: 0 10px 0 10px;
+        }
+
+        .left-grown,
+        .unexplored,
+        .right-grown {
+            margin: 0;
+            padding: 0;
+            display: inline-block;
+            height: 100%;
+            text-align: center;
+            font-size: 18px;
+            line-height: 40px;
+            transition: width 0.5s;
+        }
+
+        .left-grown {
+            background-color: #E8630A;
+        }
+
+        .unexplored {
+            background-color: grey;
+        }
+
+        .right-grown {
+            background-color: #FCD900;
+        }
+
+        .primal-div {
+            background-color: white;
+            width: 580px;
+            height: 580px;
+            margin: 10px;
+        }
+    </style>
 </head>
+
 <body>
-<script src="https://cdn.jsdelivr.net/npm/vue@3.2.33/dist/vue.global.prod.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3@7.6.1/dist/d3.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hull.js@1.0.2/dist/hull.js"></script>
-<script src="./cmd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.2.33/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.6.1/dist/d3.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hull.js@1.0.2/dist/hull.js"></script>
+    <script src="./cmd.js"></script>
 
 
-<div class="control-bar" id="app">
-    <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style" :horizontal-thumb-style="horizontal_thumb_style"
-            :vertical-bar-style="vertical_bar_style" :horizontal-bar-style="horizontal_bar_style">
-        <div class="flex-center-div"><h1>Fusion Blossom</h1></div>
-        <q-banner inline-actions class="text-white bg-yellow-10" v-if="!is_browser_supported" style="margin-top: 20px;">
-            Please use Chrome or Firefox browser (It has known issue in Safari)
-            <template v-slot:action>
-                <q-btn flat color="white" label="Dismiss" @click="is_browser_supported = true" />
-            </template>
-        </q-banner>
-        <q-banner inline-actions class="text-white bg-red" v-if="error_message != null" style="margin-top: 20px;">
-            {{ error_message }}
-        </q-banner>
-        <q-banner inline-actions class="text-black bg-yellow" v-if="warning_message != null" style="margin-top: 20px;">
-            {{ warning_message }}
-        </q-banner>
-        <div class="selector">
-            <q-select filled v-model="snapshot_select_label" :options="snapshot_labels" options-dense behavior="menu" rounded>
-                <template v-slot:before>
-                    <q-btn round flat icon="arrow_circle_left" :disabled="snapshot_select == 0" @click="snapshot_select -= 1" size="xl"/>
+    <div class="control-bar" id="app">
+        <q-scroll-area class="control-bar-inner" :vertical-thumb-style="vertical_thumb_style"
+            :horizontal-thumb-style="horizontal_thumb_style" :vertical-bar-style="vertical_bar_style"
+            :horizontal-bar-style="horizontal_bar_style">
+            <div class="flex-center-div">
+                <h1>Fusion Blossom</h1>
+            </div>
+            <q-banner inline-actions class="text-white bg-yellow-10" v-if="!is_browser_supported"
+                style="margin-top: 20px;">
+                Please use Chrome or Firefox browser (It has known issue in Safari)
+                <template v-slot:action>
+                    <q-btn flat color="white" label="Dismiss" @click="is_browser_supported = true" />
                 </template>
-                <template v-slot:after>
-                    <q-btn round flat icon="arrow_circle_right" :disabled="snapshot_select == snapshot_num-1" @click="snapshot_select += 1" size="xl"/>
-                </template>
-            </q-select>
-        </div>
-        <div class="slider">
-            <q-slider v-model="snapshot_select" :min="0" :max="snapshot_num-1" :step="1" snap
-                thumb-size="25px" track-size="8px"></q-slider>
-        </div>
-        <div class="flex-center-div">
-            <q-btn-toggle v-model="use_perspective_camera" no-caps rounded unelevated toggle-color="primary" color="white" text-color="primary"
-                :options="[ { label: 'orthogonal', value: false }, { label: 'perspective', value: true } ]" size="lg"
-            ></q-btn-toggle>
-            <span style="margin: 0 15px 0 15px; line-height: 52px; font-size: 25px;">camera</span>
-            <q-btn-dropdown color="warning" label="reset" no-caps size="lg" rounded>
-                <q-list>
-                    <q-item clickable v-close-popup @click="reset_camera('top')">
-                        <q-item-section>
-                        <q-item-label>from top</q-item-label>
-                        </q-item-section>
-                    </q-item>
-                    <q-item clickable v-close-popup @click="reset_camera('front')">
-                        <q-item-section>
-                        <q-item-label>from front</q-item-label>
-                        </q-item-section>
+            </q-banner>
+            <q-banner inline-actions class="text-white bg-red" v-if="error_message != null" style="margin-top: 20px;">
+                {{ error_message }}
+            </q-banner>
+            <q-banner inline-actions class="text-black bg-yellow" v-if="warning_message != null"
+                style="margin-top: 20px;">
+                {{ warning_message }}
+            </q-banner>
+            <div class="selector">
+                <q-select filled v-model="snapshot_select_label" :options="snapshot_labels" options-dense
+                    behavior="menu" rounded>
+                    <template v-slot:before>
+                        <q-btn round flat icon="arrow_circle_left" :disabled="snapshot_select == 0"
+                            @click="snapshot_select -= 1" size="xl" />
+                    </template>
+                    <template v-slot:after>
+                        <q-btn round flat icon="arrow_circle_right" :disabled="snapshot_select == snapshot_num-1"
+                            @click="snapshot_select += 1" size="xl" />
+                    </template>
+                </q-select>
+            </div>
+            <div class="slider">
+                <q-slider v-model="snapshot_select" :min="0" :max="snapshot_num-1" :step="1" snap thumb-size="25px"
+                    track-size="8px"></q-slider>
+            </div>
+            <div class="flex-center-div">
+                <q-btn-toggle v-model="use_perspective_camera" no-caps rounded unelevated toggle-color="primary"
+                    color="white" text-color="primary"
+                    :options="[ { label: 'orthogonal', value: false }, { label: 'perspective', value: true } ]"
+                    size="lg"></q-btn-toggle>
+                <span style="margin: 0 15px 0 15px; line-height: 52px; font-size: 25px;">camera</span>
+                <q-btn-dropdown color="warning" label="reset" no-caps size="lg" rounded>
+                    <q-list>
+                        <q-item clickable v-close-popup @click="reset_camera('top')">
+                            <q-item-section>
+                                <q-item-label>from top</q-item-label>
+                            </q-item-section>
                         </q-item>
-                    <q-item clickable v-close-popup @click="reset_camera('left')">
-                        <q-item-section>
-                        <q-item-label>from left</q-item-label>
-                        </q-item-section>
-                    </q-item>
-                </q-list>
-            </q-btn-dropdown>
-        </div>
-        <div class="flex-center-div">
-            <div><q-toggle v-model="show_config" label="render configs" size="md"/></div>
-            <div><q-toggle v-model="show_stats" label="performance stats" size="md"/></div>
-            <div><q-toggle v-model="lock_view" label="lock view" size="md"/></div>
-            <!-- <q-toggle v-model="show_hover_effect" label="hover effect" size="md"/> -->
-        </div>
-        <div class="flex-center-div">
-            <span style="margin: 0 15px 0 15px; line-height: 40px; font-size: 20px;">export image:</span>
-            <q-select rounded outlined v-model="export_scale_selected" :options="export_resolution_options" label="resolution" style="width: 200px;"
-                emit-value behavior="menu" map-options dense></q-select>
-            <q-btn push color="brown-5" rounded label="preview" style="margin-left: 10px;" no-caps @click="preview_image"></q-btn>
-            <q-btn push color="brown-5" rounded label="download" style="margin-left: 10px;" no-caps @click="download_image"></q-btn>
-        </div>
-        <div class="primal-div" id="primal-div" v-show="show_primal"></div>
-        <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'vertex'">
-            <q-card-section class="bg-cyan text-white">
-                <div class="text-h6">Vertex {{ current_selected.vertex_index }} {{ selected_vertex_attributes }}</div>
-            </q-card-section>
-            <q-separator inset></q-separator>
-            <q-card-section>
-                <div v-for="edge of selected_vertex_neighbor_edges" style="margin-top: 15px;">
-                    <q-btn color="teal" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()"
-                            @click="jump_to('edge', edge.edge_index)">
-                        <div class="text-center">
-                            Edge</span><br>{{ edge.edge_index }}
-                        </div>
-                    </q-btn>
-                    <div class="edge-visualizer" style="width: 330px;" @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
-                            {{ edge.left_grown == 0 ? "|" : edge.left_grown }}
-                        </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0 : 0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
-                            {{ edge.unexplored == 0 ? "|" : edge.unexplored }}
-                        </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
-                            {{ edge.right_grown == 0 ? "|" : edge.right_grown }}
-                        </div>
+                        <q-item clickable v-close-popup @click="reset_camera('front')">
+                            <q-item-section>
+                                <q-item-label>from front</q-item-label>
+                            </q-item-section>
+                        </q-item>
+                        <q-item clickable v-close-popup @click="reset_camera('left')">
+                            <q-item-section>
+                                <q-item-label>from left</q-item-label>
+                            </q-item-section>
+                        </q-item>
+                    </q-list>
+                </q-btn-dropdown>
+            </div>
+            <div class="flex-center-div">
+                <div><q-toggle v-model="show_config" label="render configs" size="md" /></div>
+                <div><q-toggle v-model="show_stats" label="performance stats" size="md" /></div>
+                <div><q-toggle v-model="lock_view" label="lock view" size="md" /></div>
+                <!-- <q-toggle v-model="show_hover_effect" label="hover effect" size="md"/> -->
+            </div>
+            <div class="flex-center-div">
+                <span style="margin: 0 15px 0 15px; line-height: 40px; font-size: 20px;">export image:</span>
+                <q-select rounded outlined v-model="export_scale_selected" :options="export_resolution_options"
+                    label="resolution" style="width: 200px;" emit-value behavior="menu" map-options dense></q-select>
+                <q-btn push color="brown-5" rounded label="preview" style="margin-left: 10px;" no-caps
+                    @click="preview_image"></q-btn>
+                <q-btn push color="brown-5" rounded label="download" style="margin-left: 10px;" no-caps
+                    @click="download_image"></q-btn>
+            </div>
+            <div class="primal-div" id="primal-div" v-show="show_primal"></div>
+            <q-card bordered class="select-info-div"
+                v-if="current_selected != null && current_selected.type == 'vertex'">
+                <q-card-section class="bg-cyan text-white">
+                    <div class="text-h6">Vertex {{ current_selected.vertex_index }} {{ selected_vertex_attributes }}
                     </div>
-                    <q-btn color="cyan" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('vertex', edge.vertex_index)" @mouseleave="mouseleave()"
-                            @click="jump_to('vertex', edge.vertex_index)">
-                        <div class="text-center">
-                            Vertex</span><br>{{ edge.vertex_index }}
+                </q-card-section>
+                <q-separator inset></q-separator>
+                <q-card-section>
+                    <div v-for="edge of selected_vertex_neighbor_edges" style="margin-top: 15px;">
+                        <q-btn color="teal" no-caps size="12px" rounded padding="none md"
+                            @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()"
+                            @click="jump_to('edge', edge.edge_index)">
+                            <div class="text-center">
+                                Edge</span><br>{{ edge.edge_index }}
+                            </div>
+                        </q-btn>
+                        <div class="edge-visualizer" style="width: 330px;"
+                            @mouseenter="mouseenter('edge', edge.edge_index)" @mouseleave="mouseleave()">
+                            <div class="left-grown"
+                                :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_left_grown / edge.weight})` }">
+                                {{ edge.left_grown == 0 ? "|" : edge.left_grown }}
+                            </div>
+                            <div class="unexplored"
+                                :style="{ width: `calc(100% * ${edge.weight == 0 ? 0 : 0.01 + 0.97 * edge.translated_unexplored / edge.weight})` }">
+                                {{ edge.unexplored == 0 ? "|" : edge.unexplored }}
+                            </div>
+                            <div class="right-grown"
+                                :style="{ width: `calc(100% * ${edge.weight == 0 ? 0.5 : 0.01 + 0.97 * edge.translated_right_grown / edge.weight})` }">
+                                {{ edge.right_grown == 0 ? "|" : edge.right_grown }}
+                            </div>
                         </div>
-                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
+                        <q-btn color="cyan" no-caps size="12px" rounded padding="none md"
+                            @mouseenter="mouseenter('vertex', edge.vertex_index)" @mouseleave="mouseleave()"
+                            @click="jump_to('vertex', edge.vertex_index)">
+                            <div class="text-center">
+                                Vertex</span><br>{{ edge.vertex_index }}
+                            </div>
+                            <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
                             peer vertex
                         </q-tooltip> -->
-                    </q-btn>
-                    <q-circular-progress show-value :value="(edge.translated_left_grown + edge.translated_right_grown) / edge.weight * 100" style="margin-left: 10px;"
-                            size="40px" font-size="18px" :thickness="0.15" color="red" track-color="grey-3">
-                        {{ edge.weight }}
-                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
+                        </q-btn>
+                        <q-circular-progress show-value
+                            :value="(edge.translated_left_grown + edge.translated_right_grown) / edge.weight * 100"
+                            style="margin-left: 10px;" size="40px" font-size="18px" :thickness="0.15" color="red"
+                            track-color="grey-3">
+                            {{ edge.weight }}
+                            <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
                             weight
                         </q-tooltip> -->
-                    </q-circular-progress>
-                </div>
-            </q-card-section>
-        </q-card>
-        <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'edge'">
-            <q-card-section class="bg-teal text-white">
-                <div class="text-h6">Edge {{ current_selected.edge_index }} {{ selected_edge_attributes }}</div>
-            </q-card-section>
-            <q-separator inset></q-separator>
-            <q-card-section>
-                <div style="margin-top: 15px;" v-if="selected_edge != null">
-                    <q-btn color="cyan" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('vertex', selected_edge.left_vertex_index)" @mouseleave="mouseleave()"
-                            @click="jump_to('vertex', selected_edge.left_vertex_index)">
-                        <div class="text-center">
-                            Vertex</span><br>{{ selected_edge.left_vertex_index }}
-                        </div>
-                    </q-btn>
-                    <div class="edge-visualizer" style="width: 320px;" @mouseenter="mouseenter('edge', selected_edge.edge_index)" @mouseleave="mouseleave()">
-                        <div class="left-grown" :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0.5 : 0.01 + 0.97 * selected_edge.translated_left_grown / selected_edge.weight})` }">
-                            {{ selected_edge.left_grown == 0 ? "|" : selected_edge.left_grown }}
-                        </div>
-                        <div class="unexplored" :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0 : 0.01 + 0.97 * selected_edge.translated_unexplored / selected_edge.weight})` }">
-                            {{ selected_edge.unexplored == 0 ? "|" : selected_edge.unexplored }}
-                        </div>
-                        <div class="right-grown" :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0.5 : 0.01 + 0.97 * selected_edge.translated_right_grown / selected_edge.weight})` }">
-                            {{ selected_edge.right_grown == 0 ? "|" : selected_edge.right_grown }}
-                        </div>
+                        </q-circular-progress>
                     </div>
-                    <q-btn color="cyan" no-caps size="12px" rounded padding="none md" @mouseenter="mouseenter('vertex', selected_edge.right_vertex_index)" @mouseleave="mouseleave()"
-                            @click="jump_to('vertex', selected_edge.right_vertex_index)">
-                        <div class="text-center">
-                            Vertex</span><br>{{ selected_edge.right_vertex_index }}
+                </q-card-section>
+            </q-card>
+            <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'edge'">
+                <q-card-section class="bg-teal text-white">
+                    <div class="text-h6">Edge {{ current_selected.edge_index }} {{ selected_edge_attributes }}</div>
+                </q-card-section>
+                <q-separator inset></q-separator>
+                <q-card-section>
+                    <div style="margin-top: 15px;" v-if="selected_edge != null">
+                        <q-btn color="cyan" no-caps size="12px" rounded padding="none md"
+                            @mouseenter="mouseenter('vertex', selected_edge.left_vertex_index)"
+                            @mouseleave="mouseleave()" @click="jump_to('vertex', selected_edge.left_vertex_index)">
+                            <div class="text-center">
+                                Vertex</span><br>{{ selected_edge.left_vertex_index }}
+                            </div>
+                        </q-btn>
+                        <div class="edge-visualizer" style="width: 320px;"
+                            @mouseenter="mouseenter('edge', selected_edge.edge_index)" @mouseleave="mouseleave()">
+                            <div class="left-grown"
+                                :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0.5 : 0.01 + 0.97 * selected_edge.translated_left_grown / selected_edge.weight})` }">
+                                {{ selected_edge.left_grown == 0 ? "|" : selected_edge.left_grown }}
+                            </div>
+                            <div class="unexplored"
+                                :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0 : 0.01 + 0.97 * selected_edge.translated_unexplored / selected_edge.weight})` }">
+                                {{ selected_edge.unexplored == 0 ? "|" : selected_edge.unexplored }}
+                            </div>
+                            <div class="right-grown"
+                                :style="{ width: `calc(100% * ${selected_edge.weight == 0 ? 0.5 : 0.01 + 0.97 * selected_edge.translated_right_grown / selected_edge.weight})` }">
+                                {{ selected_edge.right_grown == 0 ? "|" : selected_edge.right_grown }}
+                            </div>
                         </div>
-                    </q-btn>
-                    <q-circular-progress show-value :value="(selected_edge.translated_left_grown + selected_edge.translated_right_grown) / selected_edge.weight * 100" style="margin-left: 10px;"
-                            size="40px" font-size="18px" :thickness="0.15" color="red" track-color="grey-3">
-                        {{ selected_edge.weight }}
-                        <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
+                        <q-btn color="cyan" no-caps size="12px" rounded padding="none md"
+                            @mouseenter="mouseenter('vertex', selected_edge.right_vertex_index)"
+                            @mouseleave="mouseleave()" @click="jump_to('vertex', selected_edge.right_vertex_index)">
+                            <div class="text-center">
+                                Vertex</span><br>{{ selected_edge.right_vertex_index }}
+                            </div>
+                        </q-btn>
+                        <q-circular-progress show-value
+                            :value="(selected_edge.translated_left_grown + selected_edge.translated_right_grown) / selected_edge.weight * 100"
+                            style="margin-left: 10px;" size="40px" font-size="18px" :thickness="0.15" color="red"
+                            track-color="grey-3">
+                            {{ selected_edge.weight }}
+                            <!-- <q-tooltip class="text-body2" :offset="[10, 10]" anchor="top middle" self="bottom middle">
                             weight
                         </q-tooltip> -->
-                    </q-circular-progress>
-                </div>
-            </q-card-section>
-        </q-card>
-        <!-- <p v-for="index in 50">paragraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraph</p> -->
-    </q-scroll-area>
-</div>
+                        </q-circular-progress>
+                    </div>
+                </q-card-section>
+            </q-card>
+            <!-- <p v-for="index in 50">paragraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraph</p> -->
+        </q-scroll-area>
+    </div>
 
-<!-- "three": "./node_modules/three/build/three.module.js" -->
-<script type="importmap">
+    <!-- "three": "./node_modules/three/build/three.module.js" -->
+    <script type="importmap">
 {
     "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.139.2/build/three.module.js",
@@ -282,10 +335,10 @@ h3 {
     }
 }
 </script>
-<script src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+    <script src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
 
-<script type="module" src="./index.js"></script>
-<!-- <script>
+    <script type="module" src="./index.js"></script>
+    <!-- <script>
 // always fetch the latest script and avoid caching
 var index_script = document.createElement('script');
 index_script.setAttribute('src','./index.js?v=' + Math.random());
@@ -294,4 +347,5 @@ document.body.appendChild(index_script);
 </script> -->
 
 </body>
+
 </html>

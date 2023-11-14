@@ -62,7 +62,7 @@ export async function visualize_paper_weighted_union_find_decoder() {
     var bottom_image_texture
     if (gui3d.is_mock) {  // image doesn't work, has to use https://threejs.org/docs/#api/en/textures/DataTexture
         const image = await mocker.read_from_png_buffer(image_buffer)
-        bottom_image_texture = new THREE.DataTexture( image.bitmap.data, image.bitmap.width, image.bitmap.height )
+        bottom_image_texture = new THREE.DataTexture(image.bitmap.data, image.bitmap.width, image.bitmap.height)
         bottom_image_texture.minFilter = THREE.LinearFilter
         bottom_image_texture.flipY = true  // otherwise it's inconsistent with image loader
         bottom_image_texture.needsUpdate = true
@@ -118,17 +118,17 @@ export async function visualize_paper_weighted_union_find_decoder() {
             side: THREE.DoubleSide,
             depthWrite: false,  // otherwise it will block something...
         })
-        for (let i=0; i<3; ++i) {
+        for (let i = 0; i < 3; ++i) {
             const transparent_layer_mesh = new THREE.Mesh(bottom_image_geometry, transparent_layer_material)
-            transparent_layer_mesh.position.set(0, -1 + i * 2 -0.01, 0)
+            transparent_layer_mesh.position.set(0, -1 + i * 2 - 0.01, 0)
             transparent_layer_mesh.rotateX(-Math.PI / 2)
             gui3d.scene.add(transparent_layer_mesh)
         }
     }
     // set background as white to prevent strange pixels around bottom image
-    gui3d.scene.background = new THREE.Color( 0xffffff )
+    gui3d.scene.background = new THREE.Color(0xffffff)
     // set output scale
-    this.export_scale_selected = Math.pow(10, 3/10)
+    this.export_scale_selected = Math.pow(10, 3 / 10)
 }
 
 function retain_only_indices_smaller_than(snapshot_select, retain_index) {

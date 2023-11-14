@@ -268,7 +268,7 @@ const App = {
                 }
             }
         },
-        jump_to(type, data, is_click=true) {
+        jump_to(type, data, is_click = true) {
             let current_ref = is_click ? gui3d.current_selected : gui3d.current_hover
             if (type == "edge") {
                 current_ref.value = {
@@ -290,8 +290,8 @@ const App = {
         update_export_resolutions() {
             this.export_resolution_options.splice(0, this.export_resolution_options.length)
             let exists_in_new_resolution = false
-            for (let i=-100; i<100; ++i) {
-                let scale = 1 * Math.pow(10, i/10)
+            for (let i = -100; i < 100; ++i) {
+                let scale = 1 * Math.pow(10, i / 10)
                 let width = Math.round(this.sizes.canvas_width * scale)
                 let height = Math.round(this.sizes.canvas_height * scale)
                 if (width > 5000 || height > 5000) {  // to large, likely exceeds WebGL maximum buffer size
@@ -398,7 +398,7 @@ if (!is_mock) {
     while (!patch_done.value) {
         await sleep(50)
     }
-    for (let i=0; i<10; ++i) {
+    for (let i = 0; i < 10; ++i) {
         await sleep(10)
         await Vue.nextTick()
     }

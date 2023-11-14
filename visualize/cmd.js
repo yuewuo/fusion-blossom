@@ -17,5 +17,5 @@ window.cmd = {
         }
         return defect_vertices
     },
-    
+
 }

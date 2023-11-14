@@ -64,16 +64,16 @@ if (is_mock) {
 }
 
 export const scene = new THREE.Scene()
-scene.background = new THREE.Color( 0xffffff )  // for better image output
-scene.add( new THREE.AmbientLight( 0xffffff ) )
+scene.background = new THREE.Color(0xffffff)  // for better image output
+scene.add(new THREE.AmbientLight(0xffffff))
 window.scene = scene
-export const perspective_camera = new THREE.PerspectiveCamera( 75, sizes.canvas_width / sizes.canvas_height, 0.1, 10000 )
+export const perspective_camera = new THREE.PerspectiveCamera(75, sizes.canvas_width / sizes.canvas_height, 0.1, 10000)
 const orthogonal_camera_init_scale = 6
-export const orthogonal_camera = new THREE.OrthographicCamera( sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
-    , sizes.canvas_width / sizes.canvas_height * orthogonal_camera_init_scale, orthogonal_camera_init_scale, -orthogonal_camera_init_scale, 0.1, 100000 )
+export const orthogonal_camera = new THREE.OrthographicCamera(sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
+    , sizes.canvas_width / sizes.canvas_height * orthogonal_camera_init_scale, orthogonal_camera_init_scale, -orthogonal_camera_init_scale, 0.1, 100000)
 export const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, context: webgl_renderer_context() })
 
-document.body.appendChild( renderer.domElement )
+document.body.appendChild(renderer.domElement)
 
 watch(sizes, () => {
     perspective_camera.aspect = sizes.canvas_width / sizes.canvas_height
@@ -81,9 +81,9 @@ watch(sizes, () => {
     orthogonal_camera.left = sizes.canvas_width / sizes.canvas_height * (-orthogonal_camera_init_scale)
     orthogonal_camera.right = sizes.canvas_width / sizes.canvas_height * (orthogonal_camera_init_scale)
     orthogonal_camera.updateProjectionMatrix()
-    renderer.setSize( sizes.canvas_width, sizes.canvas_height, false )
+    renderer.setSize(sizes.canvas_width, sizes.canvas_height, false)
     const ratio = window.devicePixelRatio  // looks better on devices with a high pixel ratio, such as iPhones with Retina displays
-    renderer.setPixelRatio( ratio )
+    renderer.setPixelRatio(ratio)
     const canvas = renderer.domElement
     canvas.width = sizes.canvas_width * ratio
     canvas.height = sizes.canvas_height * ratio
@@ -91,8 +91,8 @@ watch(sizes, () => {
     canvas.style.height = `${sizes.canvas_height}px`
 }, { immediate: true })
 
-export const orbit_control_perspective = new OrbitControls( perspective_camera, renderer.domElement )
-export const orbit_control_orthogonal = new OrbitControls( orthogonal_camera, renderer.domElement )
+export const orbit_control_perspective = new OrbitControls(perspective_camera, renderer.domElement)
+export const orbit_control_orthogonal = new OrbitControls(orthogonal_camera, renderer.domElement)
 export const enable_control = ref(true)
 watch(enable_control, (enabled) => {
     orbit_control_perspective.enabled = enabled
@@ -109,7 +109,7 @@ export const orbit_control = computed(() => {
     return use_perspective_camera.value ? orbit_control_perspective : orbit_control_orthogonal
 })
 
-export function reset_camera_position(direction="top") {
+export function reset_camera_position(direction = "top") {
     for (let [camera, control, distance] of [[perspective_camera, orbit_control_perspective, 8], [orthogonal_camera, orbit_control_orthogonal, 1000]]) {
         control.reset()
         camera.position.x = (direction == "left" ? -distance : 0)
@@ -128,7 +128,7 @@ export const show_stats = ref(false)
 if (!is_mock) {
     stats = Stats()
     document.body.appendChild(stats.dom)
-    watch(show_stats, function() {
+    watch(show_stats, function () {
         if (show_stats.value) {
             stats.dom.style.display = "block"
         } else {
@@ -142,15 +142,15 @@ if (!is_mock) {
 }
 
 export function animate() {
-    requestAnimationFrame( animate )
+    requestAnimationFrame(animate)
     orbit_control.value.update()
-    renderer.render( scene, camera.value )
+    renderer.render(scene, camera.value)
     if (stats) stats.update()
 }
 
 // commonly used vectors
-const zero_vector = new THREE.Vector3( 0, 0, 0 )
-const unit_up_vector = new THREE.Vector3( 0, 1, 0 )
+const zero_vector = new THREE.Vector3(0, 0, 0)
+const unit_up_vector = new THREE.Vector3(0, 1, 0)
 
 // create common geometries
 const segment = parseInt(urlParams.get('segment') || 128)  // higher segment will consume more GPU resources
@@ -159,13 +159,13 @@ export const vertex_radius_scale = ref(1)
 const scaled_vertex_radius = computed(() => {
     return vertex_radius * vertex_radius_scale.value
 })
-const vertex_geometry = new THREE.SphereGeometry( vertex_radius, segment, segment )
+const vertex_geometry = new THREE.SphereGeometry(vertex_radius, segment, segment)
 const edge_radius = parseFloat(urlParams.get('edge_radius') || 0.03)
 const edge_radius_scale = ref(1)
 const scaled_edge_radius = computed(() => {
     return edge_radius * edge_radius_scale.value
 })
-const edge_geometry = new THREE.CylinderGeometry( edge_radius, edge_radius, 1, segment, 1, true )
+const edge_geometry = new THREE.CylinderGeometry(edge_radius, edge_radius, 1, segment, 1, true)
 edge_geometry.translate(0, 0.5, 0)
 
 // create common materials
@@ -268,11 +268,11 @@ window.blossom_convex_meshes = blossom_convex_meshes
 
 // update the sizes of objects
 watch(vertex_radius_scale, (newVal, oldVal) => {
-    vertex_geometry.scale(1/oldVal, 1/oldVal, 1/oldVal)
+    vertex_geometry.scale(1 / oldVal, 1 / oldVal, 1 / oldVal)
     vertex_geometry.scale(newVal, newVal, newVal)
 })
 watch(edge_radius_scale, (newVal, oldVal) => {
-    edge_geometry.scale(1/oldVal, 1, 1/oldVal)
+    edge_geometry.scale(1 / oldVal, 1, 1 / oldVal)
     edge_geometry.scale(newVal, 1, newVal)
 })
 watch([scaled_edge_radius, scaled_vertex_outline_radius], async () => {
@@ -291,7 +291,7 @@ watch([outline_ratio, vertex_radius_scale], () => {
 
 // helper functions
 export function compute_vector3(data_position) {
-    let vector = new THREE.Vector3( 0, 0, 0 )
+    let vector = new THREE.Vector3(0, 0, 0)
     load_position(vector, data_position)
     return vector
 }
@@ -356,13 +356,13 @@ export async function refresh_snapshot_data() {
             }
             let position = fusion_data.positions[i]
             while (vertex_meshes.length <= i) {
-                const vertex_mesh = new THREE.Mesh( vertex_geometry, real_vertex_material )
+                const vertex_mesh = new THREE.Mesh(vertex_geometry, real_vertex_material)
                 vertex_mesh.visible = false
                 vertex_mesh.userData = {
                     type: "vertex",
                     vertex_index: vertex_meshes.length,
                 }
-                scene.add( vertex_mesh )
+                scene.add(vertex_mesh)
                 vertex_meshes.push(vertex_mesh)
             }
             const vertex_mesh = vertex_meshes[i]
@@ -435,17 +435,17 @@ export async function refresh_snapshot_data() {
             })
             // console.log(`${left_start}, ${left_end}, ${right_end}, ${right_start}`)
             for (let [start, end, edge_meshes, is_grown_part] of [[left_start, left_end, left_edge_meshes, true], [left_end, right_end, middle_edge_meshes, false]
-                    , [right_end, right_start, right_edge_meshes, true]]) {
+                , [right_end, right_start, right_edge_meshes, true]]) {
                 while (edge_meshes.length <= i) {
                     let two_edges = [null, null]
                     for (let j of [0, 1]) {
-                        const edge_mesh = new THREE.Mesh( edge_geometry, edge_material )
+                        const edge_mesh = new THREE.Mesh(edge_geometry, edge_material)
                         edge_mesh.userData = {
                             type: "edge",
                             edge_index: edge_meshes.length,
                         }
                         edge_mesh.visible = false
-                        scene.add( edge_mesh )
+                        scene.add(edge_mesh)
                         two_edges[j] = edge_mesh
                     }
                     edge_meshes.push(two_edges)
@@ -488,10 +488,10 @@ export async function refresh_snapshot_data() {
             }
             let position = fusion_data.positions[i]
             while (vertex_outline_meshes.length <= i) {
-                const vertex_outline_mesh = new THREE.Mesh( vertex_geometry, real_vertex_outline_material )
+                const vertex_outline_mesh = new THREE.Mesh(vertex_geometry, real_vertex_outline_material)
                 vertex_outline_mesh.visible = false
                 update_mesh_outline(vertex_outline_mesh)
-                scene.add( vertex_outline_mesh )
+                scene.add(vertex_outline_mesh)
                 vertex_outline_meshes.push(vertex_outline_mesh)
             }
             const vertex_outline_mesh = vertex_outline_meshes[i]
@@ -511,7 +511,7 @@ export async function refresh_snapshot_data() {
         // draw convex
         if (snapshot.dual_nodes != null) {
             for (let blossom_convex_mesh of blossom_convex_meshes) {
-                scene.remove( blossom_convex_mesh )
+                scene.remove(blossom_convex_mesh)
                 blossom_convex_mesh.geometry.dispose()
             }
             for (let [i, dual_node] of snapshot.dual_nodes.entries()) {
@@ -552,24 +552,24 @@ export async function refresh_snapshot_data() {
                             // special optimization for 2D points, because ConvexGeometry doesn't work well on them
                             const points_2d = []
                             for (let point of points) {
-                                points_2d.push([ point.x, point.z ])
+                                points_2d.push([point.x, point.z])
                             }
                             const hull_points = hull(points_2d, 1)
                             const shape_points = []
                             for (let hull_point of hull_points) {
-                                shape_points.push( new THREE.Vector2( hull_point[0], hull_point[1] ) );
+                                shape_points.push(new THREE.Vector2(hull_point[0], hull_point[1]));
                             }
-                            const shape = new THREE.Shape( shape_points )
-                            const geometry = new THREE.ShapeGeometry( shape )
-                            const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material_2d )
-                            blossom_convex_mesh.position.set( 0, -0.2, 0 )  // place the plane to slightly below the vertices for better viz
-                            blossom_convex_mesh.rotation.set( Math.PI / 2, 0, 0 );
-                            scene.add( blossom_convex_mesh )
+                            const shape = new THREE.Shape(shape_points)
+                            const geometry = new THREE.ShapeGeometry(shape)
+                            const blossom_convex_mesh = new THREE.Mesh(geometry, blossom_convex_material_2d)
+                            blossom_convex_mesh.position.set(0, -0.2, 0)  // place the plane to slightly below the vertices for better viz
+                            blossom_convex_mesh.rotation.set(Math.PI / 2, 0, 0);
+                            scene.add(blossom_convex_mesh)
                             blossom_convex_meshes.push(blossom_convex_mesh)
                         } else {
-                            const geometry = new ConvexGeometry( points )
-                            const blossom_convex_mesh = new THREE.Mesh( geometry, blossom_convex_material )
-                            scene.add( blossom_convex_mesh )
+                            const geometry = new ConvexGeometry(points)
+                            const blossom_convex_mesh = new THREE.Mesh(geometry, blossom_convex_material)
+                            scene.add(blossom_convex_mesh)
                             blossom_convex_meshes.push(blossom_convex_mesh)
                         }
                     }
@@ -590,7 +590,7 @@ export function show_snapshot(snapshot_idx, fusion_data) {
 }
 
 // configurations
-const gui = new GUI( { width: 400, title: "render configurations" } )
+const gui = new GUI({ width: 400, title: "render configurations" })
 export const show_config = ref(false)
 watch(show_config, () => {
     if (show_config.value) {
@@ -632,40 +632,40 @@ const conf = {
     vertex_radius_scale: vertex_radius_scale.value,
     edge_radius_scale: edge_radius_scale.value,
 }
-const side_options = { "FrontSide": THREE.FrontSide, "BackSide": THREE.BackSide, "DoubleSide": THREE.DoubleSide } 
+const side_options = { "FrontSide": THREE.FrontSide, "BackSide": THREE.BackSide, "DoubleSide": THREE.DoubleSide }
 export const controller = {}
 window.controller = controller
-controller.scene_background = gui.addColor( conf, 'scene_background' ).onChange( function ( value ) { scene.background = value } )
-const vertex_folder = gui.addFolder( 'vertex' )
-controller.defect_vertex_color = vertex_folder.addColor( conf, 'defect_vertex_color' ).onChange( function ( value ) { defect_vertex_material.color = value } )
-controller.defect_vertex_opacity = vertex_folder.add( conf, 'defect_vertex_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_material.opacity = Number(value) } )
-controller.disabled_mirror_vertex_color = vertex_folder.addColor( conf, 'disabled_mirror_vertex_color' ).onChange( function ( value ) { disabled_mirror_vertex_material.color = value } )
-controller.disabled_mirror_vertex_opacity = vertex_folder.add( conf, 'disabled_mirror_vertex_opacity', 0, 1 ).onChange( function ( value ) { disabled_mirror_vertex_material.opacity = Number(value) } )
-controller.real_vertex_color = vertex_folder.addColor( conf, 'real_vertex_color' ).onChange( function ( value ) { real_vertex_material.color = value } )
-controller.real_vertex_opacity = vertex_folder.add( conf, 'real_vertex_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_material.opacity = Number(value) } )
-controller.virtual_vertex_color = vertex_folder.addColor( conf, 'virtual_vertex_color' ).onChange( function ( value ) { virtual_vertex_material.color = value } )
-controller.virtual_vertex_opacity = vertex_folder.add( conf, 'virtual_vertex_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_material.opacity = Number(value) } )
-const vertex_outline_folder = gui.addFolder( 'vertex outline' )
-controller.defect_vertex_outline_color = vertex_outline_folder.addColor( conf, 'defect_vertex_outline_color' ).onChange( function ( value ) { defect_vertex_outline_material.color = value } )
-controller.defect_vertex_outline_opacity = vertex_outline_folder.add( conf, 'defect_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { defect_vertex_outline_material.opacity = Number(value) } )
-controller.real_vertex_outline_color = vertex_outline_folder.addColor( conf, 'real_vertex_outline_color' ).onChange( function ( value ) { real_vertex_outline_material.color = value } )
-controller.real_vertex_outline_opacity = vertex_outline_folder.add( conf, 'real_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { real_vertex_outline_material.opacity = Number(value) } )
-controller.virtual_vertex_outline_color = vertex_outline_folder.addColor( conf, 'virtual_vertex_outline_color' ).onChange( function ( value ) { virtual_vertex_outline_material.color = value } )
-controller.virtual_vertex_outline_opacity = vertex_outline_folder.add( conf, 'virtual_vertex_outline_opacity', 0, 1 ).onChange( function ( value ) { virtual_vertex_outline_material.opacity = Number(value) } )
-const edge_folder = gui.addFolder( 'edge' )
-controller.edge_color = edge_folder.addColor( conf, 'edge_color' ).onChange( function ( value ) { edge_material.color = value } )
-controller.edge_opacity = edge_folder.add( conf, 'edge_opacity', 0, 1 ).onChange( function ( value ) { edge_material.opacity = Number(value) } )
-controller.edge_side = edge_folder.add( conf, 'edge_side', side_options ).onChange( function ( value ) { edge_material.side = Number(value) } )
-controller.grown_edge_color = edge_folder.addColor( conf, 'grown_edge_color' ).onChange( function ( value ) { grown_edge_material.color = value } )
-controller.grown_edge_opacity = edge_folder.add( conf, 'grown_edge_opacity', 0, 1 ).onChange( function ( value ) { grown_edge_material.opacity = Number(value) } )
-controller.grown_edge_side = edge_folder.add( conf, 'grown_edge_side', side_options ).onChange( function ( value ) { grown_edge_material.side = Number(value) } )
-controller.subgraph_edge_color = edge_folder.addColor( conf, 'subgraph_edge_color' ).onChange( function ( value ) { subgraph_edge_material.color = value } )
-controller.subgraph_edge_opacity = edge_folder.add( conf, 'subgraph_edge_opacity', 0, 1 ).onChange( function ( value ) { subgraph_edge_material.opacity = Number(value) } )
-controller.subgraph_edge_side = edge_folder.add( conf, 'subgraph_edge_side', side_options ).onChange( function ( value ) { subgraph_edge_material.side = Number(value) } )
-const size_folder = gui.addFolder( 'size' )
-controller.outline_ratio = size_folder.add( conf, 'outline_ratio', 0.99, 2 ).onChange( function ( value ) { outline_ratio.value = Number(value) } )
-controller.vertex_radius_scale = size_folder.add( conf, 'vertex_radius_scale', 0.1, 5 ).onChange( function ( value ) { vertex_radius_scale.value = Number(value) } )
-controller.edge_radius_scale = size_folder.add( conf, 'edge_radius_scale', 0.1, 10 ).onChange( function ( value ) { edge_radius_scale.value = Number(value) } )
+controller.scene_background = gui.addColor(conf, 'scene_background').onChange(function (value) { scene.background = value })
+const vertex_folder = gui.addFolder('vertex')
+controller.defect_vertex_color = vertex_folder.addColor(conf, 'defect_vertex_color').onChange(function (value) { defect_vertex_material.color = value })
+controller.defect_vertex_opacity = vertex_folder.add(conf, 'defect_vertex_opacity', 0, 1).onChange(function (value) { defect_vertex_material.opacity = Number(value) })
+controller.disabled_mirror_vertex_color = vertex_folder.addColor(conf, 'disabled_mirror_vertex_color').onChange(function (value) { disabled_mirror_vertex_material.color = value })
+controller.disabled_mirror_vertex_opacity = vertex_folder.add(conf, 'disabled_mirror_vertex_opacity', 0, 1).onChange(function (value) { disabled_mirror_vertex_material.opacity = Number(value) })
+controller.real_vertex_color = vertex_folder.addColor(conf, 'real_vertex_color').onChange(function (value) { real_vertex_material.color = value })
+controller.real_vertex_opacity = vertex_folder.add(conf, 'real_vertex_opacity', 0, 1).onChange(function (value) { real_vertex_material.opacity = Number(value) })
+controller.virtual_vertex_color = vertex_folder.addColor(conf, 'virtual_vertex_color').onChange(function (value) { virtual_vertex_material.color = value })
+controller.virtual_vertex_opacity = vertex_folder.add(conf, 'virtual_vertex_opacity', 0, 1).onChange(function (value) { virtual_vertex_material.opacity = Number(value) })
+const vertex_outline_folder = gui.addFolder('vertex outline')
+controller.defect_vertex_outline_color = vertex_outline_folder.addColor(conf, 'defect_vertex_outline_color').onChange(function (value) { defect_vertex_outline_material.color = value })
+controller.defect_vertex_outline_opacity = vertex_outline_folder.add(conf, 'defect_vertex_outline_opacity', 0, 1).onChange(function (value) { defect_vertex_outline_material.opacity = Number(value) })
+controller.real_vertex_outline_color = vertex_outline_folder.addColor(conf, 'real_vertex_outline_color').onChange(function (value) { real_vertex_outline_material.color = value })
+controller.real_vertex_outline_opacity = vertex_outline_folder.add(conf, 'real_vertex_outline_opacity', 0, 1).onChange(function (value) { real_vertex_outline_material.opacity = Number(value) })
+controller.virtual_vertex_outline_color = vertex_outline_folder.addColor(conf, 'virtual_vertex_outline_color').onChange(function (value) { virtual_vertex_outline_material.color = value })
+controller.virtual_vertex_outline_opacity = vertex_outline_folder.add(conf, 'virtual_vertex_outline_opacity', 0, 1).onChange(function (value) { virtual_vertex_outline_material.opacity = Number(value) })
+const edge_folder = gui.addFolder('edge')
+controller.edge_color = edge_folder.addColor(conf, 'edge_color').onChange(function (value) { edge_material.color = value })
+controller.edge_opacity = edge_folder.add(conf, 'edge_opacity', 0, 1).onChange(function (value) { edge_material.opacity = Number(value) })
+controller.edge_side = edge_folder.add(conf, 'edge_side', side_options).onChange(function (value) { edge_material.side = Number(value) })
+controller.grown_edge_color = edge_folder.addColor(conf, 'grown_edge_color').onChange(function (value) { grown_edge_material.color = value })
+controller.grown_edge_opacity = edge_folder.add(conf, 'grown_edge_opacity', 0, 1).onChange(function (value) { grown_edge_material.opacity = Number(value) })
+controller.grown_edge_side = edge_folder.add(conf, 'grown_edge_side', side_options).onChange(function (value) { grown_edge_material.side = Number(value) })
+controller.subgraph_edge_color = edge_folder.addColor(conf, 'subgraph_edge_color').onChange(function (value) { subgraph_edge_material.color = value })
+controller.subgraph_edge_opacity = edge_folder.add(conf, 'subgraph_edge_opacity', 0, 1).onChange(function (value) { subgraph_edge_material.opacity = Number(value) })
+controller.subgraph_edge_side = edge_folder.add(conf, 'subgraph_edge_side', side_options).onChange(function (value) { subgraph_edge_material.side = Number(value) })
+const size_folder = gui.addFolder('size')
+controller.outline_ratio = size_folder.add(conf, 'outline_ratio', 0.99, 2).onChange(function (value) { outline_ratio.value = Number(value) })
+controller.vertex_radius_scale = size_folder.add(conf, 'vertex_radius_scale', 0.1, 5).onChange(function (value) { vertex_radius_scale.value = Number(value) })
+controller.edge_radius_scale = size_folder.add(conf, 'edge_radius_scale', 0.1, 10).onChange(function (value) { edge_radius_scale.value = Number(value) })
 watch(sizes, () => {
     gui.domElement.style.transform = `scale(${sizes.scale})`
     gui.domElement.style["transform-origin"] = "right top"
@@ -709,7 +709,7 @@ function set_material_with_user_data(user_data, material) {  // return the previ
         }
         let edge_index = user_data.edge_index
         let meshes_lists = [left_edge_meshes, right_edge_meshes, middle_edge_meshes]
-        let previous_material = [[null,null],[null,null],[null,null]]
+        let previous_material = [[null, null], [null, null], [null, null]]
         for (let i = 0; i < meshes_lists.length; ++i) {
             let meshes_list = meshes_lists[i][edge_index]
             for (let j of [0, 1]) {
@@ -747,10 +747,10 @@ watch(current_selected, (newVal, oldVal) => {
     })
 })
 function on_mouse_change(event, is_click) {
-    mouse.x = ( event.clientX / sizes.canvas_width ) * 2 - 1
-    mouse.y = - ( event.clientY / sizes.canvas_height ) * 2 + 1
-    raycaster.setFromCamera( mouse, camera.value )
-    const intersects = raycaster.intersectObjects( scene.children, false )
+    mouse.x = (event.clientX / sizes.canvas_width) * 2 - 1
+    mouse.y = - (event.clientY / sizes.canvas_height) * 2 + 1
+    raycaster.setFromCamera(mouse, camera.value)
+    const intersects = raycaster.intersectObjects(scene.children, false)
     for (let intersect of intersects) {
         if (!intersect.object.visible) continue  // don't select invisible object
         let user_data = intersect.object.userData
@@ -776,37 +776,37 @@ function on_mouse_change(event, is_click) {
 }
 var mousedown_position = null
 var is_mouse_currently_down = false
-window.addEventListener( 'mousedown', (event) => {
+window.addEventListener('mousedown', (event) => {
     if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
     mousedown_position = {
         clientX: event.clientX,
         clientY: event.clientY,
     }
     is_mouse_currently_down = true
-} )
-window.addEventListener( 'mouseup', (event) => {
+})
+window.addEventListener('mouseup', (event) => {
     if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
     // to prevent triggering select while moving camera
     if (mousedown_position != null && mousedown_position.clientX == event.clientX && mousedown_position.clientY == event.clientY) {
         on_mouse_change(event, true)
     }
     is_mouse_currently_down = false
-} )
-window.addEventListener( 'mousemove', (event) => {
+})
+window.addEventListener('mousemove', (event) => {
     if (event.clientX > sizes.canvas_width) return  // don't care events on control panel
     // to prevent triggering hover while moving camera
     if (!is_mouse_currently_down) {
         on_mouse_change(event, false)
     }
-} )
+})
 
 // export current scene to high-resolution png, useful when generating figures for publication
 // (I tried svg renderer but it doesn't work very well... shaders are poorly supported)
-export function render_png(scale=1) {
+export function render_png(scale = 1) {
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true, context: webgl_renderer_context() })
-    renderer.setSize( sizes.canvas_width * scale, sizes.canvas_height * scale, false )
-    renderer.setPixelRatio( window.devicePixelRatio * scale )
-    renderer.render( scene, camera.value )
+    renderer.setSize(sizes.canvas_width * scale, sizes.canvas_height * scale, false)
+    renderer.setPixelRatio(window.devicePixelRatio * scale)
+    renderer.render(scene, camera.value)
     return renderer.domElement.toDataURL()
 }
 window.render_png = render_png
@@ -833,21 +833,21 @@ export async function nodejs_render_png() {  // works only in nodejs
     let context = webgl_renderer_context()
     var pixels = new Uint8Array(context.drawingBufferWidth * context.drawingBufferHeight * 4)
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, preserveDrawingBuffer: true, context })
-    renderer.setSize( sizes.canvas_width, sizes.canvas_height, false )
-    renderer.setPixelRatio( window.devicePixelRatio )
-    renderer.render( scene, camera.value )
+    renderer.setSize(sizes.canvas_width, sizes.canvas_height, false)
+    renderer.setPixelRatio(window.devicePixelRatio)
+    renderer.render(scene, camera.value)
     context.readPixels(0, 0, context.drawingBufferWidth, context.drawingBufferHeight, context.RGBA, context.UNSIGNED_BYTE, pixels)
     return pixels
 }
 
 // wait several Vue ticks to make sure all changes have been applied
 export async function wait_changes() {
-    for (let i=0; i<5; ++i) await Vue.nextTick()
+    for (let i = 0; i < 5; ++i) await Vue.nextTick()
 }
 
 // https://www.npmjs.com/package/base64-arraybuffer
 var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-export function base64_encode (arraybuffer) {
+export function base64_encode(arraybuffer) {
     var bytes = new Uint8Array(arraybuffer), i, len = bytes.length, base64 = ''
     for (i = 0; i < len; i += 3) {
         base64 += chars[bytes[i] >> 2]
