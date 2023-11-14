@@ -59,8 +59,10 @@ const App = {
             current_selected: gui3d.current_selected,
             selected_vertex_neighbor_edges: ref([]),
             selected_vertex_attributes: ref(""),
+            selected_vertex_misc: ref(null),
             selected_edge: ref(null),
             selected_edge_attributes: ref(""),
+            selected_edge_misc: ref(null),
         }
     },
     async mounted() {
@@ -186,6 +188,25 @@ const App = {
         reset_camera(direction) {
             gui3d.reset_camera_position(direction)
         },
+        construct_quasar_tree(obj) {
+            let fields = []
+            for (const [key, value] of Object.entries(obj)) {
+                let label = key
+                let children = null
+                console.log(label)
+                if (typeof value === "object" && value !== null) {
+                    console.log(label)
+                    children = this.construct_quasar_tree(value)
+                } else {
+                    label += `: ${value}`
+                }
+                fields.push({
+                    label,
+                    children,
+                })
+            }
+            return fields
+        },
         update_selected_display() {
             if (this.current_selected == null) return
             if (this.current_selected.type == "vertex") {
@@ -202,6 +223,10 @@ const App = {
                 }
                 if (vertex.pg != null) {
                     this.selected_vertex_attributes += `(grandson ${vertex.pg}) `
+                }
+                this.selected_vertex_misc = null
+                if (this.snapshot.vertices_comb != null) {
+                    this.selected_vertex_misc = this.construct_quasar_tree(this.snapshot.vertices_comb[vertex_index])
                 }
                 console.assert(!(vertex.s == 1 && vertex.v == 1), "a vertex cannot be both syndrome and virtual")
                 // fetch edge list
@@ -265,6 +290,10 @@ const App = {
                 }
                 if (edge.lgd != null || edge.rgd != null) {
                     this.selected_edge_attributes += `(grandson l: ${edge.lgd}, r: ${edge.rgd}) `
+                }
+                this.selected_edge_misc = null
+                if (this.snapshot.edges_comb != null) {
+                    this.selected_edge_misc = this.construct_quasar_tree(this.snapshot.edges_comb[edge_index])
                 }
             }
         },

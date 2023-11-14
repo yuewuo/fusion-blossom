@@ -132,6 +132,7 @@
 
 <body>
     <script src="https://cdn.jsdelivr.net/npm/vue@3.2.33/dist/vue.global.prod.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@3.2.33/dist/vue.global.js"></script> -->
     <script src="https://cdn.jsdelivr.net/npm/quasar@2.6.6/dist/quasar.umd.prod.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7.6.1/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hull.js@1.0.2/dist/hull.js"></script>
@@ -270,6 +271,9 @@
                         </q-circular-progress>
                     </div>
                 </q-card-section>
+                <q-card-section v-if="selected_vertex_misc != null">
+                    <q-tree :nodes="selected_vertex_misc" node-key="label" default-expand-all dense />
+                </q-card-section>
             </q-card>
             <q-card bordered class="select-info-div" v-if="current_selected != null && current_selected.type == 'edge'">
                 <q-card-section class="bg-teal text-white">
@@ -317,6 +321,9 @@
                         </q-tooltip> -->
                         </q-circular-progress>
                     </div>
+                </q-card-section>
+                <q-card-section v-if="selected_edge_misc != null">
+                    <q-tree :nodes="selected_edge_misc" node-key="label" default-expand-all dense />
                 </q-card-section>
             </q-card>
             <!-- <p v-for="index in 50">paragraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraphparagraph</p> -->
