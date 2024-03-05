@@ -1321,7 +1321,7 @@ impl QECPlaygroundCode {
         }
         code.edge_index_map = std::sync::Arc::new(edge_index_map);
         // automatically create the vertices and nearest-neighbor connection
-        code.fill_vertices(code.vertex_index_map.len());
+        code.fill_vertices(code.vertex_index_map.len() as VertexNum);
         // set virtual vertices and positions
         for (vertex_index, position) in positions.iter().cloned().enumerate() {
             if let Some(new_index) = code.vertex_index_map.get(&vertex_index) {
