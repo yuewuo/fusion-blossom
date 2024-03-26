@@ -4,6 +4,20 @@
 //! Note that you can call different primal and dual modules, even interchangeably, by following the examples in this file
 //!
 
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::prelude::*;
+
+use nonzero::nonzero as nz;
+#[cfg(feature = "python_binding")]
+use pyo3::prelude::*;
+
+use crate::blossom_v;
+use crate::complete_graph::*;
+use crate::derivative::Derivative;
+use crate::dual_module::*;
+
 use super::dual_module::{DualModuleImpl, DualModuleInterfacePtr};
 use super::dual_module_parallel::*;
 use super::dual_module_serial::DualModuleSerial;
@@ -13,19 +27,6 @@ use super::primal_module_parallel::*;
 use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::util::*;
 use super::visualize::*;
-use crate::blossom_v;
-use crate::complete_graph::*;
-use crate::derivative::Derivative;
-use crate::dual_module::*;
-#[cfg(feature = "python_binding")]
-use pyo3::prelude::*;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufWriter;
-use super::pointers::*;
-use nonzero::nonzero as nz;
-
 
 /// a serial solver
 #[derive(Derivative)]

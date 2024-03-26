@@ -4,18 +4,20 @@
 //!
 
 #![cfg_attr(feature = "unsafe_pointer", allow(dropping_references))]
+
+use core::cmp::Ordering;
+use std::collections::{BTreeMap, HashSet};
+use std::num::NonZeroUsize;
+#[cfg(not(feature = "dangerous_pointer"))]
+use std::sync::Arc;
+
+use nonzero::nonzero as nz;
+
+use crate::derivative::Derivative;
+
 use super::pointers::*;
 use super::util::*;
 use super::visualize::*;
-use crate::derivative::Derivative;
-use core::cmp::Ordering;
-use std::collections::{BTreeMap, HashSet};
-#[cfg(not(feature = "dangerous_pointer"))]
-use std::sync::Arc;
-use super::visualize::*;
-use super::pointers::*;
-use std::num::NonZeroUsize;
-use nonzero::nonzero as nz;
 
 /// A dual node is either a blossom or a vertex
 #[derive(Derivative, Clone)]
@@ -933,7 +935,11 @@ impl DualModuleInterfacePtr {
         debug_assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
-        let defect_size = nodes_circle.iter().map(|iter| iter.read_recursive().defect_size).reduce(|a, b| a.saturating_add(b.get())).unwrap();
+        let defect_size = nodes_circle
+            .iter()
+            .map(|iter| iter.read_recursive().defect_size)
+            .reduce(|a, b| a.saturating_add(b.get()))
+            .unwrap();
 
         let blossom_node_ptr = if !interface.is_fusion
             && local_node_index < interface.nodes.len()
