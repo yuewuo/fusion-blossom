@@ -23,6 +23,7 @@ use std::io::BufWriter;
 use super::pointers::*;
 #[cfg(feature="python_binding")]
 use pyo3::prelude::*;
+use nonzero::nonzero as nz;
 
 
 /// a serial solver
@@ -606,6 +607,7 @@ impl PrimalDualSolver for SolverBlossomV {
                 parent_blossom: None,
                 dual_variable_cache: (0, 0),
                 belonging: interface_ptr.downgrade(),
+                defect_size: nz!(1usize),
             })
         };
         for &(vertex_1, vertex_2) in self.matched_pairs.iter() {

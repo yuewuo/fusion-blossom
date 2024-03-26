@@ -11,6 +11,8 @@ use core::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use super::visualize::*;
 use super::pointers::*;
+use std::num::NonZeroUsize;
+use nonzero::nonzero as nz;
 
 
 /// A dual node is either a blossom or a vertex
@@ -288,6 +290,8 @@ pub struct DualNode {
     pub dual_variable_cache: (Weight, Weight),
     /// belonging of the dual module interface; a dual node is never standalone
     pub belonging: DualModuleInterfaceWeak,
+    /// how many defect vertices in this dual node
+    pub defect_size: NonZeroUsize,
 }
 
 impl DualNode {
@@ -812,6 +816,7 @@ impl DualModuleInterfacePtr {
             node.parent_blossom = None;
             node.dual_variable_cache = (0, interface.dual_variable_global_progress);
             node.belonging = belonging;
+            node.defect_size = nz!(1usize);
             drop(node);
             node_ptr
         } else {
@@ -824,6 +829,7 @@ impl DualModuleInterfacePtr {
                 parent_blossom: None,
                 dual_variable_cache: (0, interface.dual_variable_global_progress),
                 belonging,
+                defect_size: nz!(1usize),
             })
         };
         interface.nodes_length += 1;
@@ -861,6 +867,7 @@ impl DualModuleInterfacePtr {
         debug_assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
+        let defect_size = nodes_circle.iter().map(|iter| iter.read_recursive().defect_size).reduce(|a, b| a.saturating_add(b.get())).unwrap();
         let blossom_node_ptr = if !interface.is_fusion && local_node_index < interface.nodes.len() && interface.nodes[local_node_index].is_some() {
             let node_ptr = interface.nodes[local_node_index].take().unwrap();
             let mut node = node_ptr.write();
@@ -873,6 +880,7 @@ impl DualModuleInterfacePtr {
             node.parent_blossom = None;
             node.dual_variable_cache = (0, interface.dual_variable_global_progress);
             node.belonging = belonging;
+            node.defect_size = defect_size;
             drop(node);
             node_ptr
         } else {
@@ -886,6 +894,7 @@ impl DualModuleInterfacePtr {
                 parent_blossom: None,
                 dual_variable_cache: (0, interface.dual_variable_global_progress),
                 belonging,
+                defect_size,
             })
         };
         drop(interface);
