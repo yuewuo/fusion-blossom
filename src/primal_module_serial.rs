@@ -1,7 +1,7 @@
 //! Serial Primal Module
 //!
 //! A serial implementation of the primal module. This is the very basic fusion blossom algorithm that aims at debugging and as a ground truth
-//! where traditional matching is too time consuming because of their |E| = O(|V|^2) scaling.
+//! where traditional matching is too time-consuming because of their |E| = O(|V|^2) scaling.
 //!
 
 #![cfg_attr(feature = "unsafe_pointer", allow(dropping_references))]
@@ -1802,6 +1802,16 @@ pub mod tests {
         defect_vertices: Vec<VertexIndex>,
         final_dual: Weight,
     ) -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
+        primal_module_serial_basic_standard_syndrome_optional_viz_max_tree_size(d, visualize_filename, defect_vertices, final_dual, usize::MAX)
+    }
+
+    pub fn primal_module_serial_basic_standard_syndrome_optional_viz_max_tree_size(
+        d: VertexNum,
+        visualize_filename: Option<String>,
+        defect_vertices: Vec<VertexIndex>,
+        final_dual: Weight,
+        max_tree_size: usize,
+    ) -> (DualModuleInterfacePtr, PrimalModuleSerialPtr, DualModuleSerial) {
         println!("{defect_vertices:?}");
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(d, 0.1, half_weight);
@@ -1825,6 +1835,7 @@ pub mod tests {
         let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
         primal_module.write().debug_resolve_only_one = true; // to enable debug mode
                                                              // try to work on a simple syndrome
+        primal_module.write().max_tree_size = max_tree_size;
         code.set_defect_vertices(&defect_vertices);
         let interface_ptr = DualModuleInterfacePtr::new_empty();
         primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, visualizer.as_mut());
@@ -1955,6 +1966,17 @@ pub mod tests {
         let visualize_filename = "primal_module_serial_basic_10.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         primal_module_serial_basic_standard_syndrome(11, visualize_filename, defect_vertices, 9);
+    }
+
+
+    /// test the union-find decoder
+    #[test]
+    fn primal_module_union_find_basic_10() {
+        // cargo test primal_module_union_find_basic_10 -- --nocapture
+        let visualize_filename = "primal_module_union_find_basic_10.json".to_string();
+        let defect_vertices = vec![39, 52, 63, 90, 100];
+        primal_module_serial_basic_standard_syndrome_optional_viz_max_tree_size(11, Some(visualize_filename), defect_vertices, 9, 0);
+        // primal_module_serial_basic_standard_syndrome_optional_viz_max_tree_size(11, Some(visualize_filename), defect_vertices, 9, 3);
     }
 
     /// test the error pattern in the paper
