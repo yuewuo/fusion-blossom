@@ -1,22 +1,21 @@
-use super::rand_xoshiro;
-use crate::rand_xoshiro::rand_core::RngCore;
-use serde::{Serialize, Deserialize};
-use std::collections::BTreeSet;
-use std::time::Instant;
-use std::fs::File;
-use std::io::prelude::*;
 use super::mwpm_solver::PrimalDualSolver;
 use super::pointers::*;
-#[cfg(feature="python_binding")]
+use super::rand_xoshiro;
+use crate::rand_xoshiro::rand_core::RngCore;
+#[cfg(feature = "python_binding")]
 use pyo3::prelude::*;
-
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::fs::File;
+use std::io::prelude::*;
+use std::time::Instant;
 
 cfg_if::cfg_if! {
     if #[cfg(feature="i32_weight")] {
         /// use i32 to store weight to be compatible with blossom V library (c_int)
         pub type Weight = i32;
     } else {
-        pub type Weight = i64;
+        pub type Weight = isize;
     }
 }
 
@@ -63,14 +62,44 @@ pub struct SyndromePattern {
     /// the vertices corresponding to defect measurements
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub defect_vertices: Vec<VertexIndex>,
-    /// the edges that experience erasures, i.e. known errors
+    /// the edges that experience erasures, i.e. known errors;
+    /// note that erasure decoding can also be implemented using `dynamic_weights`,
+    /// but for user convenience we keep this interface
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    #[serde(default = "default_erasures")]
     pub erasures: Vec<EdgeIndex>,
+    /// general dynamically weighted edges
+    #[cfg_attr(feature = "python_binding", pyo3(get, set))]
+    #[serde(default = "default_dynamic_weights")]
+    pub dynamic_weights: Vec<(EdgeIndex, Weight)>,
+}
+
+pub fn default_dynamic_weights() -> Vec<(EdgeIndex, Weight)> {
+    vec![]
+}
+
+pub fn default_erasures() -> Vec<EdgeIndex> {
+    vec![]
 }
 
 impl SyndromePattern {
     pub fn new(defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>) -> Self {
-        Self { defect_vertices, erasures }
+        Self {
+            defect_vertices,
+            erasures,
+            dynamic_weights: vec![],
+        }
+    }
+    pub fn new_dynamic_weights(
+        defect_vertices: Vec<VertexIndex>,
+        erasures: Vec<EdgeIndex>,
+        dynamic_weights: Vec<(EdgeIndex, Weight)>,
+    ) -> Self {
+        Self {
+            defect_vertices,
+            erasures,
+            dynamic_weights,
+        }
     }
 }
 
@@ -78,13 +107,25 @@ impl SyndromePattern {
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SyndromePattern {
     #[cfg_attr(feature = "python_binding", new)]
-    #[cfg_attr(feature = "python_binding", pyo3(signature = (defect_vertices=vec![], erasures=vec![], syndrome_vertices=None)))]
-    pub fn py_new(mut defect_vertices: Vec<VertexIndex>, erasures: Vec<EdgeIndex>, syndrome_vertices: Option<Vec<VertexIndex>>) -> Self {
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (defect_vertices=vec![], erasures=vec![], dynamic_weights=vec![], syndrome_vertices=None)))]
+    pub fn py_new(
+        mut defect_vertices: Vec<VertexIndex>,
+        erasures: Vec<EdgeIndex>,
+        dynamic_weights: Vec<(EdgeIndex, Weight)>,
+        syndrome_vertices: Option<Vec<VertexIndex>>,
+    ) -> Self {
         if let Some(syndrome_vertices) = syndrome_vertices {
-            assert!(defect_vertices.is_empty(), "do not pass both `syndrome_vertices` and `defect_vertices` since they're aliasing");
+            assert!(
+                defect_vertices.is_empty(),
+                "do not pass both `syndrome_vertices` and `defect_vertices` since they're aliasing"
+            );
             defect_vertices = syndrome_vertices;
         }
-        Self { defect_vertices, erasures }
+        assert!(
+            erasures.is_empty() || dynamic_weights.is_empty(),
+            "erasures and dynamic_weights cannot be provided at the same time"
+        );
+        Self::new_dynamic_weights(defect_vertices, erasures, dynamic_weights)
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_vertices(defect_vertices: Vec<VertexIndex>) -> Self {
@@ -95,7 +136,9 @@ impl SyndromePattern {
         Self::new(vec![], vec![])
     }
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 /// an efficient representation of partitioned vertices and erasures when they're ordered
@@ -108,17 +151,18 @@ pub struct PartitionedSyndromePattern<'a> {
 }
 
 impl<'a> PartitionedSyndromePattern<'a> {
-
     pub fn new(syndrome_pattern: &'a SyndromePattern) -> Self {
-        assert!(syndrome_pattern.erasures.is_empty(), "erasure partition not supported yet;
+        assert!(
+            syndrome_pattern.erasures.is_empty(),
+            "erasure partition not supported yet;
         even if the edges in the erasure is well ordered, they may not be able to be represented as
-        a single range simply because the partition is vertex-based. need more consideration");
+        a single range simply because the partition is vertex-based. need more consideration"
+        );
         Self {
             syndrome_pattern,
             whole_defect_range: DefectRange::new(0, syndrome_pattern.defect_vertices.len() as DefectIndex),
         }
     }
-
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -140,7 +184,7 @@ impl IndexRange {
     #[cfg_attr(feature = "python_binding", new)]
     pub fn new(start: VertexNodeIndex, end: VertexNodeIndex) -> Self {
         debug_assert!(end >= start, "invalid range [{}, {})", start, end);
-        Self { range: [start, end], }
+        Self { range: [start, end] }
     }
     #[cfg_attr(feature = "python_binding", staticmethod)]
     pub fn new_length(start: VertexNodeIndex, length: VertexNodeIndex) -> Self {
@@ -149,6 +193,7 @@ impl IndexRange {
     pub fn is_empty(&self) -> bool {
         self.range[1] == self.range[0]
     }
+    #[allow(clippy::unnecessary_cast)]
     pub fn len(&self) -> usize {
         (self.range[1] - self.range[0]) as usize
     }
@@ -176,7 +221,10 @@ impl IndexRange {
         self.sanity_check();
         other.sanity_check();
         assert!(self.range[1] <= other.range[0], "only lower range can fuse higher range");
-        (Self::new(self.range[0], other.range[1]), Self::new(self.range[1], other.range[0]))
+        (
+            Self::new(self.range[0], other.range[1]),
+            Self::new(self.range[1], other.range[0]),
+        )
     }
     #[cfg(feature = "python_binding")]
     #[pyo3(name = "contains_any")]
@@ -184,17 +232,19 @@ impl IndexRange {
         self.contains_any(&vertex_indices)
     }
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 impl IndexRange {
     pub fn iter(&self) -> std::ops::Range<VertexNodeIndex> {
-        self.range[0].. self.range[1]
+        self.range[0]..self.range[1]
     }
     pub fn contains_any(&self, vertex_indices: &[VertexNodeIndex]) -> bool {
         for vertex_index in vertex_indices.iter() {
             if self.contains(*vertex_index) {
-                return true
+                return true;
             }
         }
         false
@@ -216,7 +266,12 @@ pub type PartitionUnitWeak = WeakManualSafeLock<PartitionUnit>;
 impl std::fmt::Debug for PartitionUnitPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let partition_unit = self.read_recursive();
-        write!(f, "{}{}", if partition_unit.enabled { "E" } else { "D" }, partition_unit.unit_index)
+        write!(
+            f,
+            "{}{}",
+            if partition_unit.enabled { "E" } else { "D" },
+            partition_unit.unit_index
+        )
     }
 }
 
@@ -246,7 +301,6 @@ pub struct PartitionConfig {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl PartitionConfig {
-
     #[cfg_attr(feature = "python_binding", new)]
     pub fn new(vertex_num: VertexNum) -> Self {
         Self {
@@ -257,15 +311,22 @@ impl PartitionConfig {
     }
 
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn info(&self) -> PartitionInfo {
         assert!(!self.partitions.is_empty(), "at least one partition must exist");
         let mut whole_ranges = vec![];
         let mut owning_ranges = vec![];
         for &partition in self.partitions.iter() {
             partition.sanity_check();
-            assert!(partition.end() <= self.vertex_num as VertexIndex, "invalid vertex index {} in partitions", partition.end());
+            assert!(
+                partition.end() <= self.vertex_num as VertexIndex,
+                "invalid vertex index {} in partitions",
+                partition.end()
+            );
             whole_ranges.push(partition);
             owning_ranges.push(partition);
         }
@@ -273,8 +334,18 @@ impl PartitionConfig {
         let mut parents: Vec<Option<usize>> = (0..unit_count).map(|_| None).collect();
         for (fusion_index, (left_index, right_index)) in self.fusions.iter().enumerate() {
             let unit_index = fusion_index + self.partitions.len();
-            assert!(*left_index < unit_index, "dependency wrong, {} depending on {}", unit_index, left_index);
-            assert!(*right_index < unit_index, "dependency wrong, {} depending on {}", unit_index, right_index);
+            assert!(
+                *left_index < unit_index,
+                "dependency wrong, {} depending on {}",
+                unit_index,
+                left_index
+            );
+            assert!(
+                *right_index < unit_index,
+                "dependency wrong, {} depending on {}",
+                unit_index,
+                right_index
+            );
             assert!(parents[*left_index].is_none(), "cannot fuse {} twice", left_index);
             assert!(parents[*right_index].is_none(), "cannot fuse {} twice", right_index);
             parents[*left_index] = Some(unit_index);
@@ -290,20 +361,31 @@ impl PartitionConfig {
         }
         // check that the final node has the full range
         let last_unit_index = self.partitions.len() + self.fusions.len() - 1;
-        assert!(whole_ranges[last_unit_index].start() == 0, "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
-        assert!(whole_ranges[last_unit_index].end() == self.vertex_num as VertexIndex
-            , "final range not covering all vertices {:?}", whole_ranges[last_unit_index]);
+        assert!(
+            whole_ranges[last_unit_index].start() == 0,
+            "final range not covering all vertices {:?}",
+            whole_ranges[last_unit_index]
+        );
+        assert!(
+            whole_ranges[last_unit_index].end() == self.vertex_num as VertexIndex,
+            "final range not covering all vertices {:?}",
+            whole_ranges[last_unit_index]
+        );
         // construct partition info
-        let mut partition_unit_info: Vec<_> = (0..self.partitions.len() + self.fusions.len()).map(|i| {
-            PartitionUnitInfo {
+        let mut partition_unit_info: Vec<_> = (0..self.partitions.len() + self.fusions.len())
+            .map(|i| PartitionUnitInfo {
                 whole_range: whole_ranges[i],
                 owning_range: owning_ranges[i],
-                children: if i >= self.partitions.len() { Some(self.fusions[i - self.partitions.len()]) } else { None },
+                children: if i >= self.partitions.len() {
+                    Some(self.fusions[i - self.partitions.len()])
+                } else {
+                    None
+                },
                 parent: parents[i],
                 leaves: if i < self.partitions.len() { vec![i] } else { vec![] },
                 descendants: BTreeSet::new(),
-            }
-        }).collect();
+            })
+            .collect();
         // build descendants
         for (fusion_index, (left_index, right_index)) in self.fusions.iter().enumerate() {
             let unit_index = fusion_index + self.partitions.len();
@@ -330,7 +412,6 @@ impl PartitionConfig {
             vertex_to_owning_unit,
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -351,9 +432,9 @@ pub struct PartitionInfo {
 
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl PartitionInfo {
-
     /// split a sequence of syndrome into multiple parts, each corresponds to a unit;
     /// this is a slow method and should only be used when the syndrome pattern is not well-ordered
+    #[allow(clippy::unnecessary_cast)]
     pub fn partition_syndrome_unordered(&self, syndrome_pattern: &SyndromePattern) -> Vec<SyndromePattern> {
         let mut partitioned_syndrome: Vec<_> = (0..self.units.len()).map(|_| SyndromePattern::new_empty()).collect();
         for defect_vertex in syndrome_pattern.defect_vertices.iter() {
@@ -365,13 +446,14 @@ impl PartitionInfo {
     }
 
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
-
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 impl<'a> PartitionedSyndromePattern<'a> {
-
     /// partition the syndrome pattern into 2 partitioned syndrome pattern and my whole range
+    #[allow(clippy::unnecessary_cast)]
     pub fn partition(&self, partition_unit_info: &PartitionUnitInfo) -> (Self, (Self, Self)) {
         // first binary search the start of owning defect vertices
         let owning_start_index = {
@@ -403,18 +485,25 @@ impl<'a> PartitionedSyndromePattern<'a> {
             }
             left_index
         };
-        (Self {
-            syndrome_pattern: self.syndrome_pattern,
-            whole_defect_range: DefectRange::new(owning_start_index, owning_end_index),
-        }, (Self {
-            syndrome_pattern: self.syndrome_pattern,
-            whole_defect_range: DefectRange::new(self.whole_defect_range.start(), owning_start_index),
-        }, Self {
-            syndrome_pattern: self.syndrome_pattern,
-            whole_defect_range: DefectRange::new(owning_end_index, self.whole_defect_range.end()),
-        }))
+        (
+            Self {
+                syndrome_pattern: self.syndrome_pattern,
+                whole_defect_range: DefectRange::new(owning_start_index, owning_end_index),
+            },
+            (
+                Self {
+                    syndrome_pattern: self.syndrome_pattern,
+                    whole_defect_range: DefectRange::new(self.whole_defect_range.start(), owning_start_index),
+                },
+                Self {
+                    syndrome_pattern: self.syndrome_pattern,
+                    whole_defect_range: DefectRange::new(owning_end_index, self.whole_defect_range.end()),
+                },
+            ),
+        )
     }
 
+    #[allow(clippy::unnecessary_cast)]
     pub fn expand(&self) -> SyndromePattern {
         let mut defect_vertices = Vec::with_capacity(self.whole_defect_range.len());
         for defect_index in self.whole_defect_range.iter() {
@@ -422,7 +511,6 @@ impl<'a> PartitionedSyndromePattern<'a> {
         }
         SyndromePattern::new(defect_vertices, vec![])
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -452,7 +540,9 @@ pub struct PartitionUnitInfo {
 #[cfg(feature = "python_binding")]
 #[pymethods]
 impl PartitionUnitInfo {
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -471,14 +561,15 @@ pub struct PartitionedSolverInitializer {
     /// we skip them because if the partition is in a chain, most of them would only have to know two interfaces on the left and on the right; nothing else necessary.
     /// (unit_index, list of vertices owned by this ancestor unit and should be mirrored at this partition and whether it's virtual)
     pub interfaces: Vec<(PartitionUnitWeak, Vec<(VertexIndex, bool)>)>,
-    /// weighted edges, where the first vertex index is within the range [vertex_index_bias, vertex_index_bias + vertex_num) and 
-    /// the second is either in [vertex_index_bias, vertex_index_bias + vertex_num) or inside 
+    /// weighted edges, where the first vertex index is within the range [vertex_index_bias, vertex_index_bias + vertex_num) and
+    /// the second is either in [vertex_index_bias, vertex_index_bias + vertex_num) or inside
     pub weighted_edges: Vec<(VertexIndex, VertexIndex, Weight, EdgeIndex)>,
     /// the virtual vertices
     pub virtual_vertices: Vec<VertexIndex>,
 }
 
 /// perform index transformation
+#[allow(clippy::unnecessary_cast)]
 pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<VertexIndex>> {
     let mut old_to_new: Vec<Option<VertexIndex>> = (0..reordered_vertices.len()).map(|_| None).collect();
     for (new_index, old_index) in reordered_vertices.iter().enumerate() {
@@ -489,18 +580,27 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<Ver
 }
 
 /// translate defect vertices into the current new index given reordered_vertices
-pub fn translated_defect_to_reordered(reordered_vertices: &Vec<VertexIndex>, old_defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
+#[allow(clippy::unnecessary_cast)]
+pub fn translated_defect_to_reordered(
+    reordered_vertices: &Vec<VertexIndex>,
+    old_defect_vertices: &[VertexIndex],
+) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
-    old_defect_vertices.iter().map(|old_index| {
-        old_to_new[*old_index as usize].unwrap()
-    }).collect()
+    old_defect_vertices
+        .iter()
+        .map(|old_index| old_to_new[*old_index as usize].unwrap())
+        .collect()
 }
 
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl SolverInitializer {
     #[cfg_attr(feature = "python_binding", new)]
-    pub fn new(vertex_num: VertexNum, weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>, virtual_vertices: Vec<VertexIndex>) -> SolverInitializer {
+    pub fn new(
+        vertex_num: VertexNum,
+        weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)>,
+        virtual_vertices: Vec<VertexIndex>,
+    ) -> SolverInitializer {
         SolverInitializer {
             vertex_num,
             weighted_edges,
@@ -508,12 +608,13 @@ impl SolverInitializer {
         }
     }
     #[cfg(feature = "python_binding")]
-    fn __repr__(&self) -> String { format!("{:?}", self) }
+    fn __repr__(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 /// timestamp type determines how many fast clear before a hard clear is required, see [`FastClear`]
 pub type FastClearTimestamp = usize;
-
 
 #[allow(dead_code)]
 /// use Xoshiro256StarStar for deterministic random number generator
@@ -547,11 +648,17 @@ impl BenchmarkProfiler {
     pub fn new(noisy_measurements: VertexNum, detail_log_file: Option<(String, &PartitionInfo)>) -> Self {
         let benchmark_profiler_output = detail_log_file.map(|(filename, partition_info)| {
             let mut file = File::create(filename).unwrap();
-            file.write_all(serde_json::to_string(&partition_info.config).unwrap().as_bytes()).unwrap();
+            file.write_all(serde_json::to_string(&partition_info.config).unwrap().as_bytes())
+                .unwrap();
             file.write_all(b"\n").unwrap();
-            file.write_all(serde_json::to_string(&json!({
-                "noisy_measurements": noisy_measurements,
-            })).unwrap().as_bytes()).unwrap();
+            file.write_all(
+                serde_json::to_string(&json!({
+                    "noisy_measurements": noisy_measurements,
+                }))
+                .unwrap()
+                .as_bytes(),
+            )
+            .unwrap();
             file.write_all(b"\n").unwrap();
             file
         });
@@ -567,19 +674,28 @@ impl BenchmarkProfiler {
     pub fn begin(&mut self, syndrome_pattern: &SyndromePattern) {
         // sanity check last entry, if exists, is complete
         if let Some(last_entry) = self.records.last() {
-            assert!(last_entry.is_complete(), "the last benchmark profiler entry is not complete, make sure to call `begin` and `end` in pairs");
+            assert!(
+                last_entry.is_complete(),
+                "the last benchmark profiler entry is not complete, make sure to call `begin` and `end` in pairs"
+            );
         }
         let entry = BenchmarkProfilerEntry::new(syndrome_pattern);
         self.records.push(entry);
         self.records.last_mut().unwrap().record_begin();
     }
     pub fn event(&mut self, event_name: String) {
-        let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
+        let last_entry = self
+            .records
+            .last_mut()
+            .expect("last entry not exists, call `begin` before `end`");
         last_entry.record_event(event_name);
     }
     /// record the ending of a decoding procedure
     pub fn end(&mut self, solver: Option<&dyn PrimalDualSolver>) {
-        let last_entry = self.records.last_mut().expect("last entry not exists, call `begin` before `end`");
+        let last_entry = self
+            .records
+            .last_mut()
+            .expect("last entry not exists, call `begin` before `end`");
         last_entry.record_end();
         self.sum_round_time += last_entry.round_time.unwrap();
         self.sum_syndrome += last_entry.syndrome_pattern.defect_vertices.len();
@@ -595,7 +711,10 @@ impl BenchmarkProfiler {
             });
             if let Some(solver) = solver {
                 let solver_profile = solver.generate_profiler_report();
-                value.as_object_mut().unwrap().insert("solver_profile".to_string(), solver_profile);
+                value
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("solver_profile".to_string(), solver_profile);
             }
             file.write_all(serde_json::to_string(&value).unwrap().as_bytes()).unwrap();
             file.write_all(b"\n").unwrap();
@@ -637,11 +756,17 @@ impl BenchmarkProfilerEntry {
     }
     /// record the ending of a decoding procedure
     pub fn record_end(&mut self) {
-        let begin_time = self.begin_time.as_ref().expect("make sure to call `record_begin` before calling `record_end`");
+        let begin_time = self
+            .begin_time
+            .as_ref()
+            .expect("make sure to call `record_begin` before calling `record_end`");
         self.round_time = Some(begin_time.elapsed().as_secs_f64());
     }
     pub fn record_event(&mut self, event_name: String) {
-        let begin_time = self.begin_time.as_ref().expect("make sure to call `record_begin` before calling `record_end`");
+        let begin_time = self
+            .begin_time
+            .as_ref()
+            .expect("make sure to call `record_begin` before calling `record_end`");
         self.events.push((event_name, begin_time.elapsed().as_secs_f64()));
     }
     pub fn is_complete(&self) -> bool {
@@ -653,13 +778,13 @@ impl BenchmarkProfilerEntry {
  * If you want to modify a field of a Rust struct, it will return a copy of it to avoid memory unsafety.
  * Thus, typical way of modifying a python field doesn't work, e.g. `obj.a.b.c = 1` won't actually modify `obj`.
  * This helper class is used to modify a field easier; but please note this can be very time consuming if not optimized well.
- * 
+ *
  * Example:
  * with PyMut(code, "vertices") as vertices:
  *     with fb.PyMut(vertices[0], "position") as position:
  *         position.i = 100
 */
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 #[pyclass]
 pub struct PyMut {
     /// the python object that provides getter and setter function for the attribute
@@ -673,7 +798,7 @@ pub struct PyMut {
     attr_object: Option<PyObject>,
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 #[pymethods]
 impl PyMut {
     #[new]
@@ -694,12 +819,14 @@ impl PyMut {
     }
     pub fn __exit__(&mut self, _exc_type: PyObject, _exc_val: PyObject, _exc_tb: PyObject) {
         Python::with_gil(|py| {
-            self.object.setattr(py, self.attr_name.as_str(), self.attr_object.take().unwrap()).unwrap()
+            self.object
+                .setattr(py, self.attr_name.as_str(), self.attr_object.take().unwrap())
+                .unwrap()
         })
     }
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 pub fn json_to_pyobject_locked<'py>(value: serde_json::Value, py: Python<'py>) -> PyObject {
     match value {
         serde_json::Value::Null => py.None(),
@@ -710,12 +837,12 @@ pub fn json_to_pyobject_locked<'py>(value: serde_json::Value, py: Python<'py>) -
             } else {
                 value.as_f64().to_object(py).into()
             }
-        },
+        }
         serde_json::Value::String(value) => value.to_object(py).into(),
         serde_json::Value::Array(array) => {
             let elements: Vec<PyObject> = array.into_iter().map(|value| json_to_pyobject_locked(value, py)).collect();
             pyo3::types::PyList::new(py, elements).into()
-        },
+        }
         serde_json::Value::Object(map) => {
             let pydict = pyo3::types::PyDict::new(py);
             for (key, value) in map.into_iter() {
@@ -723,18 +850,16 @@ pub fn json_to_pyobject_locked<'py>(value: serde_json::Value, py: Python<'py>) -
                 pydict.set_item(key, pyobject).unwrap();
             }
             pydict.into()
-        },
+        }
     }
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 pub fn json_to_pyobject(value: serde_json::Value) -> PyObject {
-    Python::with_gil(|py| {
-        json_to_pyobject_locked(value, py)
-    })
+    Python::with_gil(|py| json_to_pyobject_locked(value, py))
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 pub fn pyobject_to_json_locked<'py>(value: PyObject, py: Python<'py>) -> serde_json::Value {
     let value: &PyAny = value.as_ref(py);
     if value.is_none() {
@@ -748,14 +873,21 @@ pub fn pyobject_to_json_locked<'py>(value: PyObject, py: Python<'py>) -> serde_j
     } else if value.is_instance_of::<pyo3::types::PyString>().unwrap() {
         json!(value.extract::<String>().unwrap())
     } else if value.is_instance_of::<pyo3::types::PyList>().unwrap() {
-        let elements: Vec<serde_json::Value> = value.extract::<Vec<PyObject>>().unwrap()
-            .into_iter().map(|object| pyobject_to_json_locked(object, py)).collect();
+        let elements: Vec<serde_json::Value> = value
+            .extract::<Vec<PyObject>>()
+            .unwrap()
+            .into_iter()
+            .map(|object| pyobject_to_json_locked(object, py))
+            .collect();
         json!(elements)
     } else if value.is_instance_of::<pyo3::types::PyDict>().unwrap() {
         let map: &pyo3::types::PyDict = value.downcast().unwrap();
         let mut json_map = serde_json::Map::new();
         for (key, value) in map.iter() {
-            json_map.insert(key.extract::<String>().unwrap(), pyobject_to_json_locked(value.to_object(py), py));
+            json_map.insert(
+                key.extract::<String>().unwrap(),
+                pyobject_to_json_locked(value.to_object(py), py),
+            );
         }
         serde_json::Value::Object(json_map)
     } else {
@@ -763,14 +895,12 @@ pub fn pyobject_to_json_locked<'py>(value: PyObject, py: Python<'py>) -> serde_j
     }
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 pub fn pyobject_to_json(value: PyObject) -> serde_json::Value {
-    Python::with_gil(|py| {
-        pyobject_to_json_locked(value, py)
-    })
+    Python::with_gil(|py| pyobject_to_json_locked(value, py))
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 #[pyfunction]
 pub(crate) fn register(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<SolverInitializer>()?;
@@ -783,7 +913,7 @@ pub(crate) fn register(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     // m.add_class::<IndexRange>()?;
     m.add("VertexRange", VertexRange::type_object(py))?;
     m.add("DefectRange", DefectRange::type_object(py))?;
-    m.add("SyndromeRange", DefectRange::type_object(py))?;  // backward compatibility
+    m.add("SyndromeRange", DefectRange::type_object(py))?; // backward compatibility
     m.add("NodeRange", NodeRange::type_object(py))?;
     Ok(())
 }
@@ -794,29 +924,33 @@ pub mod tests {
 
     /// test syndrome partition utilities
     #[test]
-    fn util_partitioned_syndrome_pattern_1() {  // cargo test util_partitioned_syndrome_pattern_1 -- --nocapture
+    fn util_partitioned_syndrome_pattern_1() {
+        // cargo test util_partitioned_syndrome_pattern_1 -- --nocapture
         let mut partition_config = PartitionConfig::new(132);
         partition_config.partitions = vec![
-            VertexRange::new(0, 72),    // unit 0
-            VertexRange::new(84, 132),  // unit 1
+            VertexRange::new(0, 72),   // unit 0
+            VertexRange::new(84, 132), // unit 1
         ];
         partition_config.fusions = vec![
-            (0, 1),  // unit 2, by fusing 0 and 1
+            (0, 1), // unit 2, by fusing 0 and 1
         ];
         let partition_info = partition_config.info();
         let tests = vec![
             (vec![10, 11, 12, 71, 72, 73, 84, 85, 111], DefectRange::new(4, 6)),
             (vec![10, 11, 12, 13, 71, 72, 73, 84, 85, 111], DefectRange::new(5, 7)),
             (vec![10, 11, 12, 71, 72, 73, 83, 84, 85, 111], DefectRange::new(4, 7)),
-            (vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111], DefectRange::new(4, 6)),
+            (
+                vec![10, 11, 12, 71, 72, 73, 84, 85, 100, 101, 102, 103, 111],
+                DefectRange::new(4, 6),
+            ),
         ];
         for (defect_vertices, expected_defect_range) in tests.into_iter() {
             let syndrome_pattern = SyndromePattern::new(defect_vertices, vec![]);
             let partitioned_syndrome_pattern = PartitionedSyndromePattern::new(&syndrome_pattern);
-            let (owned_partitioned, (_left_partitioned, _right_partitioned)) = partitioned_syndrome_pattern.partition(&partition_info.units[2]);
+            let (owned_partitioned, (_left_partitioned, _right_partitioned)) =
+                partitioned_syndrome_pattern.partition(&partition_info.units[2]);
             println!("defect_range: {:?}", owned_partitioned.whole_defect_range);
             assert_eq!(owned_partitioned.whole_defect_range, expected_defect_range);
         }
     }
-
 }

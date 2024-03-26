@@ -28,6 +28,6 @@ solver.solve(syndrome)
 subgraph = solver.subgraph(visualizer)
 print(f"Minimum Weight Parity Subgraph (MWPS): {subgraph}")  # Vec<EdgeIndex>
 
-if visualizer is not None:
+if __name__ == "__main__" and visualizer is not None:
     fb.print_visualize_link(filename=visualize_filename)
     fb.helper.open_visualizer(visualize_filename, open_browser=True)

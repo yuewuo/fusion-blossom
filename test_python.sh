@@ -1,3 +1,3 @@
 #!/bin/sh
 set -ex
-make test
+make python

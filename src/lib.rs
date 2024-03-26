@@ -1,62 +1,53 @@
-#![cfg_attr(
-    feature="unsafe_pointer",
-    feature(get_mut_unchecked)
-)]
-#![cfg_attr(
-    feature="unsafe_pointer",
-    allow(unused_mut)
-)]
-#![cfg_attr(
-    feature="python_binding",
-    feature(cfg_eval)
-)]
+#![cfg_attr(feature = "unsafe_pointer", feature(get_mut_unchecked))]
+#![cfg_attr(feature = "unsafe_pointer", allow(unused_mut))]
+#![cfg_attr(feature = "python_binding", feature(cfg_eval))]
 
-extern crate libc;
 extern crate cfg_if;
-extern crate rand_xoshiro;
-extern crate priority_queue;
+extern crate libc;
 extern crate parking_lot;
+extern crate priority_queue;
+extern crate rand_xoshiro;
 extern crate serde;
-#[macro_use] extern crate serde_json;
+#[macro_use]
+extern crate serde_json;
 extern crate chrono;
-extern crate derivative;
-extern crate urlencoding;
-extern crate rayon;
-extern crate weak_table;
-extern crate rand;
-extern crate core_affinity;
-#[cfg(feature="python_binding")]
-extern crate pyo3;
 extern crate clap;
+extern crate core_affinity;
+extern crate derivative;
 extern crate pbr;
 #[cfg(test)]
 extern crate petgraph;
-#[cfg(feature="qecp_integrate")]
-extern crate qecp;
+#[cfg(feature = "python_binding")]
+extern crate pyo3;
+#[cfg(feature = "qecp_integrate")]
+pub extern crate qecp;
+extern crate rand;
+extern crate rayon;
+extern crate urlencoding;
+extern crate weak_table;
 
 pub mod blossom_v;
-pub mod util;
-pub mod complete_graph;
-pub mod visualize;
-pub mod example_codes;
-pub mod dual_module;
-pub mod dual_module_serial;
-pub mod primal_module;
-pub mod primal_module_serial;
-pub mod mwpm_solver;
-pub mod dual_module_parallel;
-pub mod primal_module_parallel;
-pub mod example_partition;
-pub mod pointers;
 pub mod cli;
-#[cfg(feature="python_binding")]
+pub mod complete_graph;
+pub mod dual_module;
+pub mod dual_module_parallel;
+pub mod dual_module_serial;
+pub mod example_codes;
+pub mod example_partition;
+pub mod mwpm_solver;
+pub mod pointers;
+pub mod primal_module;
+pub mod primal_module_parallel;
+pub mod primal_module_serial;
+pub mod util;
+pub mod visualize;
+#[cfg(feature = "python_binding")]
 use pyo3::prelude::*;
 
-use util::*;
 use complete_graph::*;
+use util::*;
 
-
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 #[pymodule]
 fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     util::register(py, m)?;
@@ -67,22 +58,26 @@ fn fusion_blossom(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     let helper_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/helper.py"));
     let helper_module = PyModule::from_code(py, helper_code, "helper", "helper")?;
     helper_module.add("visualizer_website", generate_visualizer_website(py))?;
-    let bottle_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bottle.py"));  // embed bottle
+    let bottle_code = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/bottle.py")); // embed bottle
     helper_module.add_submodule(PyModule::from_code(py, bottle_code, "bottle", "bottle")?)?;
     m.add_submodule(helper_module)?;
     let helper_register = helper_module.getattr("register")?;
-    helper_register.call1((m, ))?;
+    helper_register.call1((m,))?;
     Ok(())
 }
 
 /// use fusion blossom to solve MWPM (to optimize speed, consider reuse a [`mwpm_solver::SolverSerial`] object)
+#[allow(clippy::unnecessary_cast)]
 pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromePattern) -> Vec<VertexIndex> {
     // sanity check
     assert!(initializer.vertex_num > 1, "at least one vertex required");
     let max_safe_weight = ((Weight::MAX as usize) / initializer.vertex_num as usize) as Weight;
     for (i, j, weight) in initializer.weighted_edges.iter() {
         if weight > &max_safe_weight {
-            panic!("edge {}-{} has weight {} > max safe weight {}, it may cause fusion blossom to overflow", i, j, weight, max_safe_weight);
+            panic!(
+                "edge {}-{} has weight {} > max safe weight {}, it may cause fusion blossom to overflow",
+                i, j, weight, max_safe_weight
+            );
         }
     }
     // by default use serial implementation fusion blossom
@@ -90,6 +85,7 @@ pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromeP
 }
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)
+#[allow(clippy::unnecessary_cast)]
 pub fn blossom_v_mwpm(initializer: &SolverInitializer, defect_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
     // this feature will be automatically enabled if you install blossom V source code, see README.md for more information
     if cfg!(not(feature = "blossom_v")) {
@@ -100,14 +96,22 @@ pub fn blossom_v_mwpm(initializer: &SolverInitializer, defect_vertices: &Vec<Ver
     let max_safe_weight = ((i32::MAX as usize) / initializer.vertex_num as usize) as Weight;
     for (i, j, weight) in initializer.weighted_edges.iter() {
         if weight > &max_safe_weight {
-            panic!("edge {}-{} has weight {} > max safe weight {}, it may cause blossom V library to overflow", i, j, weight, max_safe_weight);
+            panic!(
+                "edge {}-{} has weight {} > max safe weight {}, it may cause blossom V library to overflow",
+                i, j, weight, max_safe_weight
+            );
         }
     }
     let mut complete_graph = CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges);
     blossom_v_mwpm_reuse(&mut complete_graph, initializer, defect_vertices)
 }
 
-pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &SolverInitializer, defect_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
+#[allow(clippy::unnecessary_cast)]
+pub fn blossom_v_mwpm_reuse(
+    complete_graph: &mut CompleteGraph,
+    initializer: &SolverInitializer,
+    defect_vertices: &Vec<VertexIndex>,
+) -> Vec<VertexIndex> {
     // first collect virtual vertices and real vertices
     let mut is_virtual: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     let mut is_defect: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
@@ -141,17 +145,18 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
             // connect this real vertex to it's corresponding virtual vertex
             legacy_weighted_edges.push((i, i + defect_num, weight as u32));
         }
-        boundaries.push(boundary);  // save for later resolve legacy matchings
+        boundaries.push(boundary); // save for later resolve legacy matchings
         for (&peer, &(_, weight)) in complete_graph_edges.iter() {
             if is_defect[peer as usize] {
                 let j = mapping_to_defect_vertices[peer as usize];
-                if i < j {  // remove duplicated edges
+                if i < j {
+                    // remove duplicated edges
                     legacy_weighted_edges.push((i, j, weight as u32));
                     // println!{"edge {} {} {} ", i, j, weight};
                 }
             }
         }
-        for j in (i+1)..defect_num {
+        for j in (i + 1)..defect_num {
             // virtual boundaries are always fully connected with weight 0
             legacy_weighted_edges.push((i + defect_num, j + defect_num, 0));
         }
@@ -163,11 +168,21 @@ pub fn blossom_v_mwpm_reuse(complete_graph: &mut CompleteGraph, initializer: &So
     let mut mwpm_result = Vec::new();
     for i in 0..defect_num {
         let j = matchings[i];
-        if j < defect_num {  // match to a real vertex
+        if j < defect_num {
+            // match to a real vertex
             mwpm_result.push(defect_vertices[j]);
         } else {
-            assert_eq!(j, i + defect_num, "if not matched to another real vertex, it must match to it's corresponding virtual vertex");
-            mwpm_result.push(boundaries[i].as_ref().expect("boundary must exist if match to virtual vertex").0);
+            assert_eq!(
+                j,
+                i + defect_num,
+                "if not matched to another real vertex, it must match to it's corresponding virtual vertex"
+            );
+            mwpm_result.push(
+                boundaries[i]
+                    .as_ref()
+                    .expect("boundary must exist if match to virtual vertex")
+                    .0,
+            );
         }
     }
     mwpm_result
@@ -187,7 +202,12 @@ pub struct DetailedMatching {
 }
 
 /// compute detailed matching information, note that the output will not include duplicated matched pairs
-pub fn detailed_matching(initializer: &SolverInitializer, defect_vertices: &Vec<DefectIndex>, mwpm_result: &Vec<DefectIndex>) -> Vec<DetailedMatching> {
+#[allow(clippy::unnecessary_cast)]
+pub fn detailed_matching(
+    initializer: &SolverInitializer,
+    defect_vertices: &Vec<DefectIndex>,
+    mwpm_result: &Vec<DefectIndex>,
+) -> Vec<DetailedMatching> {
     let defect_num = defect_vertices.len();
     let mut is_defect: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
     for &defect_vertex in defect_vertices.iter() {
@@ -203,19 +223,14 @@ pub fn detailed_matching(initializer: &SolverInitializer, defect_vertices: &Vec<
         let b = mwpm_result[i];
         if !is_defect[b as usize] || a < b {
             let (path, weight) = complete_graph.get_path(a, b);
-            let detail = DetailedMatching {
-                a,
-                b,
-                path,
-                weight,
-            };
+            let detail = DetailedMatching { a, b, path, weight };
             details.push(detail);
         }
     }
     details
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 macro_rules! include_visualize_file {
     ($mapping:ident, $filepath:expr) => {
         $mapping.insert($filepath.to_string(), include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/visualize/", $filepath)).to_string());
@@ -226,11 +241,19 @@ macro_rules! include_visualize_file {
     };
 }
 
-#[cfg(feature="python_binding")]
+#[cfg(feature = "python_binding")]
 fn generate_visualizer_website(py: Python<'_>) -> &pyo3::types::PyDict {
     use pyo3::types::IntoPyDict;
     let mut mapping = std::collections::BTreeMap::<String, String>::new();
-    include_visualize_file!(mapping, "gui3d.js", "index.js", "patches.js", "primal.js", "cmd.js", "mocker.js");
+    include_visualize_file!(
+        mapping,
+        "gui3d.js",
+        "index.js",
+        "patches.js",
+        "primal.js",
+        "cmd.js",
+        "mocker.js"
+    );
     include_visualize_file!(mapping, "index.html", "partition-profile.html", "icon.svg");
     include_visualize_file!(mapping, "package.json", "package-lock.json");
     mapping.into_py_dict(py)

@@ -230,7 +230,7 @@ h3 {
                     style="fill:lightgreen;"/>
             </g>
             <!-- left panel -->
-            <text :x="left_panel + margin - 3" :y="job_y_bias - 20" text-anchor="end">thread index</text>
+            <text :x="left_panel + margin - 3" :y="job_y_bias - margin * 2" text-anchor="end">thread index</text>
             <g v-for="thread_index in selected_profile_statistics.max_thread_index + 1">
                 <text :x="left_panel + margin - 10" :y="job_y_bias + (thread_index - 0.5) * (job_height + margin)"
                     text-anchor="end">{{ thread_index - 1 }}</text>
@@ -239,7 +239,7 @@ h3 {
             <text :x="left_panel + length_scale * selected_profile.round_time" :y="margin + decoding_time_height / 2 + 5" 
                 text-anchor="end">{{ Number.parseFloat(selected_profile.round_time).toExponential(3) }} (s)</text>
             <g v-for="([event_time, info], _) in display_info_vec">
-                <text v-if="info.is_base_partition" :x="left_panel + length_scale * event_time.end"
+                <text v-if="show_unit_index && info.is_base_partition" :x="left_panel + length_scale * event_time.end"
                     :y="job_y_bias + event_time.thread_index * (job_height + margin) + job_height / 2 + 5"
                     text-anchor="end">{{ info.unit_index }}</text>
             </g>
@@ -283,6 +283,7 @@ h3 {
         <div class="flex-center-div">
             <div><q-toggle color="green" v-model="thread_view" label="thread view" size="md"/></div>
             <div><q-toggle color="green" v-model="show_dependency" label="show_dependency" size="md"/></div>
+            <div><q-toggle color="green" v-model="show_unit_index" label="show_unit_index" size="md"/></div>
         </div>
         <q-card bordered class="select-info-div" v-if="selected_profile != null">
             <q-card-section class="bg-cyan text-white">
@@ -412,22 +413,23 @@ const App = {
             current_selected: ref(null),
             selected_profile: computed(() => app.round_profiles[app.round_select.value]),
             // svg configurations
-            margin: 10,
+            margin: parseInt(urlParams.get('margin') || 10),
             decoding_time_height: 20,
-            job_height: 30,
+            job_height: parseInt(urlParams.get('job_height') || 30),
             left_panel: 100,  // display text information
             job_y_bias: computed(() => app.decoding_time_height + 2 * app.margin),
             svg_width: computed(() => app.length_scale.value * app.selected_profile.value.round_time + 2 * app.margin + app.left_panel),
             svg_height: computed(() => (app.job_height + app.margin) * app.selected_profile.value.solver_profile.primal.event_time_vec.length + app.job_y_bias.value),
             base_length_scale: ref(100),  // how many pixels for each second
-            relative_scale_log: ref(0),
+            relative_scale_log: ref(parseInt(urlParams.get('relative_scale_log') || 0)),
             length_scale: computed(() => app.base_length_scale.value * Math.pow(10, app.relative_scale_log.value)),
             adaptive_scale: ref(true),
-            length_scale_selected: ref("adaptive"),
+            length_scale_selected: ref(urlParams.get('length_scale_selected') || "adaptive"),
             length_scale_options: reactive([{label:"adaptive",value:"adaptive"}
                 , {label:"1us",value:1e-6}, {label:"10us",value:1e-5}, {label:"100us",value:1e-4}
                 , {label:"1ms",value:1e-3}, {label:"10ms",value:1e-2}, {label:"100ms",value:1e-1}
                 , {label:"1s",value:1}, {label:"10s",value:10}, {label:"100s",value:100}, {label:"1000s",value:1000}]),
+            show_unit_index: ref(true),
         }
         return app
     },

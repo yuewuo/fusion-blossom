@@ -34,6 +34,7 @@ fusion_blossom.egg-info/
 
 *.DS_Store
 .vscode
+.metals
 
 # visualizer files
 /*.json
@@ -42,3 +43,4 @@ fusion_blossom.egg-info/
 /tutorial-dist/
 
 *-uncompressed.png
+micro-blossom-examples
