@@ -414,7 +414,7 @@ impl PartitionConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct PartitionInfo {
@@ -513,7 +513,7 @@ impl<'a> PartitionedSyndromePattern<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct PartitionUnitInfo {

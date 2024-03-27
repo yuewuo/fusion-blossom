@@ -6,8 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::File;
-use std::io::BufWriter;
 use std::io::prelude::*;
+use std::io::BufWriter;
 
 use nonzero::nonzero as nz;
 #[cfg(feature = "python_binding")]
@@ -260,10 +260,10 @@ macro_rules! bind_trait_primal_dual_solver {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverSerial {
-    dual_module: DualModuleSerial,
-    primal_module: PrimalModuleSerialPtr,
-    interface_ptr: DualModuleInterfacePtr,
-    subgraph_builder: SubGraphBuilder,
+    pub dual_module: DualModuleSerial,
+    pub primal_module: PrimalModuleSerialPtr,
+    pub interface_ptr: DualModuleInterfacePtr,
+    pub subgraph_builder: SubGraphBuilder,
 }
 
 bind_trait_fusion_visualizer!(SolverSerial);
@@ -361,10 +361,10 @@ impl PrimalDualSolver for SolverSerial {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverDualParallel {
-    dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleSerialPtr,
-    interface_ptr: DualModuleInterfacePtr,
-    subgraph_builder: SubGraphBuilder,
+    pub dual_module: DualModuleParallel<DualModuleSerial>,
+    pub primal_module: PrimalModuleSerialPtr,
+    pub interface_ptr: DualModuleInterfacePtr,
+    pub subgraph_builder: SubGraphBuilder,
 }
 
 bind_trait_fusion_visualizer!(SolverDualParallel);
@@ -479,9 +479,9 @@ impl PrimalDualSolver for SolverDualParallel {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverParallel {
-    dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleParallel,
-    subgraph_builder: SubGraphBuilder,
+    pub dual_module: DualModuleParallel<DualModuleSerial>,
+    pub primal_module: PrimalModuleParallel,
+    pub subgraph_builder: SubGraphBuilder,
 }
 
 bind_trait_fusion_visualizer!(SolverParallel);
@@ -604,7 +604,7 @@ impl PrimalDualSolver for SolverParallel {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverErrorPatternLogger {
-    file: BufWriter<File>,
+    pub file: BufWriter<File>,
 }
 
 #[cfg(feature = "python_binding")]
@@ -661,10 +661,10 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
 /// an exact solver calling blossom V library for benchmarking comparison
 #[derive(Clone)]
 pub struct SolverBlossomV {
-    initializer: SolverInitializer,
-    prebuilt_complete_graph: PrebuiltCompleteGraph,
-    subgraph_builder: SubGraphBuilder,
-    matched_pairs: Vec<(VertexIndex, VertexIndex)>,
+    pub initializer: SolverInitializer,
+    pub prebuilt_complete_graph: PrebuiltCompleteGraph,
+    pub subgraph_builder: SubGraphBuilder,
+    pub matched_pairs: Vec<(VertexIndex, VertexIndex)>,
 }
 
 impl SolverBlossomV {
