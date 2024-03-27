@@ -178,6 +178,9 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
             parent: None,
             index_bias: 0,
             children: None,
+            // /// Union-Find
+            // max_tree_size: 0,
+            /// Minimum Weight Perfect Matching
             max_tree_size: usize::MAX,
         })
     }
