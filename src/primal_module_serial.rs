@@ -607,8 +607,14 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                         // form a blossom inside an alternating tree
                         if root_1 == root_2 {
                             // drop writer lock to allow reader locks
+                            let root_weak = primal_node_internal_1.tree_node.as_ref().unwrap().root.clone();
                             drop(primal_node_internal_1);
                             drop(primal_node_internal_2);
+                            let tree_size = {
+                                let root_ptr = root_weak.upgrade_force();
+                                let tree_size = root_ptr.read_recursive().tree_node.as_ref().unwrap().tree_size.clone();
+                                tree_size.unwrap()
+                            };
                             // find LCA of two nodes, two paths are from child to parent
                             let (lca_ptr, path_1, path_2) = self.find_lowest_common_ancestor(
                                 primal_node_internal_ptr_1.clone(),
@@ -786,7 +792,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                     parent: lca_tree_node.parent.clone(),
                                     children,
                                     depth: lca_tree_node.depth,
-                                    tree_size: None,
+                                    tree_size: if lca_tree_node.depth == 0 { Some(tree_size) } else { None },
                                 };
                                 if lca_tree_node.parent.is_some() {
                                     let (parent_weak, _) = lca_tree_node.parent.as_ref().unwrap();
@@ -2578,5 +2584,28 @@ pub mod tests {
             blossom_total_weight,
             "unexpected final dual variable sum"
         );
+    }
+
+    /// debug panic after adding the feature of max_tree_size
+    #[test]
+    fn primal_module_debug_7() {
+        // cargo test primal_module_debug_7 -- --nocapture
+        let visualize_filename = "primal_module_debug_7.json".to_string();
+        let defect_vertices = vec![10, 11, 19, 21, 29, 34, 37, 40, 43, 49, 50, 51, 53];
+        let max_half_weight = 500;
+        let mut code = CodeCapacityPlanarCode::new(7, 0.1, max_half_weight);
+        let mut visualizer = Visualizer::new(
+            Some(visualize_data_folder() + visualize_filename.as_str()),
+            code.get_positions(),
+            true,
+        )
+        .unwrap();
+        print_visualize_link(visualize_filename.clone());
+        let initializer = code.get_initializer();
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
+        let mut primal_module = PrimalModuleSerialPtr::new_empty(&initializer);
+        code.set_defect_vertices(&defect_vertices);
+        let interface_ptr = DualModuleInterfacePtr::new_empty();
+        primal_module.solve_visualizer(&interface_ptr, &code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
     }
 }
