@@ -56,6 +56,9 @@ pub struct BenchmarkParameters {
     /// logging to the default visualizer file at visualize/data/visualizer.json
     #[clap(long, action)]
     pub enable_visualizer: bool,
+    /// visualizer file at visualize/data/<visualizer_filename.json>
+    #[clap(long, default_value_t = crate::visualize::static_visualize_data_filename())]
+    pub visualizer_filename: String,
     /// print syndrome patterns
     #[clap(long, action)]
     pub print_syndrome_pattern: bool,
@@ -241,6 +244,7 @@ impl From<BenchmarkParameters> for RunnableBenchmarkParameters {
             max_half_weight,
             code_type,
             enable_visualizer,
+            visualizer_filename,
             verifier,
             primal_dual_type,
             partition_strategy,
@@ -263,7 +267,7 @@ impl From<BenchmarkParameters> for RunnableBenchmarkParameters {
         }
         if enable_visualizer {
             // print visualizer file path only once
-            print_visualize_link(static_visualize_data_filename());
+            print_visualize_link(visualizer_filename.clone());
         }
         // create initializer and solver
         let (initializer, partition_config) = partition_strategy.build(&mut *code, d, noisy_measurements, partition_config);
@@ -297,6 +301,7 @@ impl RunnableBenchmarkParameters {
                     print_syndrome_pattern,
                     pb_message,
                     enable_visualizer,
+                    visualizer_filename,
                     ..
                 },
         } = self;
@@ -314,23 +319,23 @@ impl RunnableBenchmarkParameters {
             None
         };
         let mut rng = thread_rng();
+        // share the same visualizer across all rounds
+        let mut visualizer = None;
+        if enable_visualizer {
+            let new_visualizer = Visualizer::new(
+                Some(visualize_data_folder() + visualizer_filename.as_str()),
+                code.get_positions(),
+                true,
+            )
+                .unwrap();
+            visualizer = Some(new_visualizer);
+        }
         for round in (starting_iteration as u64)..(total_rounds as u64) {
             pb.as_mut().map(|pb| pb.set(round));
             let seed = if use_deterministic_seed { round } else { rng.gen() };
             let syndrome_pattern = code.generate_random_errors(seed);
             if print_syndrome_pattern {
                 println!("syndrome_pattern: {:?}", syndrome_pattern);
-            }
-            // create a new visualizer each round
-            let mut visualizer = None;
-            if enable_visualizer {
-                let new_visualizer = Visualizer::new(
-                    Some(visualize_data_folder() + static_visualize_data_filename().as_str()),
-                    code.get_positions(),
-                    true,
-                )
-                .unwrap();
-                visualizer = Some(new_visualizer);
             }
             benchmark_profiler.begin(&syndrome_pattern);
             primal_dual_solver.solve_visualizer(&syndrome_pattern, visualizer.as_mut());
@@ -955,10 +960,13 @@ pub struct VerifierNone {}
 impl ResultVerifier for VerifierNone {
     fn verify(
         &mut self,
-        _primal_dual_solver: &mut Box<dyn PrimalDualSolver>,
+        primal_dual_solver: &mut Box<dyn PrimalDualSolver>,
         _syndrome_pattern: &SyndromePattern,
-        _visualizer: Option<&mut Visualizer>,
+        visualizer: Option<&mut Visualizer>,
     ) {
+        if visualizer.is_some() {
+            primal_dual_solver.subgraph_visualizer(visualizer);
+        }
     }
 }
 
