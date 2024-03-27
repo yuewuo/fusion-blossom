@@ -383,7 +383,10 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 leaf_node_internal.temporary_match = None;
                                 // update dual module interface
                                 if tree_size.get() > max_tree_size {
-                                    self.collapse_tree(free_node_internal_ptr);
+                                    drop(free_node_internal);
+                                    drop(matched_node_internal);
+                                    drop(leaf_node_internal);
+                                    self.collapse_tree(free_node_internal_ptr, interface_ptr, dual_module);
                                 } else {
                                     interface_ptr.set_grow_state(
                                         &free_node_internal.origin.upgrade_force(),
@@ -561,7 +564,9 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 root_tree_node.tree_size = Some(tree_size);
                                 // update dual module interface
                                 if tree_size.get() > max_tree_size {
-                                    self.collapse_tree(root_node_ptr.clone());
+                                    drop(matched_node_internal);
+                                    drop(leaf_node_internal);
+                                    self.collapse_tree(root_node_ptr.clone(), interface_ptr, dual_module);
                                 } else {
                                     interface_ptr.set_grow_state(
                                         &matched_node_internal.origin.upgrade_force(),
@@ -1878,17 +1883,93 @@ impl PrimalModuleSerialPtr {
     }
 
     /// collapse a tree into a single blossom, just like what union-find decoder does. No MWPM guarantee once this is called.
-    pub fn collapse_tree(&self, primal_node_internal_ptr: PrimalNodeInternalPtr) {
-        unimplemented!()
+    pub fn collapse_tree<D: DualModuleImpl>(
+        &self,
+        primal_node_internal_ptr: PrimalNodeInternalPtr,
+        interface_ptr: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+    ) {
+        let mut children = vec![];
+        primal_node_internal_ptr.flatten_tree(&mut children);
+        let nodes_circle: Vec<_> = children
+            .iter()
+            .map(|ptr| ptr.read_recursive().origin.clone().upgrade_force())
+            .collect();
+        // since we no longer care the internal structure of the tree, we can just construct arbitrary touching list
+        let touching_children: Vec<_> = children
+            .iter()
+            .map(|ptr| {
+                let node = ptr.read_recursive();
+                let tree_node = node.tree_node.as_ref().unwrap();
+                let touching = if let Some((_, touching)) = tree_node.parent.as_ref() {
+                    touching.clone()
+                } else {
+                    tree_node.children[0].1.clone()
+                };
+                (touching.clone(), touching) // which touching doesn't matter; union-find decoder doesn't care the internal
+            })
+            .collect();
+        let blossom_node_ptr = interface_ptr.create_blossom(nodes_circle, touching_children, dual_module);
+        // create the blossom primal node
+        {
+            // create the corresponding primal node
+            let belonging = self.downgrade();
+            let mut module = self.write();
+            let local_node_index = module.nodes_length;
+            let node_index = module.nodes_count();
+            let primal_node_internal_blossom_ptr =
+                if !module.is_fusion && local_node_index < module.nodes.len() && module.nodes[local_node_index].is_some() {
+                    let node_ptr = module.nodes[local_node_index].take().unwrap();
+                    let mut node = node_ptr.write();
+                    node.origin = blossom_node_ptr.downgrade();
+                    node.index = node_index;
+                    node.tree_node = None;
+                    node.temporary_match = None;
+                    node.belonging = belonging;
+                    drop(node);
+                    node_ptr
+                } else {
+                    PrimalNodeInternalPtr::new_value(PrimalNodeInternal {
+                        origin: blossom_node_ptr.downgrade(),
+                        index: node_index,
+                        tree_node: None,
+                        temporary_match: None,
+                        belonging,
+                    })
+                };
+            module.nodes_length += 1;
+            if module.nodes.len() < module.nodes_length {
+                module.nodes.push(None);
+            }
+            module.nodes[local_node_index] = Some(primal_node_internal_blossom_ptr.clone());
+        };
+        // remove the tree structure
+        for ptr in children.iter() {
+            let mut node = ptr.write();
+            node.tree_node = None;
+        }
+    }
+}
+
+impl PrimalNodeInternalPtr {
+    /// DFS flatten the children of a tree
+    pub fn flatten_tree(&self, flattened_nodes: &mut Vec<PrimalNodeInternalPtr>) {
+        flattened_nodes.push(self.clone());
+        let node = self.read_recursive();
+        let tree_node = node.tree_node.as_ref().unwrap();
+        for (child_weak, _) in tree_node.children.iter() {
+            let child_ptr = child_weak.upgrade_force();
+            child_ptr.flatten_tree(flattened_nodes);
+        }
     }
 }
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use super::super::*;
     use super::super::dual_module_serial::*;
     use super::super::example_codes::*;
+    use super::super::*;
+    use super::*;
 
     pub fn primal_module_serial_basic_standard_syndrome_optional_viz(
         d: VertexNum,
