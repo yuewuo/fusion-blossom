@@ -40,6 +40,25 @@ cfg_if::cfg_if! {
     }
 }
 
+#[cfg(feature = "python_binding")]
+macro_rules! bind_trait_python_json {
+    ($struct_name:ident) => {
+        #[pymethods]
+        impl $struct_name {
+            #[pyo3(name = "to_json")]
+            fn python_to_json(&self) -> PyResult<String> {
+                serde_json::to_string(self).map_err(|err| pyo3::exceptions::PyTypeError::new_err(format!("{err:?}")))
+            }
+            #[staticmethod]
+            #[pyo3(name = "from_json")]
+            fn python_from_json(value: String) -> PyResult<Self> {
+                serde_json::from_str(value.as_str())
+                    .map_err(|err| pyo3::exceptions::PyTypeError::new_err(format!("{err:?}")))
+            }
+        }
+    };
+}
+
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +73,9 @@ pub struct SolverInitializer {
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub virtual_vertices: Vec<VertexIndex>,
 }
+
+#[cfg(feature = "python_binding")]
+bind_trait_python_json! {SolverInitializer}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "python_binding", cfg_eval)]
@@ -298,6 +320,9 @@ pub struct PartitionConfig {
     pub fusions: Vec<(usize, usize)>,
 }
 
+#[cfg(feature = "python_binding")]
+bind_trait_python_json! {PartitionConfig}
+
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl PartitionConfig {
@@ -430,6 +455,9 @@ pub struct PartitionInfo {
     pub vertex_to_owning_unit: Vec<usize>,
 }
 
+#[cfg(feature = "python_binding")]
+bind_trait_python_json! {PartitionInfo}
+
 #[cfg_attr(feature = "python_binding", pymethods)]
 impl PartitionInfo {
     /// split a sequence of syndrome into multiple parts, each corresponds to a unit;
@@ -536,6 +564,9 @@ pub struct PartitionUnitInfo {
     #[cfg_attr(feature = "python_binding", pyo3(get, set))]
     pub descendants: BTreeSet<usize>,
 }
+
+#[cfg(feature = "python_binding")]
+bind_trait_python_json! {PartitionUnitInfo}
 
 #[cfg(feature = "python_binding")]
 #[pymethods]
