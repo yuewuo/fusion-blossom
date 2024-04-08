@@ -648,7 +648,8 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
         panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
     }
     fn subgraph_visualizer(&mut self, _visualizer: Option<&mut Visualizer>) -> Vec<EdgeIndex> {
-        panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
+        // panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
+        vec![]
     }
     fn sum_dual_variables(&self) -> Weight {
         panic!("error pattern logger do not actually solve the problem")

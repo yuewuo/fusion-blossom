@@ -327,7 +327,7 @@ impl RunnableBenchmarkParameters {
                 code.get_positions(),
                 true,
             )
-                .unwrap();
+            .unwrap();
             visualizer = Some(new_visualizer);
         }
         for round in (starting_iteration as u64)..(total_rounds as u64) {
