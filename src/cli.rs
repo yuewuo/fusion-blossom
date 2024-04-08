@@ -161,6 +161,7 @@ pub enum TestCommands {
 /// note that these code type is only for example, to test and demonstrate the correctness of the algorithm, but not for real QEC simulation;
 /// for real simulation, please refer to <https://github.com/yuewuo/QEC-Playground>
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
+#[serde(rename_all = "kebab-case")]
 pub enum ExampleCodeType {
     /// quantum repetition code with perfect stabilizer measurement
     CodeCapacityRepetitionCode,
@@ -184,6 +185,9 @@ pub enum ExampleCodeType {
     CodeCapacityRotatedCode,
     /// rotated surface code with phenomenological noise model
     PhenomenologicalRotatedCode,
+    /// code constructed by QEC-Playground, pass configurations using `--code-config`
+    #[serde(rename = "qec-playground-code")]
+    QECPlaygroundCode,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Serialize, Debug)]
@@ -815,6 +819,8 @@ impl ExampleCodeType {
                 assert_eq!(code_config, json!({}), "config not supported");
                 Box::new(PhenomenologicalRotatedCode::new(d, noisy_measurements, p, max_half_weight))
             }
+            #[cfg(feature = "qecp_integrate")]
+            Self::QECPlaygroundCode => Box::new(QECPlaygroundCode::new(d, p, code_config)),
             _ => unimplemented!(),
         }
     }
