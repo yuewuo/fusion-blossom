@@ -140,6 +140,7 @@ impl LegacySolverSerial {
 
 pub trait PrimalDualSolver {
     fn clear(&mut self);
+    fn reset_profiler(&mut self) {} // only if profiler records some information that needs to be cleared, e.g. vec![]
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
     fn solve(&mut self, syndrome_pattern: &SyndromePattern) {
         self.solve_visualizer(syndrome_pattern, None)

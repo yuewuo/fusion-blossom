@@ -348,6 +348,7 @@ impl RunnableBenchmarkParameters {
             benchmark_profiler.event("verified".to_string());
             primal_dual_solver.clear(); // also count the clear operation
             benchmark_profiler.end(Some(&*primal_dual_solver));
+            primal_dual_solver.reset_profiler();
             if let Some(pb) = pb.as_mut() {
                 if pb_message.is_empty() {
                     pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
