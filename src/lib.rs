@@ -20,7 +20,7 @@ extern crate petgraph;
 #[cfg(feature = "python_binding")]
 extern crate pyo3;
 #[cfg(feature = "qecp_integrate")]
-extern crate qecp;
+pub extern crate qecp;
 extern crate rand;
 extern crate rayon;
 extern crate urlencoding;

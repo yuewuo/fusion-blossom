@@ -348,6 +348,11 @@ cfg_if::cfg_if! {
                 }
             }
 
+            #[inline(always)]
+            fn try_write(&self, active_timestamp: FastClearTimestamp) -> Option<&mut ObjType> {
+                Some(self.write(active_timestamp))
+            }
+
             /// without sanity check: useful only in implementing hard_clear
             #[inline(always)]
             fn write_force(&self) -> &mut ObjType {
@@ -397,6 +402,11 @@ cfg_if::cfg_if! {
                     let mut_ptr = const_ptr as *mut Arc<ObjType>;
                     Arc::get_mut_unchecked(&mut *mut_ptr)
                 }
+            }
+
+            #[inline(always)]
+            fn try_write(&self) -> Option<&mut ObjType> {
+                Some(self.write())
             }
 
             fn ptr_eq(&self, other: &Self) -> bool {
@@ -602,6 +612,11 @@ cfg_if::cfg_if! {
                     mut_ptr.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
                     mut_ptr
                 }
+            }
+
+            #[inline(always)]
+            fn try_write(&self, active_timestamp: FastClearTimestamp) -> Option<&mut ObjType> {
+                Some(self.write(active_timestamp))
             }
 
             /// without sanity check: useful only in implementing hard_clear

@@ -141,7 +141,7 @@ fn demo_construct_syndrome_graph(
     for &defect_vertex in defect_vertices {
         let virtual_vertex = get_nearest_virtual(&min_paths, code, defect_vertex);
         if let Some(virtual_vertex) = virtual_vertex {
-            virtual_vertices_map.entry(virtual_vertex).or_insert_with(Vec::new);
+            virtual_vertices_map.entry(virtual_vertex).or_default();
             virtual_vertices_map
                 .get_mut(&virtual_vertex)
                 .as_mut()
@@ -492,7 +492,7 @@ fn demo_aps2023_example_partition() {
     };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
-    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, Some(&mut visualizer));
     let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
     let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
     let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -548,7 +548,7 @@ fn demo_aps2023_large_demo() {
     };
     let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
     code.set_defect_vertices(&defect_vertices);
-    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, Some(&mut visualizer));
+    primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, Some(&mut visualizer));
     let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
     let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
     let mut subgraph_builder = SubGraphBuilder::new(&initializer);

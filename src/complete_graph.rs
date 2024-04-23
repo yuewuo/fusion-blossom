@@ -334,7 +334,7 @@ impl std::cmp::PartialEq for PriorityElement {
 impl std::cmp::PartialOrd for PriorityElement {
     #[inline]
     fn partial_cmp(&self, other: &PriorityElement) -> Option<std::cmp::Ordering> {
-        other.weight.partial_cmp(&self.weight) // reverse `self` and `other` to prioritize smaller weight
+        Some(self.cmp(other))
     }
 }
 

@@ -161,7 +161,8 @@ pub fn snapshot_copy_remaining_fields(obj: &mut ObjectMap, obj_2: &mut ObjectMap
                 // println!("obj_2: {obj_2:?}");
                 assert_eq!(
                     obj[key], obj_2[key],
-                    "cannot combine unknown fields: don't know what to do, please modify `snapshot_combine_values` function"
+                    "cannot combine unknown fields of key `{}`: please modify `snapshot_combine_values` function",
+                    key
                 );
                 obj_2.remove(key).unwrap();
             }
@@ -313,6 +314,56 @@ pub fn snapshot_combine_values(value: &mut serde_json::Value, mut value_2: serde
                 assert_eq!(dual_node_2.len(), 0, "there should be nothing left");
             }
             value_2.remove("dual_nodes").unwrap();
+        }
+    }
+    match (value.contains_key("primal_nodes"), value_2.contains_key("primal_nodes")) {
+        (_, false) => {} // do nothing
+        (false, true) => {
+            value.insert("primal_nodes".to_string(), value_2.remove("primal_nodes").unwrap());
+        }
+        (true, true) => {
+            // combine
+            let primal_nodes = value
+                .get_mut("primal_nodes")
+                .unwrap()
+                .as_array_mut()
+                .expect("primal_nodes must be an array");
+            let primal_nodes_2 = value_2
+                .get_mut("primal_nodes")
+                .unwrap()
+                .as_array_mut()
+                .expect("primal_nodes must be an array");
+            // ideally, the two primal nodes should have the same length, but here we omit it
+            // assert!(primal_nodes.len() == primal_nodes_2.len(), "primal_nodes must be compatible");
+            if primal_nodes_2.len() > primal_nodes.len() {
+                std::mem::swap(primal_nodes, primal_nodes_2);
+            }
+            debug_assert!(primal_nodes.len() >= primal_nodes_2.len());
+            for (primal_node_idx, primal_node) in primal_nodes.iter_mut().enumerate() {
+                if primal_node_idx >= primal_nodes_2.len() {
+                    break;
+                }
+                let primal_node_2 = &mut primal_nodes_2[primal_node_idx];
+                if primal_node_2.is_null() {
+                    continue;
+                }
+                if primal_node.is_null() {
+                    std::mem::swap(primal_node, primal_node_2);
+                    continue;
+                }
+                let primal_node = primal_node.as_object_mut().expect("each primal_node must be an object");
+                let primal_node_2 = primal_node_2.as_object_mut().expect("each primal_node must be an object");
+                // list known keys
+                let key_tree_node = if abbrev { "t" } else { "tree_node" };
+                let key_temporary_match = if abbrev { "m" } else { "temporary_match" };
+                let known_keys = [key_tree_node, key_temporary_match];
+                for key in known_keys {
+                    snapshot_combine_object_known_key(primal_node, primal_node_2, key);
+                }
+                snapshot_copy_remaining_fields(primal_node, primal_node_2);
+                assert_eq!(primal_node_2.len(), 0, "there should be nothing left");
+            }
+            value_2.remove("primal_nodes").unwrap();
         }
     }
     snapshot_copy_remaining_fields(value, value_2);
@@ -578,7 +629,7 @@ mod tests {
     #[test]
     fn visualize_test_1() {
         // cargo test visualize_test_1 -- --nocapture
-        let visualize_filename = format!("visualize_test_1.json");
+        let visualize_filename = "visualize_test_1.json".to_string();
         let half_weight = 500;
         let mut code = CodeCapacityPlanarCode::new(11, 0.2, half_weight);
         let mut visualizer = Visualizer::new(
@@ -591,45 +642,45 @@ mod tests {
         // create dual module
         let initializer = code.get_initializer();
         let mut dual_module = DualModuleSerial::new_empty(&initializer);
-        let defect_vertices = vec![39, 63, 52, 100, 90];
+        let defect_vertices = [39, 63, 52, 100, 90];
         for defect_vertex in defect_vertices.iter() {
             code.vertices[*defect_vertex].is_defect = true;
         }
         let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
         visualizer
-            .snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module])
+            .snapshot_combined("initial".to_string(), vec![&interface_ptr, &dual_module])
             .unwrap();
         // create dual nodes and grow them by half length
         // test basic grow and shrink of a single tree node
         for _ in 0..4 {
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), half_weight);
             visualizer
-                .snapshot_combined(format!("grow half weight"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("grow half weight".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
         }
         for _ in 0..4 {
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), -half_weight);
             visualizer
-                .snapshot_combined(format!("shrink half weight"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("shrink half weight".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
         }
         for _ in 0..3 {
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), half_weight);
         }
         visualizer
-            .snapshot_combined(format!("grow 3 half weight"), vec![&interface_ptr, &dual_module])
+            .snapshot_combined("grow 3 half weight".to_string(), vec![&interface_ptr, &dual_module])
             .unwrap();
         for _ in 0..3 {
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), -half_weight);
         }
         visualizer
-            .snapshot_combined(format!("shrink 3 half weight"), vec![&interface_ptr, &dual_module])
+            .snapshot_combined("shrink 3 half weight".to_string(), vec![&interface_ptr, &dual_module])
             .unwrap();
         // test all
         for i in 0..interface_ptr.read_recursive().nodes_length {
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[i].clone().unwrap(), half_weight);
             visualizer
-                .snapshot_combined(format!("grow half weight"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("grow half weight".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
         }
     }
@@ -637,7 +688,7 @@ mod tests {
     #[test]
     fn visualize_paper_weighted_union_find_decoder() {
         // cargo test visualize_paper_weighted_union_find_decoder -- --nocapture
-        let visualize_filename = format!("visualize_paper_weighted_union_find_decoder.json");
+        let visualize_filename = "visualize_paper_weighted_union_find_decoder.json".to_string();
         let d: VertexNum = 3;
         let td: VertexNum = 4;
         let p = 0.2f64;
@@ -657,7 +708,7 @@ mod tests {
                         for i in 0..d - 1 {
                             weighted_edges.push((bias + i, bias + i + 1, weight));
                         }
-                        weighted_edges.push((bias + 0, bias + d, weight)); // left most edge
+                        weighted_edges.push((bias, bias + d, weight)); // left most edge
                         if row + 1 < d {
                             for i in 0..d - 1 {
                                 weighted_edges.push((bias + i, bias + i + row_vertex_num, weight));
@@ -708,11 +759,11 @@ mod tests {
         };
         // hardcode syndrome
         let defect_vertices = vec![16, 29, 88, 72, 32, 44, 20, 21, 68, 69];
-        let grow_edges = vec![48, 156, 169, 81, 38, 135];
+        let grow_edges = [48, 156, 169, 81, 38, 135];
         // run single-thread fusion blossom algorithm
         print_visualize_link_with_parameters(
             visualize_filename.clone(),
-            vec![(format!("patch"), format!("visualize_paper_weighted_union_find_decoder"))],
+            vec![("patch".to_string(), "visualize_paper_weighted_union_find_decoder".to_string())],
         );
         let mut positions = Vec::new();
         let scale = 2f64;
@@ -749,7 +800,7 @@ mod tests {
         }
         // save snapshot
         visualizer
-            .snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module])
+            .snapshot_combined("initial".to_string(), vec![&interface_ptr, &dual_module])
             .unwrap();
     }
 
@@ -760,9 +811,9 @@ mod tests {
         let half_weight = 2 * quarter_weight;
         for is_circuit_level in [false, true] {
             let visualize_filename = if is_circuit_level {
-                format!("visualize_rough_idea_fusion_blossom_circuit_level.json")
+                "visualize_rough_idea_fusion_blossom_circuit_level.json".to_string()
             } else {
-                format!("visualize_rough_idea_fusion_blossom.json")
+                "visualize_rough_idea_fusion_blossom.json".to_string()
             };
             let mut code: Box<dyn ExampleCode> = if is_circuit_level {
                 Box::new(CircuitLevelPlanarCode::new_diagonal(7, 7, 0.2, half_weight, None))
@@ -777,7 +828,7 @@ mod tests {
             .unwrap();
             print_visualize_link_with_parameters(
                 visualize_filename,
-                vec![(format!("patch"), format!("visualize_rough_idea_fusion_blossom"))],
+                vec![("patch".to_string(), "visualize_rough_idea_fusion_blossom".to_string())],
             );
             // create dual module
             let initializer = code.get_initializer();
@@ -789,80 +840,81 @@ mod tests {
             let interface_ptr = DualModuleInterfacePtr::new_load(&code.get_syndrome(), &mut dual_module);
             // save snapshot
             visualizer
-                .snapshot_combined(format!("initial"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("initial".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             // first layer grow first
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), quarter_weight);
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[1].clone().unwrap(), quarter_weight);
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[2].clone().unwrap(), quarter_weight);
             visualizer
-                .snapshot_combined(format!("grow a quarter"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("grow a quarter".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             // merge and match
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), quarter_weight);
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[1].clone().unwrap(), quarter_weight);
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[2].clone().unwrap(), quarter_weight);
             visualizer
-                .snapshot_combined(format!("find a match"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("find a match".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             // grow to boundary
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[0].clone().unwrap(), half_weight);
             visualizer
-                .snapshot_combined(format!("touch temporal boundary"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("touch temporal boundary".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             // add more measurement rounds
             visualizer
-                .snapshot_combined(format!("add measurement #2"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #2".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             visualizer
-                .snapshot_combined(format!("add measurement #3"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #3".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             visualizer
-                .snapshot_combined(format!("add measurement #4"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #4".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             // handle errors at measurement round 4
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[5].clone().unwrap(), half_weight);
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[4].clone().unwrap(), half_weight);
             visualizer
-                .snapshot_combined(format!("grow a half"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("grow a half".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[5].clone().unwrap(), half_weight);
             dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[4].clone().unwrap(), half_weight);
             visualizer
-                .snapshot_combined(format!("temporary match"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("temporary match".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             // handle errors at measurement round 5
             visualizer
-                .snapshot_combined(format!("add measurement #5"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #5".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             for _ in 0..4 {
                 dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[4].clone().unwrap(), -quarter_weight);
                 dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[5].clone().unwrap(), quarter_weight);
                 dual_module.grow_dual_node(&interface_ptr.read_recursive().nodes[6].clone().unwrap(), quarter_weight);
                 visualizer
-                    .snapshot_combined(format!("grow or shrink a quarter"), vec![&interface_ptr, &dual_module])
+                    .snapshot_combined("grow or shrink a quarter".to_string(), vec![&interface_ptr, &dual_module])
                     .unwrap();
             }
             visualizer
-                .snapshot_combined(format!("add measurement #6"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #6".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             visualizer
-                .snapshot_combined(format!("add measurement #7"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #7".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
             visualizer
-                .snapshot_combined(format!("add measurement #8"), vec![&interface_ptr, &dual_module])
+                .snapshot_combined("add measurement #8".to_string(), vec![&interface_ptr, &dual_module])
                 .unwrap();
         }
     }
 
     #[test]
+    #[allow(clippy::unnecessary_cast)]
     fn visualize_example_syndrome_graph() {
         // cargo test visualize_example_syndrome_graph -- --nocapture
-        let visualize_filename = format!("visualize_example_syndrome_graph.json");
+        let visualize_filename = "visualize_example_syndrome_graph.json".to_string();
         // let defect_vertices = vec![39, 52, 63, 90, 100];
         //                        0   1   2   3   4   5   6   7   8    9
         //                        A  vA   B  vB   C  vC   D  vD   E   vE
-        let kept_vertices = vec![39, 47, 52, 59, 63, 71, 90, 94, 100, 107]; // including some virtual vertices
+        let kept_vertices = [39, 47, 52, 59, 63, 71, 90, 94, 100, 107]; // including some virtual vertices
         let mut old_to_new = std::collections::BTreeMap::<DefectIndex, DefectIndex>::new();
         for (new_index, defect_vertex) in kept_vertices.iter().enumerate() {
             old_to_new.insert(*defect_vertex, new_index as DefectIndex);

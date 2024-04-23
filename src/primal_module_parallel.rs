@@ -116,6 +116,9 @@ pub struct PrimalModuleParallelConfig {
     /// streaming decoder using spin lock instead of threads.sleep to avoid context switch
     #[serde(default = "primal_module_parallel_default_configs::streaming_decode_use_spin_lock")]
     pub streaming_decode_use_spin_lock: bool,
+    /// max tree size for the serial modules, for faster speed at the cost of less accuracy
+    #[serde(default = "primal_module_parallel_default_configs::max_tree_size")]
+    pub max_tree_size: usize,
 }
 
 impl Default for PrimalModuleParallelConfig {
@@ -144,6 +147,9 @@ pub mod primal_module_parallel_default_configs {
     pub fn streaming_decode_use_spin_lock() -> bool {
         false
     } // by default use threads.sleep; enable only when benchmarking latency
+    pub fn max_tree_size() -> usize {
+        usize::MAX
+    } // by default do not limit tree size
 }
 
 pub struct StreamingDecodeMocker {
@@ -182,6 +188,7 @@ impl PrimalModuleParallel {
                 .map(|unit_index| {
                     // println!("unit_index: {unit_index}");
                     let primal_module = PrimalModuleSerialPtr::new_empty(initializer);
+                    primal_module.write().max_tree_size = config.max_tree_size;
                     PrimalModuleParallelUnitPtr::new_wrapper(primal_module, unit_index, Arc::clone(&partition_info))
                 })
                 .collect_into_vec(&mut units);
@@ -280,7 +287,7 @@ impl PrimalModuleParallel {
     pub fn parallel_solve<DualSerialModule: DualModuleImpl + Send + Sync>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
-        parallel_dual_module: &mut DualModuleParallel<DualSerialModule>,
+        parallel_dual_module: &DualModuleParallel<DualSerialModule>,
     ) {
         self.parallel_solve_step_callback(syndrome_pattern, parallel_dual_module, |_, _, _, _| {})
     }
@@ -288,7 +295,7 @@ impl PrimalModuleParallel {
     pub fn parallel_solve_visualizer<DualSerialModule: DualModuleImpl + Send + Sync + FusionVisualizer>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
-        parallel_dual_module: &mut DualModuleParallel<DualSerialModule>,
+        parallel_dual_module: &DualModuleParallel<DualSerialModule>,
         visualizer: Option<&mut Visualizer>,
     ) {
         if let Some(visualizer) = visualizer {
@@ -335,7 +342,7 @@ impl PrimalModuleParallel {
     pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
-        parallel_dual_module: &mut DualModuleParallel<DualSerialModule>,
+        parallel_dual_module: &DualModuleParallel<DualSerialModule>,
         mut callback: F,
     ) where
         F: FnMut(
@@ -768,12 +775,35 @@ pub mod tests {
     use super::*;
 
     pub fn primal_module_parallel_basic_standard_syndrome_optional_viz<F>(
+        code: impl ExampleCode,
+        visualize_filename: Option<String>,
+        defect_vertices: Vec<VertexIndex>,
+        final_dual: Weight,
+        partition_func: F,
+        reordered_vertices: Option<Vec<VertexIndex>>,
+    ) -> (PrimalModuleParallel, DualModuleParallel<DualModuleSerial>)
+    where
+        F: Fn(&SolverInitializer, &mut PartitionConfig),
+    {
+        primal_module_parallel_basic_standard_syndrome_optional_viz_config(
+            code,
+            visualize_filename,
+            defect_vertices,
+            final_dual,
+            partition_func,
+            reordered_vertices,
+            None,
+        )
+    }
+
+    pub fn primal_module_parallel_basic_standard_syndrome_optional_viz_config<F>(
         mut code: impl ExampleCode,
         visualize_filename: Option<String>,
         mut defect_vertices: Vec<VertexIndex>,
         final_dual: Weight,
         partition_func: F,
         reordered_vertices: Option<Vec<VertexIndex>>,
+        primal_config_json: Option<serde_json::Value>,
     ) -> (PrimalModuleParallel, DualModuleParallel<DualModuleSerial>)
     where
         F: Fn(&SolverInitializer, &mut PartitionConfig),
@@ -802,11 +832,17 @@ pub mod tests {
         let partition_info = partition_config.info();
         let mut dual_module =
             DualModuleParallel::new_config(&initializer, &partition_info, DualModuleParallelConfig::default());
-        let mut primal_config = PrimalModuleParallelConfig::default();
-        primal_config.debug_sequential = true;
-        let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config);
+        let primal_config = if let Some(value) = primal_config_json {
+            serde_json::from_value(value).unwrap()
+        } else {
+            PrimalModuleParallelConfig {
+                debug_sequential: true,
+                ..Default::default()
+            }
+        };
+        let mut primal_module = PrimalModuleParallel::new_config(&initializer, &partition_info, primal_config.clone());
         code.set_defect_vertices(&defect_vertices);
-        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &mut dual_module, visualizer.as_mut());
+        primal_module.parallel_solve_visualizer(&code.get_syndrome(), &dual_module, visualizer.as_mut());
         let useless_interface_ptr = DualModuleInterfacePtr::new_empty(); // don't actually use it
         let perfect_matching = primal_module.perfect_matching(&useless_interface_ptr, &mut dual_module);
         let mut subgraph_builder = SubGraphBuilder::new(&initializer);
@@ -833,11 +869,14 @@ pub mod tests {
             .read_recursive()
             .interface_ptr
             .sum_dual_variables();
-        assert_eq!(
-            sum_dual_variables,
-            subgraph_builder.total_weight(),
-            "unmatched sum dual variables"
-        );
+        if primal_config.max_tree_size == usize::MAX {
+            // otherwise it's not necessarily MWPM
+            assert_eq!(
+                sum_dual_variables,
+                subgraph_builder.total_weight(),
+                "unmatched sum dual variables"
+            );
+        }
         assert_eq!(sum_dual_variables, final_dual * 2, "unexpected final dual variable sum");
         (primal_module, dual_module)
     }
@@ -867,7 +906,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_1() {
         // cargo test primal_module_parallel_basic_1 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_1.json");
+        let visualize_filename = "primal_module_parallel_basic_1.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         primal_module_parallel_standard_syndrome(
@@ -886,7 +925,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_2() {
         // cargo test primal_module_parallel_basic_2 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_2.json");
+        let visualize_filename = "primal_module_parallel_basic_2.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         primal_module_parallel_standard_syndrome(
@@ -911,7 +950,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_3() {
         // cargo test primal_module_parallel_basic_3 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_3.json");
+        let visualize_filename = "primal_module_parallel_basic_3.json".to_string();
         let defect_vertices = vec![39, 52, 63, 90, 100];
         let half_weight = 500;
         primal_module_parallel_standard_syndrome(
@@ -936,7 +975,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_4() {
         // cargo test primal_module_parallel_basic_4 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_4.json");
+        let visualize_filename = "primal_module_parallel_basic_4.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -954,7 +993,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1), (2, 3), (4, 5)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 let split_horizontal = 6;
                 let split_vertical = 5;
@@ -1001,7 +1040,7 @@ pub mod tests {
                     reordered_vertices.push(i * 12 + 10);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1009,7 +1048,7 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_basic_5() {
         // cargo test primal_module_parallel_basic_5 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_basic_5.json");
+        let visualize_filename = "primal_module_parallel_basic_5.json".to_string();
         // reorder vertices to enable the partition;
         let defect_vertices = vec![39, 52, 63, 90, 100]; // indices are before the reorder
         let half_weight = 500;
@@ -1027,7 +1066,7 @@ pub mod tests {
                 ];
                 config.fusions = vec![(0, 1), (2, 3), (4, 5)];
             },
-            Some((|| {
+            Some({
                 let mut reordered_vertices = vec![];
                 let split_horizontal = 5;
                 let split_vertical = 4;
@@ -1074,7 +1113,7 @@ pub mod tests {
                     reordered_vertices.push(i * 12 + 10);
                 }
                 reordered_vertices
-            })()),
+            }),
         );
     }
 
@@ -1111,8 +1150,34 @@ pub mod tests {
     #[test]
     fn primal_module_parallel_debug_1() {
         // cargo test primal_module_parallel_debug_1 -- --nocapture
-        let visualize_filename = format!("primal_module_parallel_debug_1.json");
+        let visualize_filename = "primal_module_parallel_debug_1.json".to_string();
         let defect_vertices = vec![88, 89, 102, 103, 105, 106, 118, 120, 122, 134, 138]; // indices are before the reorder
         primal_module_parallel_debug_planar_code_common(15, visualize_filename, defect_vertices, 10);
+    }
+
+    /// test fusion union-find
+    #[test]
+    fn primal_module_parallel_union_find_basic_1() {
+        // cargo test primal_module_parallel_union_find_basic_1 -- --nocapture
+        let visualize_filename = "primal_module_parallel_union_find_basic_1.json".to_string();
+        let defect_vertices = vec![51, 52, 53, 88];
+        let half_weight = 500;
+        primal_module_parallel_basic_standard_syndrome_optional_viz_config(
+            CodeCapacityPlanarCode::new(11, 0.1, half_weight),
+            Some(visualize_filename),
+            defect_vertices,
+            4 * half_weight,
+            |_initializer, config| {
+                config.partitions = vec![
+                    VertexRange::new(0, 72),   // unit 0
+                    VertexRange::new(84, 132), // unit 1
+                ];
+                config.fusions = vec![
+                    (0, 1), // unit 2, by fusing 0 and 1
+                ];
+            },
+            None,
+            Some(json!({ "max_tree_size": 0, "debug_sequential": true })),
+        );
     }
 }

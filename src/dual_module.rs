@@ -4,14 +4,20 @@
 //!
 
 #![cfg_attr(feature = "unsafe_pointer", allow(dropping_references))]
+
+use core::cmp::Ordering;
+use std::collections::{BTreeMap, HashSet};
+use std::num::NonZeroUsize;
+#[cfg(not(feature = "dangerous_pointer"))]
+use std::sync::Arc;
+
+use nonzero::nonzero as nz;
+
+use crate::derivative::Derivative;
+
 use super::pointers::*;
 use super::util::*;
 use super::visualize::*;
-use crate::derivative::Derivative;
-use core::cmp::Ordering;
-use std::collections::{BTreeMap, HashSet};
-#[cfg(not(feature = "dangerous_pointer"))]
-use std::sync::Arc;
 
 /// A dual node is either a blossom or a vertex
 #[derive(Derivative, Clone)]
@@ -216,7 +222,7 @@ impl GroupMaxUpdateLength {
             },
             Self::Conflicts((list, pending_stops)) => {
                 if let Self::Conflicts((other_list, other_pending_stops)) = other {
-                    list.extend(other_list.into_iter());
+                    list.extend(other_list);
                     for (_, max_update_length) in other_pending_stops.into_iter() {
                         Self::add_pending_stop(list, pending_stops, max_update_length);
                     }
@@ -300,6 +306,8 @@ pub struct DualNode {
     pub dual_variable_cache: (Weight, Weight),
     /// belonging of the dual module interface; a dual node is never standalone
     pub belonging: DualModuleInterfaceWeak,
+    /// how many defect vertices in this dual node
+    pub defect_size: NonZeroUsize,
 }
 
 impl DualNode {
@@ -869,6 +877,7 @@ impl DualModuleInterfacePtr {
             node.parent_blossom = None;
             node.dual_variable_cache = (0, interface.dual_variable_global_progress);
             node.belonging = belonging;
+            node.defect_size = nz!(1usize);
             drop(node);
             node_ptr
         } else {
@@ -881,6 +890,7 @@ impl DualModuleInterfacePtr {
                 parent_blossom: None,
                 dual_variable_cache: (0, interface.dual_variable_global_progress),
                 belonging,
+                defect_size: nz!(1usize),
             })
         };
         interface.nodes_length += 1;
@@ -925,6 +935,12 @@ impl DualModuleInterfacePtr {
         debug_assert_eq!(touching_children.len(), nodes_circle.len(), "circle length mismatch");
         let local_node_index = interface.nodes_length;
         let node_index = interface.nodes_count();
+        let defect_size = nodes_circle
+            .iter()
+            .map(|iter| iter.read_recursive().defect_size)
+            .reduce(|a, b| a.saturating_add(b.get()))
+            .unwrap();
+
         let blossom_node_ptr = if !interface.is_fusion
             && local_node_index < interface.nodes.len()
             && interface.nodes[local_node_index].is_some()
@@ -940,6 +956,7 @@ impl DualModuleInterfacePtr {
             node.parent_blossom = None;
             node.dual_variable_cache = (0, interface.dual_variable_global_progress);
             node.belonging = belonging;
+            node.defect_size = defect_size;
             drop(node);
             node_ptr
         } else {
@@ -953,10 +970,11 @@ impl DualModuleInterfacePtr {
                 parent_blossom: None,
                 dual_variable_cache: (0, interface.dual_variable_global_progress),
                 belonging,
+                defect_size,
             })
         };
         drop(interface);
-        for (i, node_ptr) in nodes_circle.iter().enumerate() {
+        for node_ptr in nodes_circle.iter() {
             debug_assert!(
                 self.check_ptr_belonging(node_ptr),
                 "this ptr doesn't belong to this interface"
@@ -965,15 +983,6 @@ impl DualModuleInterfacePtr {
             debug_assert!(
                 node.parent_blossom.is_none(),
                 "cannot create blossom on a node that already belongs to a blossom"
-            );
-            debug_assert!(
-                &node.grow_state
-                    == (if i % 2 == 0 {
-                        &DualNodeGrowState::Grow
-                    } else {
-                        &DualNodeGrowState::Shrink
-                    }),
-                "the nodes circle MUST starts with a growing node and ends with a shrinking node"
             );
             drop(node);
             // set state must happen before setting parent
@@ -1136,6 +1145,11 @@ impl DualModuleInterfacePtr {
     /// grow the dual module and update [`DualModuleInterface::sum_`]
     pub fn grow(&self, length: Weight, dual_module_impl: &mut impl DualModuleImpl) {
         dual_module_impl.grow(length);
+        self.notify_grown(length);
+    }
+
+    /// if a dual module spontaneously grow some value (e.g. with primal offloading), this function should be called
+    pub fn notify_grown(&self, length: Weight) {
         let mut interface = self.write();
         interface.sum_dual_variables += length * interface.sum_grow_speed;
         interface.dual_variable_global_progress += length;

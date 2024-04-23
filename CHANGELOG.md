@@ -15,3 +15,7 @@ The first version of Python package
 - [x] start writing a tutorial using `mdbook`
 - [ ] publish `fusion_blossom` package to crate.io
 - [ ] add `dangerous_pointer` feature that improve speed by ~20%
+
+## 0.2.9 (2024.4.23)
+
+- add `max_tree_size` option to implement a spectrum of decoders between UF and MWPM

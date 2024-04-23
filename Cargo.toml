@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.2.6"
+version = "0.2.9"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -10,12 +10,7 @@ homepage = "https://fusionblossom.com"
 repository = "https://github.com/yuewuo/fusion-blossom"
 keywords = ["QEC", "quantum-computing", "error-correction", "visualization"]
 categories = ["science"]
-exclude = [
-    "tutorial/*",
-    "benchmark/*",
-    "visualize/data/persist/*",
-    ".github/*",
-]
+exclude = ["tutorial/*", "benchmark/*", "visualize/data/persist/*", ".github/*"]
 default-run = "fusion_blossom"
 
 # see https://doc.rust-lang.org/1.39.0/cargo/reference/manifest.html#the-documentation-field-optional
@@ -42,15 +37,22 @@ debug = true
 [features]
 # to enable a feature, use `--features xxx`
 default = []
-blossom_v = []  # automatically enabled when file `blossomV/PerfectMatching.h` exists
-remove_blossom_v = []  # disable blossom V library even if required files exist
-i32_weight = []  # use i32 instead of i64 as weight type, to be the same as blossom V library
-u32_index = []  # use u32 instead of usize as index type, to save memory by at most half
-ordered_conflicts = []  # sort conflict events, by default do not sort for better performance
-disable_visualizer = []  # disable all visualizer behavior
-unsafe_pointer = []  # use raw pointers to access data without lock when appropriate; fusion blossom requires very little synchronization
-dangerous_pointer = ["unsafe_pointer"]  # use raw pointers instead of Arc and Weak, require "unsafe_pointer" feature
-python_binding = ["pyo3"]  # bind to Python
+blossom_v = [
+] # automatically enabled when file `blossomV/PerfectMatching.h` exists
+remove_blossom_v = [] # disable blossom V library even if required files exist
+i32_weight = [
+] # use i32 instead of i64 as weight type, to be the same as blossom V library
+u32_index = [
+] # use u32 instead of usize as index type, to save memory by at most half
+ordered_conflicts = [
+] # sort conflict events, by default do not sort for better performance
+disable_visualizer = [] # disable all visualizer behavior
+unsafe_pointer = [
+] # use raw pointers to access data without lock when appropriate; fusion blossom requires very little synchronization
+dangerous_pointer = [
+    "unsafe_pointer",
+] # use raw pointers instead of Arc and Weak, require "unsafe_pointer" feature
+python_binding = ["pyo3"] # bind to Python
 qecp_integrate = ["qecp"]
 
 [dependencies]
@@ -70,10 +72,15 @@ rayon = "1.7.0"
 weak-table = "0.3.2"
 rand = "0.8.5"
 core_affinity = "0.8.0"
-pyo3 = { version =  "0.18.3", features = ["extension-module", "multiple-pymethods", "abi3-py37"], optional = true }
+pyo3 = { version = "0.18.3", features = [
+    "extension-module",
+    "multiple-pymethods",
+    "abi3-py37",
+], optional = true }
 lazy_static = "1.4.0"
 petgraph = "0.6.3"
-qecp = { version = "0.2.2", features = ["fusion-blossom"], optional = true }
+qecp = { version = "0.2.4", features = ["fusion-blossom"], optional = true }
+nonzero = "0.2.0"
 
 [build-dependencies]
 cc = "1.0.66"
@@ -81,5 +88,5 @@ cc = "1.0.66"
 [dev-dependencies]
 
 [package.metadata.docs.rs]
-rustdoc-args = [ "--html-in-header", "katex-header.html" ]
+rustdoc-args = ["--html-in-header", "katex-header.html"]
 # to run locally: `RUSTDOCFLAGS="--html-in-header katex-header.html" cargo doc --no-deps`

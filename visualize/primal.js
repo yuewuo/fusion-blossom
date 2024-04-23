@@ -39,7 +39,7 @@ export async function show_snapshot(snapshot_idx, fusion_data) {
     const nodes_count = snapshot.primal_nodes.length
     let nodes = []
     let links = []
-    for (let i=0; i<nodes_count; ++i) {
+    for (let i = 0; i < nodes_count; ++i) {
         const primal_node = snapshot.primal_nodes[i]
         const dual_node = snapshot.dual_nodes[i]
         if (primal_node == null) { continue }  // expanded blossom
@@ -107,7 +107,7 @@ export async function show_snapshot(snapshot_idx, fusion_data) {
         nodes: nodes,
         links: links,
     }
-    
+
     chart.update(graph)
 
 }
@@ -165,26 +165,26 @@ export function initialize_primal_div() {
         .force("x", d3.forceX())
         .force("y", d3.forceY())
         .on("tick", ticked);
-    
+
     const drag = simulation => {
-  
+
         function dragstarted(event, d) {
             if (!event.active) simulation.alphaTarget(1).restart();
             d.fx = d.x;
             d.fy = d.y;
         }
-        
+
         function dragged(event, d) {
             d.fx = event.x;
             d.fy = event.y;
         }
-        
+
         function dragended(event, d) {
             if (!event.active) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
         }
-        
+
         return d3.drag()
             .on("start", dragstarted)
             .on("drag", dragged)
@@ -198,7 +198,7 @@ export function initialize_primal_div() {
     }
 
     let chart = Object.assign(svg.node(), {
-        update({nodes, links}) {
+        update({ nodes, links }) {
             // Make a shallow copy to protect against mutation, while
             // recycling old nodes to preserve position and velocity.
             const old = new Map(node.data().map(d => [d.id, d]));
@@ -217,7 +217,7 @@ export function initialize_primal_div() {
                 .attr("stroke", d => d.stroke_color)
 
             node.on("click", node_on_click)
-            
+
             text = text
                 .data(nodes, d => d.id)
                 .join(enter => enter.append("text")

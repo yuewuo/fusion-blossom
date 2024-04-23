@@ -79,15 +79,15 @@ export function save_data_uri(data_uri, filename) {
     fs.writeFileSync(filename + '.' + ext, buffer)
 }
 
-export async function save_pixels(pixels, filename=null) {
+export async function save_pixels(pixels, filename = null) {
     if (filename == null) {
         filename = mocker_default_filename
     }
     let img = await new Jimp(mock_canvas_width, mock_canvas_height)
-    for (let j=0; j<mock_canvas_height; ++j) {
-        for (let i=0; i<mock_canvas_width; ++i) {
+    for (let j = 0; j < mock_canvas_height; ++j) {
+        for (let i = 0; i < mock_canvas_width; ++i) {
             let b = (j * mock_canvas_width + i) * 4
-            img.setPixelColor(Jimp.rgbaToInt(pixels[b+0],pixels[b+1],pixels[b+2],pixels[b+3]), i, mock_canvas_height-1-j)
+            img.setPixelColor(Jimp.rgbaToInt(pixels[b + 0], pixels[b + 1], pixels[b + 2], pixels[b + 3]), i, mock_canvas_height - 1 - j)
         }
     }
     img.write(`${filename}.png`)
