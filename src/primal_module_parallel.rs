@@ -775,9 +775,9 @@ pub mod tests {
     use super::*;
 
     pub fn primal_module_parallel_basic_standard_syndrome_optional_viz<F>(
-        mut code: impl ExampleCode,
+        code: impl ExampleCode,
         visualize_filename: Option<String>,
-        mut defect_vertices: Vec<VertexIndex>,
+        defect_vertices: Vec<VertexIndex>,
         final_dual: Weight,
         partition_func: F,
         reordered_vertices: Option<Vec<VertexIndex>>,

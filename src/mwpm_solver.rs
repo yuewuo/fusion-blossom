@@ -280,10 +280,19 @@ impl FusionVisualizer for SolverSerial {
 #[cfg(feature = "python_binding")]
 bind_trait_primal_dual_solver! {SolverSerial}
 
-#[cfg_attr(feature = "python_binding", cfg_eval)]
-#[cfg_attr(feature = "python_binding", pymethods)]
+#[cfg(feature = "python_binding")]
+#[pymethods]
 impl SolverSerial {
-    #[cfg_attr(feature = "python_binding", new)]
+    #[new]
+    #[pyo3(signature = (initializer, *, max_tree_size = usize::MAX))]
+    pub fn new_python(initializer: &SolverInitializer, max_tree_size: usize) -> Self {
+        let mut solver = Self::new(initializer);
+        solver.primal_module.write().max_tree_size = max_tree_size;
+        solver
+    }
+}
+
+impl SolverSerial {
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
             dual_module: DualModuleSerial::new_empty(initializer),
