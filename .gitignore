@@ -35,6 +35,7 @@ fusion_blossom.egg-info/
 *.DS_Store
 .vscode
 .metals
+.idea
 
 # visualizer files
 /*.json

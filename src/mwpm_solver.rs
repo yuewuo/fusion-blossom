@@ -4,6 +4,20 @@
 //! Note that you can call different primal and dual modules, even interchangeably, by following the examples in this file
 //!
 
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufWriter;
+
+use nonzero::nonzero as nz;
+#[cfg(feature = "python_binding")]
+use pyo3::prelude::*;
+
+use crate::blossom_v;
+use crate::complete_graph::*;
+use crate::derivative::Derivative;
+use crate::dual_module::*;
+
 use super::dual_module::{DualModuleImpl, DualModuleInterfacePtr};
 use super::dual_module_parallel::*;
 use super::dual_module_serial::DualModuleSerial;
@@ -13,19 +27,6 @@ use super::primal_module_parallel::*;
 use super::primal_module_serial::PrimalModuleSerialPtr;
 use super::util::*;
 use super::visualize::*;
-use crate::blossom_v;
-use crate::complete_graph::*;
-use crate::derivative::Derivative;
-use crate::dual_module::*;
-#[cfg(feature = "python_binding")]
-use pyo3::prelude::*;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufWriter;
-use super::pointers::*;
-use nonzero::nonzero as nz;
-
 
 /// a serial solver
 #[derive(Derivative)]
@@ -139,6 +140,7 @@ impl LegacySolverSerial {
 
 pub trait PrimalDualSolver {
     fn clear(&mut self);
+    fn reset_profiler(&mut self) {} // only if profiler records some information that needs to be cleared, e.g. vec![]
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
     fn solve(&mut self, syndrome_pattern: &SyndromePattern) {
         self.solve_visualizer(syndrome_pattern, None)
@@ -163,8 +165,8 @@ pub trait PrimalDualSolver {
         num_dets: usize,
         num_obs: usize,
     ) {
-        let mut in_reader = std::io::BufReader::new(File::open(&in_file).expect("in_file not found"));
-        let mut out_writer = std::io::BufWriter::new(File::create(&out_file).expect("out_file not found"));
+        let mut in_reader = std::io::BufReader::new(File::open(in_file).expect("in_file not found"));
+        let mut out_writer = std::io::BufWriter::new(File::create(out_file).expect("out_file not found"));
         let num_det_bytes = (num_dets + 7) / 8; // ceil
         let mut dets_bit_packed = vec![0; num_det_bytes];
         assert!(num_obs <= 64, "too many observables");
@@ -259,10 +261,10 @@ macro_rules! bind_trait_primal_dual_solver {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverSerial {
-    dual_module: DualModuleSerial,
-    primal_module: PrimalModuleSerialPtr,
-    interface_ptr: DualModuleInterfacePtr,
-    subgraph_builder: SubGraphBuilder,
+    pub dual_module: DualModuleSerial,
+    pub primal_module: PrimalModuleSerialPtr,
+    pub interface_ptr: DualModuleInterfacePtr,
+    pub subgraph_builder: SubGraphBuilder,
 }
 
 bind_trait_fusion_visualizer!(SolverSerial);
@@ -278,10 +280,19 @@ impl FusionVisualizer for SolverSerial {
 #[cfg(feature = "python_binding")]
 bind_trait_primal_dual_solver! {SolverSerial}
 
-#[cfg_attr(feature = "python_binding", cfg_eval)]
-#[cfg_attr(feature = "python_binding", pymethods)]
+#[cfg(feature = "python_binding")]
+#[pymethods]
 impl SolverSerial {
-    #[cfg_attr(feature = "python_binding", new)]
+    #[new]
+    #[pyo3(signature = (initializer, *, max_tree_size = usize::MAX))]
+    pub fn new_python(initializer: &SolverInitializer, max_tree_size: usize) -> Self {
+        let mut solver = Self::new(initializer);
+        solver.primal_module.write().max_tree_size = max_tree_size;
+        solver
+    }
+}
+
+impl SolverSerial {
     pub fn new(initializer: &SolverInitializer) -> Self {
         Self {
             dual_module: DualModuleSerial::new_empty(initializer),
@@ -360,10 +371,10 @@ impl PrimalDualSolver for SolverSerial {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverDualParallel {
-    dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleSerialPtr,
-    interface_ptr: DualModuleInterfacePtr,
-    subgraph_builder: SubGraphBuilder,
+    pub dual_module: DualModuleParallel<DualModuleSerial>,
+    pub primal_module: PrimalModuleSerialPtr,
+    pub interface_ptr: DualModuleInterfacePtr,
+    pub subgraph_builder: SubGraphBuilder,
 }
 
 bind_trait_fusion_visualizer!(SolverDualParallel);
@@ -478,9 +489,9 @@ impl PrimalDualSolver for SolverDualParallel {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverParallel {
-    dual_module: DualModuleParallel<DualModuleSerial>,
-    primal_module: PrimalModuleParallel,
-    subgraph_builder: SubGraphBuilder,
+    pub dual_module: DualModuleParallel<DualModuleSerial>,
+    pub primal_module: PrimalModuleParallel,
+    pub subgraph_builder: SubGraphBuilder,
 }
 
 bind_trait_fusion_visualizer!(SolverParallel);
@@ -603,7 +614,7 @@ impl PrimalDualSolver for SolverParallel {
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct SolverErrorPatternLogger {
-    file: BufWriter<File>,
+    pub file: BufWriter<File>,
 }
 
 #[cfg(feature = "python_binding")]
@@ -647,7 +658,8 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
         panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
     }
     fn subgraph_visualizer(&mut self, _visualizer: Option<&mut Visualizer>) -> Vec<EdgeIndex> {
-        panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
+        // panic!("error pattern logger do not actually solve the problem, please use Verifier::None by `--verifier none`")
+        vec![]
     }
     fn sum_dual_variables(&self) -> Weight {
         panic!("error pattern logger do not actually solve the problem")
@@ -660,10 +672,10 @@ impl PrimalDualSolver for SolverErrorPatternLogger {
 /// an exact solver calling blossom V library for benchmarking comparison
 #[derive(Clone)]
 pub struct SolverBlossomV {
-    initializer: SolverInitializer,
-    prebuilt_complete_graph: PrebuiltCompleteGraph,
-    subgraph_builder: SubGraphBuilder,
-    matched_pairs: Vec<(VertexIndex, VertexIndex)>,
+    pub initializer: SolverInitializer,
+    pub prebuilt_complete_graph: PrebuiltCompleteGraph,
+    pub subgraph_builder: SubGraphBuilder,
+    pub matched_pairs: Vec<(VertexIndex, VertexIndex)>,
 }
 
 impl SolverBlossomV {

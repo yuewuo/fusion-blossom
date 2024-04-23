@@ -1183,7 +1183,7 @@ impl ExampleCode for QECPlaygroundCode {
     }
 }
 
-#[cfg(feature = "python_binding")]
+#[cfg(all(feature = "qecp_integrate", feature = "python_binding"))]
 bind_trait_example_code! {QECPlaygroundCode}
 
 #[cfg(feature = "qecp_integrate")]
@@ -1341,6 +1341,7 @@ impl QECPlaygroundCode {
 /// the point is to avoid bad cache performance, because generating random error requires iterating over a large memory space,
 /// invalidating all cache. also, this can reduce the time of decoding by prepare the data before hand and could be shared between
 /// different partition configurations
+#[derive(Clone, Debug)]
 #[cfg_attr(feature = "python_binding", cfg_eval)]
 #[cfg_attr(feature = "python_binding", pyclass)]
 pub struct ErrorPatternReader {
@@ -1383,6 +1384,23 @@ impl ExampleCode for ErrorPatternReader {
         syndrome_pattern
     }
 }
+
+#[cfg_attr(feature = "python_binding", cfg_eval)]
+#[cfg_attr(feature = "python_binding", pymethods)]
+impl ErrorPatternReader {
+    #[allow(clippy::unnecessary_cast)]
+    #[cfg_attr(feature = "python_binding", new)]
+    #[cfg_attr(feature = "python_binding", pyo3(signature = (filename, cyclic_syndrome = false)))]
+    pub fn py_new(filename: String, cyclic_syndrome: bool) -> Self {
+        Self::new(json!({
+            "filename": filename,
+            "cyclic_syndrome": cyclic_syndrome,
+        }))
+    }
+}
+
+#[cfg(feature = "python_binding")]
+bind_trait_example_code! {ErrorPatternReader}
 
 impl ErrorPatternReader {
     #[allow(clippy::unnecessary_cast)]
@@ -1520,6 +1538,7 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<CircuitLevelPlanarCode>()?;
     m.add_class::<CodeCapacityRotatedCode>()?;
     m.add_class::<PhenomenologicalRotatedCode>()?;
+    m.add_class::<ErrorPatternReader>()?;
     Ok(())
 }
 
