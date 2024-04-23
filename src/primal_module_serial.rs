@@ -552,7 +552,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                                 drop(tree_node_internal);
                                 let mut root_node = root_node_ptr.write();
                                 let root_tree_node = root_node.tree_node.as_mut().unwrap();
-                                let mut tree_size = root_tree_node.tree_size.as_ref().unwrap().clone();
+                                let mut tree_size = *root_tree_node.tree_size.as_ref().unwrap();
                                 tree_size = tree_size.saturating_add(
                                     matched_node_internal
                                         .origin
@@ -615,7 +615,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                             drop(primal_node_internal_2);
                             let tree_size = {
                                 let root_ptr = root_weak.upgrade_force();
-                                let tree_size = root_ptr.read_recursive().tree_node.as_ref().unwrap().tree_size.clone();
+                                let tree_size = root_ptr.read_recursive().tree_node.as_ref().unwrap().tree_size;
                                 tree_size.unwrap()
                             };
                             // find LCA of two nodes, two paths are from child to parent

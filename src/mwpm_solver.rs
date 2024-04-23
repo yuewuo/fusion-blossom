@@ -165,8 +165,8 @@ pub trait PrimalDualSolver {
         num_dets: usize,
         num_obs: usize,
     ) {
-        let mut in_reader = std::io::BufReader::new(File::open(&in_file).expect("in_file not found"));
-        let mut out_writer = std::io::BufWriter::new(File::create(&out_file).expect("out_file not found"));
+        let mut in_reader = std::io::BufReader::new(File::open(in_file).expect("in_file not found"));
+        let mut out_writer = std::io::BufWriter::new(File::create(out_file).expect("out_file not found"));
         let num_det_bytes = (num_dets + 7) / 8; // ceil
         let mut dets_bit_packed = vec![0; num_det_bytes];
         assert!(num_obs <= 64, "too many observables");

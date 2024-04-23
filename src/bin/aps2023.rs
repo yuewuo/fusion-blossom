@@ -141,7 +141,7 @@ fn demo_construct_syndrome_graph(
     for &defect_vertex in defect_vertices {
         let virtual_vertex = get_nearest_virtual(&min_paths, code, defect_vertex);
         if let Some(virtual_vertex) = virtual_vertex {
-            virtual_vertices_map.entry(virtual_vertex).or_insert_with(Vec::new);
+            virtual_vertices_map.entry(virtual_vertex).or_default();
             virtual_vertices_map
                 .get_mut(&virtual_vertex)
                 .as_mut()
