@@ -821,7 +821,7 @@ impl ExampleCodeType {
                 Box::new(PhenomenologicalRotatedCode::new(d, noisy_measurements, p, max_half_weight))
             }
             #[cfg(feature = "qecp_integrate")]
-            Self::QECPlaygroundCode => Box::new(QECPlaygroundCode::new(d, p, code_config)),
+            Self::QECPlaygroundCode => Box::new(QECPlaygroundCode::new(d as usize, p, code_config)),
             _ => unimplemented!(),
         }
     }
