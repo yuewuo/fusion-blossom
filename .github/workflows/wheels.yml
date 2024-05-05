@@ -47,7 +47,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: nightly-2023-11-16
           override: true
 
       - name: Install Python dependencies
@@ -74,14 +74,14 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           CIBW_ARCHS_LINUX: x86_64  # aarch64 requires QEMU, ~ 40min for each manylinux and musllinux...
           CIBW_ARCHS_MACOS: universal2
           CIBW_BEFORE_BUILD: >
-            rustup default nightly &&
+            rustup default nightly-2023-11-16 &&
             rustup show
           CIBW_BEFORE_BUILD_MACOS: >
             rustup target add aarch64-apple-darwin &&
-            rustup default nightly &&
+            rustup default nightly-2023-11-16 &&
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly --profile=minimal -y &&
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly-2023-11-16 --profile=minimal -y &&
             rustup show
 
       - name: Build windows 32bit wheels
@@ -92,9 +92,9 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           CIBW_PLATFORM: windows
           CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
           CIBW_BEFORE_BUILD: >
-            rustup toolchain install nightly-i686-pc-windows-msvc &&
-            rustup default nightly-i686-pc-windows-msvc &&
-            rustup override set nightly-i686-pc-windows-msvc &&
+            rustup toolchain install nightly-2023-11-16-i686-pc-windows-msvc &&
+            rustup default nightly-2023-11-16-i686-pc-windows-msvc &&
+            rustup override set nightly-2023-11-16-i686-pc-windows-msvc &&
             rustup show
 
       - name: list wheel files
