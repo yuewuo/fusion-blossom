@@ -19,3 +19,7 @@ The first version of Python package
 ## 0.2.9 (2024.4.23)
 
 - add `max_tree_size` option to implement a spectrum of decoders between UF and MWPM
+
+## 0.2.10 (2024.5.7)
+
+- optimize Python interface to accept `max_tree_size = None`
