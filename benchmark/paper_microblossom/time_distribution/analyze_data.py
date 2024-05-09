@@ -4,7 +4,7 @@ from run import *
 data_file = os.path.join(script_dir, f"distribution.txt")
 with open(data_file, "w", encoding="utf8") as f:
     f.write(
-        "# <d> <decoded> <add_defects> <primal> <dual> <simple_match> <potential speedup> <max potential>\n"
+        "# <d> <decoded> <add_defects> <primal> <dual> <simple_match> <complex_match> <potential speedup> <max potential>\n"
     )
 
     for d in d_vec:
@@ -16,12 +16,9 @@ with open(data_file, "w", encoding="utf8") as f:
         dual = profile.average_custom_time("dual")
         simple_match = profile.average_custom_time("simple_match")
         complex_match = profile.average_custom_time("complex_match")
-        # offload_able = add_defects + dual + simple_match
-        # un_offload_able = decoded - offload_able
-        un_offload_able = complex_match
 
         f.write(
-            "%d %.5e %.5e %.5e %.5e %.5e %.3e %.3e \n"
+            "%d %.5e %.5e %.5e %.5e %.5e %.5e %.3e %.3e \n"
             % (
                 d,
                 decoded,
@@ -29,8 +26,9 @@ with open(data_file, "w", encoding="utf8") as f:
                 primal,
                 dual,
                 simple_match,
+                complex_match,
                 decoded / primal,
-                decoded / un_offload_able,
+                decoded / complex_match,
             )
         )
         f.flush()

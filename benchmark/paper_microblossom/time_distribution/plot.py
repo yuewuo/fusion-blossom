@@ -34,14 +34,24 @@ with open("./distribution.txt") as f:
         if line.startswith("#"):
             continue
         lst = line.split(" ")
-        assert len(lst) == 8
-        d, decoded, add_defects, primal, dual, simple_match, speedup1, speedup2 = lst
+        assert len(lst) == 9
+        (
+            d,
+            decoded,
+            add_defects,
+            primal,
+            dual,
+            simple_match,
+            complex_match,
+            speedup1,
+            speedup2,
+        ) = lst
         decoded = float(decoded)
         array = [
             float(add_defects) / decoded,
             float(dual) / decoded,
             float(simple_match) / decoded,
-            (float(primal) - float(simple_match)) / decoded,
+            float(complex_match) / decoded,
         ]
         array = [1 - sum(array)] + array
         data.append(array)
