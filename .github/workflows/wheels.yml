@@ -77,8 +77,9 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
             rustup default nightly-2023-11-16 &&
             rustup show
           CIBW_BEFORE_BUILD_MACOS: >
-            rustup target add aarch64-apple-darwin &&
             rustup default nightly-2023-11-16 &&
+            rustup target add aarch64-apple-darwin &&
+            rustup target add x86_64-apple-darwin &&
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
             curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly-2023-11-16 --profile=minimal -y &&

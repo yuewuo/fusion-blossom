@@ -284,10 +284,12 @@ bind_trait_primal_dual_solver! {SolverSerial}
 #[pymethods]
 impl SolverSerial {
     #[new]
-    #[pyo3(signature = (initializer, *, max_tree_size = usize::MAX))]
-    pub fn new_python(initializer: &SolverInitializer, max_tree_size: usize) -> Self {
+    #[pyo3(signature = (initializer, *, max_tree_size = None))]
+    pub fn new_python(initializer: &SolverInitializer, max_tree_size: Option<usize>) -> Self {
         let mut solver = Self::new(initializer);
-        solver.primal_module.write().max_tree_size = max_tree_size;
+        if let Some(max_tree_size) = max_tree_size {
+            solver.primal_module.write().max_tree_size = max_tree_size;
+        }
         solver
     }
 }

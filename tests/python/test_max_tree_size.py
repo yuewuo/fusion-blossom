@@ -19,10 +19,7 @@ def solver_tester(max_tree_size=None) -> fb.SolverSerial:
     code = fb.CodeCapacityPlanarCode(d=11, p=0.05, max_half_weight=500)
     positions = code.get_positions()
     initializer = code.get_initializer()
-    if max_tree_size is None:
-        solver = fb.SolverSerial(initializer)
-    else:
-        solver = fb.SolverSerial(initializer, max_tree_size=max_tree_size)
+    solver = fb.SolverSerial(initializer, max_tree_size=max_tree_size)
     # construct visualizer
     filename = f"test_max_tree_size_{max_tree_size}.json"
     visualizer = fb.Visualizer(
