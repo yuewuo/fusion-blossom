@@ -721,6 +721,13 @@ impl BenchmarkProfiler {
             .expect("last entry not exists, call `begin` before `end`");
         last_entry.record_event(event_name);
     }
+    pub fn custom_time(&mut self, time_name: String, duration: f64) {
+        let last_entry = self
+            .records
+            .last_mut()
+            .expect("last entry not exists, call `begin` before `end`");
+        last_entry.record_custom_time(time_name, duration);
+    }
     /// record the ending of a decoding procedure
     pub fn end(&mut self, solver: Option<&dyn PrimalDualSolver>) {
         let last_entry = self
@@ -799,6 +806,9 @@ impl BenchmarkProfilerEntry {
             .as_ref()
             .expect("make sure to call `record_begin` before calling `record_end`");
         self.events.push((event_name, begin_time.elapsed().as_secs_f64()));
+    }
+    pub fn record_custom_time(&mut self, time_name: String, duration: f64) {
+        self.events.push((time_name, duration));
     }
     pub fn is_complete(&self) -> bool {
         self.round_time.is_some()

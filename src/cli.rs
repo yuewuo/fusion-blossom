@@ -347,6 +347,7 @@ impl RunnableBenchmarkParameters {
             result_verifier.verify(&mut primal_dual_solver, &syndrome_pattern, visualizer.as_mut());
             benchmark_profiler.event("verified".to_string());
             primal_dual_solver.clear(); // also count the clear operation
+            primal_dual_solver.custom_benchmark_time(&mut benchmark_profiler);
             benchmark_profiler.end(Some(&*primal_dual_solver));
             primal_dual_solver.reset_profiler();
             if let Some(pb) = pb.as_mut() {

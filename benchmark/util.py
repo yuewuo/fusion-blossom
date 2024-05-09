@@ -38,6 +38,15 @@ class Profile:
     def __repr__(self):
         return f"Profile {{ partition_config: {self.partition_config}, entries: [...{len(self.entries)}] }}"
 
+    def sum_custom_time(self, custom_time_name: str):
+        custom_time = 0
+        for entry in self.entries:
+            custom_time += entry["events"][custom_time_name]
+        return custom_time
+
+    def average_custom_time(self, custom_time_name: str):
+        return self.sum_custom_time(custom_time_name) / len(self.entries)
+
     def sum_decoding_time(self):
         decoding_time = 0
         for entry in self.entries:
@@ -68,8 +77,7 @@ class Profile:
         for entry in self.entries:
             computation_cpu_seconds = 0
             for event_time in entry["solver_profile"]["primal"]["event_time_vec"]:
-                computation_cpu_seconds += event_time["end"] - \
-                    event_time["start"]
+                computation_cpu_seconds += event_time["end"] - event_time["start"]
             total_computation_cpu_seconds += computation_cpu_seconds
         return total_computation_cpu_seconds
 
@@ -110,13 +118,12 @@ class PartitionConfig:
 
     @staticmethod
     def from_json(value):
-        vertex_num = value['vertex_num']
+        vertex_num = value["vertex_num"]
         config = PartitionConfig(vertex_num)
         config.partitions.clear()
-        for vertex_range in value['partitions']:
-            config.partitions.append(VertexRange(
-                vertex_range[0], vertex_range[1]))
-        for pair in value['fusions']:
+        for vertex_range in value["partitions"]:
+            config.partitions.append(VertexRange(vertex_range[0], vertex_range[1]))
+        for pair in value["fusions"]:
             config.fusions.append((pair[0], pair[1]))
         assert len(config.partitions) == len(config.fusions) + 1
         unit_count = len(config.partitions) * 2 - 1
@@ -144,15 +151,30 @@ class PartitionConfig:
         return depth
 
 
-git_root_dir = subprocess.run("git rev-parse --show-toplevel", cwd=os.path.dirname(os.path.abspath(
-    __file__)), shell=True, check=True, capture_output=True).stdout.decode(sys.stdout.encoding).strip(" \r\n")
+git_root_dir = (
+    subprocess.run(
+        "git rev-parse --show-toplevel",
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        shell=True,
+        check=True,
+        capture_output=True,
+    )
+    .stdout.decode(sys.stdout.encoding)
+    .strip(" \r\n")
+)
 rust_dir = git_root_dir
 
 FUSION_BLOSSOM_COMPILATION_DONE = False
-if 'MANUALLY_COMPILE_QEC' in os.environ and os.environ["MANUALLY_COMPILE_QEC"] == "TRUE":
+if (
+    "MANUALLY_COMPILE_QEC" in os.environ
+    and os.environ["MANUALLY_COMPILE_QEC"] == "TRUE"
+):
     FUSION_BLOSSOM_COMPILATION_DONE = True
 FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = False
-if 'FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER' in os.environ and os.environ["FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER"] == "TRUE":
+if (
+    "FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER" in os.environ
+    and os.environ["FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER"] == "TRUE"
+):
     FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True
 
 
@@ -161,13 +183,20 @@ def compile_code_if_necessary(additional_build_parameters=None):
     if FUSION_BLOSSOM_COMPILATION_DONE is False:
         build_parameters = ["cargo", "build", "--release"]
         if FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER:
-            build_parameters += ["--features",
-                                 "dangerous_pointer,u32_index,i32_weight,qecp_integrate"]
+            build_parameters += [
+                "--features",
+                "dangerous_pointer,u32_index,i32_weight,qecp_integrate",
+            ]
         if additional_build_parameters is not None:
             build_parameters += additional_build_parameters
         # print(build_parameters)
-        process = subprocess.Popen(build_parameters, universal_newlines=True,
-                                   stdout=sys.stdout, stderr=sys.stderr, cwd=rust_dir)
+        process = subprocess.Popen(
+            build_parameters,
+            universal_newlines=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            cwd=rust_dir,
+        )
         process.wait()
         assert process.returncode == 0, "compile has error"
         FUSION_BLOSSOM_COMPILATION_DONE = True
@@ -178,7 +207,9 @@ def fusion_blossom_command():
     return [fusion_path]
 
 
-def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, noisy_measurements=None, n=None):
+def fusion_blossom_benchmark_command(
+    d=None, p=None, total_rounds=None, r=None, noisy_measurements=None, n=None
+):
     assert d is not None
     assert p is not None
     command = fusion_blossom_command() + ["benchmark", f"{d}", f"{p}"]
@@ -193,11 +224,19 @@ def fusion_blossom_benchmark_command(d=None, p=None, total_rounds=None, r=None, 
     return command
 
 
-def fusion_blossom_qecp_generate_command(d, p, total_rounds, noisy_measurements, min_failed_cases=None):
+def fusion_blossom_qecp_generate_command(
+    d, p, total_rounds, noisy_measurements, min_failed_cases=None
+):
     if min_failed_cases is None:
         min_failed_cases = total_rounds
-    command = fusion_blossom_command(
-    ) + ["qecp", f"[{d}]", f"[{noisy_measurements}]", f"[{p}]", f"-m{total_rounds}", f"-e{min_failed_cases}"]
+    command = fusion_blossom_command() + [
+        "qecp",
+        f"[{d}]",
+        f"[{noisy_measurements}]",
+        f"[{p}]",
+        f"-m{total_rounds}",
+        f"-e{min_failed_cases}",
+    ]
     return command
 
 
@@ -208,7 +247,10 @@ def fusion_blossom_bin_command(bin):
 
 
 FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = False
-if 'FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY' in os.environ and os.environ["FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY"] == "TRUE":
+if (
+    "FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY" in os.environ
+    and os.environ["FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY"] == "TRUE"
+):
     FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY = True
 """
 Note: usually changing the nice value will require root privilege, but rust toolchain may not be installed for root
@@ -216,7 +258,9 @@ In this case, change the default nice value for user: https://bencane.com/2013/0
 """
 
 
-def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_to_stdout=False):
+def run_command_get_stdout(
+    command, no_stdout=False, use_tmp_out=False, stderr_to_stdout=False
+):
     compile_code_if_necessary()
     env = os.environ.copy()
     env["RUST_BACKTRACE"] = "full"
@@ -227,8 +271,17 @@ def run_command_get_stdout(command, no_stdout=False, use_tmp_out=False, stderr_t
         stdout = out_file
     if no_stdout:
         stdout = sys.stdout
-    process = subprocess.Popen(command, universal_newlines=True, env=env, stdout=stdout, stderr=(
-        stdout if stderr_to_stdout else sys.stderr), bufsize=100000000, preexec_fn=(lambda: os.nice(-10)) if FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY else None)
+    process = subprocess.Popen(
+        command,
+        universal_newlines=True,
+        env=env,
+        stdout=stdout,
+        stderr=(stdout if stderr_to_stdout else sys.stderr),
+        bufsize=100000000,
+        preexec_fn=(
+            (lambda: os.nice(-10)) if FUSION_BLOSSOM_ENABLE_HIGH_PRIORITY else None
+        ),
+    )
     stdout, _ = process.communicate()
     if use_tmp_out:
         out_file.flush()
@@ -257,10 +310,16 @@ class GnuplotData:
             line = line.strip("\r\n ")
             self.data.append(line.split(" "))
 
-    def fit(self, x_column, y_column, x_func=lambda x: float(x), y_func=lambda y: float(y), starting_row=0, ending_row=None):
-        X = [x_func(line[x_column])
-             for line in self.data[starting_row:ending_row]]
-        Y = [y_func(line[y_column])
-             for line in self.data[starting_row:ending_row]]
+    def fit(
+        self,
+        x_column,
+        y_column,
+        x_func=lambda x: float(x),
+        y_func=lambda y: float(y),
+        starting_row=0,
+        ending_row=None,
+    ):
+        X = [x_func(line[x_column]) for line in self.data[starting_row:ending_row]]
+        Y = [y_func(line[y_column]) for line in self.data[starting_row:ending_row]]
         slope, intercept, r, _, _ = scipy.stats.linregress(X, Y)
         return slope, intercept, r

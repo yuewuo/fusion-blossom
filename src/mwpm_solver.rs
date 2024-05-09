@@ -140,6 +140,7 @@ impl LegacySolverSerial {
 
 pub trait PrimalDualSolver {
     fn clear(&mut self);
+    fn custom_benchmark_time(&mut self, _benchmark_profiler: &mut BenchmarkProfiler) {}
     fn reset_profiler(&mut self) {} // only if profiler records some information that needs to be cleared, e.g. vec![]
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>);
     fn solve(&mut self, syndrome_pattern: &SyndromePattern) {
@@ -306,6 +307,22 @@ impl SolverSerial {
 }
 
 impl PrimalDualSolver for SolverSerial {
+    fn custom_benchmark_time(&mut self, benchmark_profiler: &mut BenchmarkProfiler) {
+        benchmark_profiler.custom_time(
+            "add_defects".to_string(),
+            self.primal_module.read_recursive().add_defects_time,
+        );
+        benchmark_profiler.custom_time(
+            "simple_match".to_string(),
+            self.primal_module.read_recursive().simple_match_time,
+        );
+        benchmark_profiler.custom_time("dual".to_string(), self.primal_module.read_recursive().dual_time);
+    }
+    fn reset_profiler(&mut self) {
+        self.primal_module.write().add_defects_time = 0.;
+        self.primal_module.write().simple_match_time = 0.;
+        self.primal_module.write().dual_time = 0.;
+    }
     fn clear(&mut self) {
         self.primal_module.clear();
         self.dual_module.clear();

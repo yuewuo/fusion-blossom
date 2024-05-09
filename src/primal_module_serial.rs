@@ -8,6 +8,9 @@
 
 use std::cmp::Ordering;
 use std::num::NonZeroUsize;
+use std::time::Instant;
+
+use parking_lot::Mutex;
 
 use crate::derivative::Derivative;
 
@@ -41,6 +44,10 @@ pub struct PrimalModuleSerial {
     pub children: Option<((PrimalModuleSerialWeak, NodeNum), (PrimalModuleSerialWeak, NodeNum))>,
     /// the maximum number of children in a tree before it collapses to a union-find decoder
     pub max_tree_size: usize,
+    /// the time of simple matching, which can be offloaded to hardware
+    pub simple_match_time: f64,
+    pub add_defects_time: f64,
+    pub dual_time: f64,
 }
 
 pub type PrimalModuleSerialPtr = ArcManualSafeLock<PrimalModuleSerial>;
@@ -182,6 +189,9 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
             // max_tree_size: 0,
             // Minimum Weight Perfect Matching
             max_tree_size: usize::MAX,
+            simple_match_time: 0.,
+            add_defects_time: 0.,
+            dual_time: 0.,
         })
     }
 
@@ -233,6 +243,48 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         module.nodes[local_node_index] = Some(primal_node_internal_ptr);
     }
 
+    fn solve_step_callback<D: DualModuleImpl, F>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        syndrome_pattern: &SyndromePattern,
+        dual_module: &mut D,
+        callback: F,
+    ) where
+        F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength),
+    {
+        let start_time = Instant::now();
+        interface.load(syndrome_pattern, dual_module);
+        self.load(interface);
+        self.write().add_defects_time += start_time.elapsed().as_secs_f64();
+        self.solve_step_callback_interface_loaded(interface, dual_module, callback);
+    }
+
+    fn solve_step_callback_interface_loaded<D: DualModuleImpl, F>(
+        &mut self,
+        interface: &DualModuleInterfacePtr,
+        dual_module: &mut D,
+        mut callback: F,
+    ) where
+        F: FnMut(&DualModuleInterfacePtr, &mut D, &mut Self, &GroupMaxUpdateLength),
+    {
+        let start_time = Instant::now();
+        let mut group_max_update_length = dual_module.compute_maximum_update_length();
+        self.write().dual_time += start_time.elapsed().as_secs_f64();
+        while !group_max_update_length.is_empty() {
+            callback(interface, dual_module, self, &group_max_update_length);
+            if let Some(length) = group_max_update_length.get_none_zero_growth() {
+                let start_time = Instant::now();
+                interface.grow(length, dual_module);
+                self.write().dual_time += start_time.elapsed().as_secs_f64();
+            } else {
+                self.resolve(group_max_update_length, interface, dual_module);
+            }
+            let start_time = Instant::now();
+            group_max_update_length = dual_module.compute_maximum_update_length();
+            self.write().dual_time += start_time.elapsed().as_secs_f64();
+        }
+    }
+
     #[allow(clippy::collapsible_else_if)]
     fn resolve<D: DualModuleImpl>(
         &mut self,
@@ -244,7 +296,19 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
         let mut current_conflict_index = 0;
         let debug_resolve_only_one = self.read_recursive().debug_resolve_only_one;
         let max_tree_size = self.read_recursive().max_tree_size;
+        let logger = Mutex::new((Instant::now(), false)); // time, is_simple_match
+        let log_last = || {
+            let (start_time, is_simple_match) = *logger.lock();
+            if is_simple_match {
+                self.write().simple_match_time += start_time.elapsed().as_secs_f64();
+            }
+            *logger.lock() = (Instant::now(), false);
+        };
+        let mark_simple_match = || {
+            logger.lock().1 = true;
+        };
         while let Some(conflict) = group_max_update_length.pop() {
+            log_last();
             current_conflict_index += 1;
             if debug_resolve_only_one && current_conflict_index > 1 {
                 // debug mode
@@ -307,6 +371,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                             DualNodeGrowState::Stay,
                             dual_module,
                         );
+                        mark_simple_match();
                         continue;
                     }
                     // second probable case: single node touches a temporary matched pair and become an alternating tree
@@ -880,6 +945,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                             DualNodeGrowState::Stay,
                             dual_module,
                         );
+                        mark_simple_match();
                         continue;
                     }
                     // tree touching virtual boundary will just augment the whole tree
@@ -1203,6 +1269,7 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                 _ => unreachable!("should not resolve these issues"),
             }
         }
+        log_last();
     }
 
     fn intermediate_matching<D: DualModuleImpl>(

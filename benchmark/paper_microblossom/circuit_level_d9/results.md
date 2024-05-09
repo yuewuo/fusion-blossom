@@ -10,6 +10,14 @@ noisy_measurements: 9
     average_decoding_time_per_defect: 9.930909685151086e-07
     average_defect_per_measurement: 0.514126825365073
     decoding_time_relative_dev: 2.051756924779614
+
+# after the `max_tree_size` option
+noisy_measurements: 9
+    average_decoding_time: 4.813196369273955e-06
+    average_decoding_time_per_round: 4.813196369273954e-07
+    average_decoding_time_per_defect: 9.40208924517336e-07
+    average_defect_per_measurement: 0.5119283856771354
+    decoding_time_relative_dev: 0.7563316119161125
 ```
 
 # Sparse Blossom
