@@ -316,12 +316,19 @@ impl PrimalDualSolver for SolverSerial {
             "simple_match".to_string(),
             self.primal_module.read_recursive().simple_match_time,
         );
+        benchmark_profiler.custom_time(
+            "complex_match".to_string(),
+            self.primal_module.read_recursive().complex_match_time,
+        );
         benchmark_profiler.custom_time("dual".to_string(), self.primal_module.read_recursive().dual_time);
+        benchmark_profiler.custom_time("primal".to_string(), self.primal_module.read_recursive().primal_time);
     }
     fn reset_profiler(&mut self) {
         self.primal_module.write().add_defects_time = 0.;
         self.primal_module.write().simple_match_time = 0.;
         self.primal_module.write().dual_time = 0.;
+        self.primal_module.write().primal_time = 0.;
+        self.primal_module.write().complex_match_time = 0.;
     }
     fn clear(&mut self) {
         self.primal_module.clear();

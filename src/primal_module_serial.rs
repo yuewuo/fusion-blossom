@@ -48,6 +48,8 @@ pub struct PrimalModuleSerial {
     pub simple_match_time: f64,
     pub add_defects_time: f64,
     pub dual_time: f64,
+    pub primal_time: f64,
+    pub complex_match_time: f64,
 }
 
 pub type PrimalModuleSerialPtr = ArcManualSafeLock<PrimalModuleSerial>;
@@ -192,6 +194,8 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
             simple_match_time: 0.,
             add_defects_time: 0.,
             dual_time: 0.,
+            complex_match_time: 0.,
+            primal_time: 0.,
         })
     }
 
@@ -277,7 +281,9 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
                 interface.grow(length, dual_module);
                 self.write().dual_time += start_time.elapsed().as_secs_f64();
             } else {
+                let start_time = Instant::now();
                 self.resolve(group_max_update_length, interface, dual_module);
+                self.write().primal_time += start_time.elapsed().as_secs_f64();
             }
             let start_time = Instant::now();
             group_max_update_length = dual_module.compute_maximum_update_length();
@@ -301,6 +307,8 @@ impl PrimalModuleImpl for PrimalModuleSerialPtr {
             let (start_time, is_simple_match) = *logger.lock();
             if is_simple_match {
                 self.write().simple_match_time += start_time.elapsed().as_secs_f64();
+            } else {
+                self.write().complex_match_time += start_time.elapsed().as_secs_f64();
             }
             *logger.lock() = (Instant::now(), false);
         };
