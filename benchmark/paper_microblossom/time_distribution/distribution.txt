@@ -1,4 +1,4 @@
-<d> <decoded> <add_defects> <primal> <dual> <simple_match> <complex_match> <potential speedup> <max potential>
+# <d> <decoded> <add_defects> <primal> <dual> <simple_match> <potential speedup> <max potential>
 3 2.51996e-07 4.73534e-08 2.36212e-08 6.98587e-08 7.04749e-09 1.067e+01 3.192e+01 
 5 7.43037e-07 1.74677e-07 1.36301e-07 2.93472e-07 3.86012e-08 5.451e+00 1.579e+01 
 7 2.20507e-06 5.90175e-07 4.38869e-07 9.56843e-07 1.25783e-07 5.024e+00 1.389e+01 

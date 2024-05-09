@@ -4,7 +4,7 @@ from run import *
 data_file = os.path.join(script_dir, f"distribution.txt")
 with open(data_file, "w", encoding="utf8") as f:
     f.write(
-        "<d> <decoded> <add_defects> <primal> <dual> <simple_match> <complex_match> <potential speedup> <max potential>\n"
+        "# <d> <decoded> <add_defects> <primal> <dual> <simple_match> <potential speedup> <max potential>\n"
     )
 
     for d in d_vec:
