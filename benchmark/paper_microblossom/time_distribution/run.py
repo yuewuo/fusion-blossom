@@ -32,7 +32,7 @@ util.FUSION_BLOSSOM_ENABLE_UNSAFE_POINTER = True  # better performance, still sa
 compile_code_if_necessary()
 import numpy as np
 
-d_vec = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
+d_vec = [d for d in range(3, 52, 2)]
 p = 0.001
 total_rounds = 10000
 
@@ -66,6 +66,7 @@ def main():
                 "fusion-blossom-syndrome-file",
                 "--fusion-blossom-syndrome-export-filename",
                 syndrome_file_path,
+                "-p0",
             ]
 
             stdout, returncode = run_command_get_stdout(command)

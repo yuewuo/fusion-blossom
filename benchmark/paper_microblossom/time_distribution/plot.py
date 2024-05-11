@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-d_vec = [3, 5, 7, 9, 11, 13, 15, 17, 19, 21]
+d_vec = [d for d in range(3, 52, 2)]
 
 # Example data
 n_points = len(d_vec)
