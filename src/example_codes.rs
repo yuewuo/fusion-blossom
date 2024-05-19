@@ -1542,24 +1542,24 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
+pub fn visualize_code(code: &mut impl ExampleCode, visualize_filename: String) {
+    print_visualize_link(visualize_filename.clone());
+    let mut visualizer = Visualizer::new(
+        Some(visualize_data_folder() + visualize_filename.as_str()),
+        code.get_positions(),
+        true,
+    )
+    .unwrap();
+    visualizer.snapshot("code".to_string(), code).unwrap();
+    for round in 0..3 {
+        code.generate_random_errors(round);
+        visualizer.snapshot(format!("syndrome {}", round + 1), code).unwrap();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn visualize_code(code: &mut impl ExampleCode, visualize_filename: String) {
-        print_visualize_link(visualize_filename.clone());
-        let mut visualizer = Visualizer::new(
-            Some(visualize_data_folder() + visualize_filename.as_str()),
-            code.get_positions(),
-            true,
-        )
-        .unwrap();
-        visualizer.snapshot("code".to_string(), code).unwrap();
-        for round in 0..3 {
-            code.generate_random_errors(round);
-            visualizer.snapshot(format!("syndrome {}", round + 1), code).unwrap();
-        }
-    }
 
     #[test]
     fn example_code_capacity_repetition_code() {
