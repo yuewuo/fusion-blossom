@@ -1212,6 +1212,8 @@ pub struct QECPlaygroundCodeConfig {
     pub qubit_type: Option<qecp::types::QubitType>,
     #[serde(default = "qecp::decoder_fusion::fusion_default_configs::max_half_weight")]
     pub max_half_weight: usize,
+    #[serde(default = "qec_playground_default_configs::trim_isolated_vertices")]
+    pub trim_isolated_vertices: bool,
 }
 
 #[cfg(feature = "qecp_integrate")]
@@ -1233,6 +1235,9 @@ pub mod qec_playground_default_configs {
     }
     pub fn use_brief_edge() -> bool {
         false
+    }
+    pub fn trim_isolated_vertices() -> bool {
+        true
     }
 }
 
@@ -1279,11 +1284,16 @@ impl QECPlaygroundCode {
         let positions = &adaptor.positions;
         let mut vertex_index_map = HashMap::new();
         // filter the specific qubit type and also remove isolated virtual vertices
-        let mut is_vertex_isolated = vec![true; initializer.vertex_num];
-        for (left_vertex, right_vertex, _) in initializer.weighted_edges.iter().cloned() {
-            is_vertex_isolated[left_vertex] = false;
-            is_vertex_isolated[right_vertex] = false;
-        }
+        let is_vertex_isolated = if config.trim_isolated_vertices {
+            let mut is_vertex_isolated = vec![true; initializer.vertex_num];
+            for (left_vertex, right_vertex, _) in initializer.weighted_edges.iter().cloned() {
+                is_vertex_isolated[left_vertex] = false;
+                is_vertex_isolated[right_vertex] = false;
+            }
+            is_vertex_isolated
+        } else {
+            vec![false; initializer.vertex_num]
+        };
         for (vertex_index, is_isolated) in is_vertex_isolated.iter().cloned().enumerate() {
             let position = &adaptor.vertex_to_position_mapping[vertex_index];
             let qubit_type = simulator.get_node(position).as_ref().unwrap().qubit_type;
