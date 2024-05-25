@@ -642,6 +642,25 @@ impl SolverInitializer {
     fn __repr__(&self) -> String {
         format!("{:?}", self)
     }
+    #[allow(clippy::unnecessary_cast)]
+    pub fn syndrome_of(&self, subgraph: &[EdgeIndex]) -> BTreeSet<VertexIndex> {
+        let mut defects = BTreeSet::new();
+        for edge_index in subgraph {
+            let (left, right, _weight) = self.weighted_edges[*edge_index as usize];
+            for vertex_index in [left, right] {
+                if defects.contains(&vertex_index) {
+                    defects.remove(&vertex_index);
+                } else {
+                    defects.insert(vertex_index);
+                }
+            }
+        }
+        // remove virtual vertices
+        for vertex_index in self.virtual_vertices.iter() {
+            defects.remove(vertex_index);
+        }
+        defects
+    }
 }
 
 /// timestamp type determines how many fast clear before a hard clear is required, see [`FastClear`]
