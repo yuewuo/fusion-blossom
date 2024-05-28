@@ -45,3 +45,5 @@ fusion_blossom.egg-info/
 
 *-uncompressed.png
 micro-blossom-examples
+.scala-build
+.bsp
