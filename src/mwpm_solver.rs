@@ -632,7 +632,10 @@ impl SolverErrorPatternLogger {
         if !config.is_empty() {
             panic!("unknown config keys: {:?}", config.keys().collect::<Vec<&String>>());
         }
-        let file = File::create(filename).unwrap();
+        println!("hello!!!!!");
+        println!("filename is {}", filename);
+        let file = File::create(&filename).unwrap();
+        println!("hi, i just created a file called {}", filename);
         let mut file = BufWriter::new(file);
         file.write_all(b"Syndrome Pattern v1.0   <initializer> <positions> <syndrome_pattern>*\n")
             .unwrap();
