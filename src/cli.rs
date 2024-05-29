@@ -270,7 +270,6 @@ impl From<BenchmarkParameters> for RunnableBenchmarkParameters {
             benchmark_profiler_output,
             ..
         } = parameters.clone();
-        println!("code config: {}", code_config);
         let code_config: serde_json::Value = serde_json::from_str(&code_config).unwrap();
         let primal_dual_config: serde_json::Value = serde_json::from_str(&primal_dual_config).unwrap();
         let partition_config: serde_json::Value = serde_json::from_str(&partition_config).unwrap();
