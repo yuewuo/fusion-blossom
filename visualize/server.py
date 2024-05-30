@@ -57,8 +57,8 @@ class MyHTTPRequestHandler(SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     print(f"running server to host folder {SCRIPT_FOLDER}")
-    with socketserver.TCPServer(("0.0.0.0", 8066), MyHTTPRequestHandler) as httpd:
-        print("serving at port", 8066)
+    with socketserver.TCPServer(("0.0.0.0", 9099), MyHTTPRequestHandler) as httpd:
+        print("serving at port", 9099)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
