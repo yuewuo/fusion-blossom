@@ -1977,6 +1977,7 @@ impl PrimalNodeInternalPtr {
 pub mod tests {
     use super::super::dual_module_serial::*;
     use super::super::example_codes::*;
+    #[cfg(feature = "blossom_v")]
     use super::super::*;
     use super::*;
 
@@ -2193,6 +2194,7 @@ pub mod tests {
 
     /// debug a case where it disagree with blossom V library, mine reports 11866, blossom V reports 12284
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn primal_module_debug_1() {
         // cargo test primal_module_debug_1 -- --nocapture
         let visualize_filename = "primal_module_debug_1.json".to_string();
@@ -2259,6 +2261,7 @@ pub mod tests {
 
     /// debug a case where it disagree with blossom V library, mine reports 33000, blossom V reports 34000
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn primal_module_debug_2() {
         // cargo test primal_module_debug_2 -- --nocapture
         let visualize_filename = "primal_module_debug_2.json".to_string();
@@ -2324,6 +2327,7 @@ pub mod tests {
 
     /// debug a case where it disagree with blossom V library, mine reports 16000, blossom V reports 17000
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn primal_module_debug_3() {
         // cargo test primal_module_debug_3 -- --nocapture
         let visualize_filename = "primal_module_debug_3.json".to_string();
@@ -2389,6 +2393,7 @@ pub mod tests {
 
     /// debug a case where it disagree with blossom V library, mine reports 9000, blossom V reports 7000
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn primal_module_debug_4() {
         // cargo test primal_module_debug_4 -- --nocapture
         let visualize_filename = "primal_module_debug_4.json".to_string();
@@ -2451,6 +2456,7 @@ pub mod tests {
 
     /// debug a case of being stuck after disable the flag `debug_resolve_only_one` for faster speed
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn primal_module_debug_5() {
         // cargo test primal_module_debug_5 -- --nocapture
         let visualize_filename = "primal_module_debug_5.json".to_string();
@@ -2524,6 +2530,7 @@ pub mod tests {
 
     /// debug a case of non-zero weight given pure erasure
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn primal_module_debug_6() {
         // cargo test primal_module_debug_6 -- --nocapture
         let visualize_filename = "primal_module_debug_6.json".to_string();

@@ -60,9 +60,11 @@ cfg_if::cfg_if! {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "blossom_v")]
     use super::*;
 
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn blossom_v_test_1() {
         // cargo test blossom_v_test_1 -- --nocapture
         let node_num = 4;
