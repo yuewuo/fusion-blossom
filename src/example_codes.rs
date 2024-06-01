@@ -368,7 +368,7 @@ pub trait ExampleCode {
 
     /// reorder the vertices such that new vertices (the indices of the old order) is sequential
     #[allow(clippy::unnecessary_cast)]
-    fn reorder_vertices(&mut self, sequential_vertices: &Vec<VertexIndex>) {
+    fn reorder_vertices(&mut self, sequential_vertices: &[VertexIndex]) {
         let (vertices, edges) = self.vertices_edges();
         assert_eq!(vertices.len(), sequential_vertices.len(), "amount of vertices must be same");
         let old_to_new = build_old_to_new(sequential_vertices);
