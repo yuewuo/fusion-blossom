@@ -86,7 +86,7 @@ pub fn fusion_mwpm(initializer: &SolverInitializer, syndrome_pattern: &SyndromeP
 
 /// fall back to use blossom V library to solve MWPM (install blossom V required)
 #[allow(clippy::unnecessary_cast)]
-pub fn blossom_v_mwpm(initializer: &SolverInitializer, defect_vertices: &Vec<VertexIndex>) -> Vec<VertexIndex> {
+pub fn blossom_v_mwpm(initializer: &SolverInitializer, defect_vertices: &[VertexIndex]) -> Vec<VertexIndex> {
     // this feature will be automatically enabled if you install blossom V source code, see README.md for more information
     if cfg!(not(feature = "blossom_v")) {
         panic!("need blossom V library, see README.md")
@@ -110,7 +110,7 @@ pub fn blossom_v_mwpm(initializer: &SolverInitializer, defect_vertices: &Vec<Ver
 pub fn blossom_v_mwpm_reuse(
     complete_graph: &mut CompleteGraph,
     initializer: &SolverInitializer,
-    defect_vertices: &Vec<VertexIndex>,
+    defect_vertices: &[VertexIndex],
 ) -> Vec<VertexIndex> {
     // first collect virtual vertices and real vertices
     let mut is_virtual: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();
@@ -205,8 +205,8 @@ pub struct DetailedMatching {
 #[allow(clippy::unnecessary_cast)]
 pub fn detailed_matching(
     initializer: &SolverInitializer,
-    defect_vertices: &Vec<DefectIndex>,
-    mwpm_result: &Vec<DefectIndex>,
+    defect_vertices: &[DefectIndex],
+    mwpm_result: &[DefectIndex],
 ) -> Vec<DetailedMatching> {
     let defect_num = defect_vertices.len();
     let mut is_defect: Vec<bool> = (0..initializer.vertex_num).map(|_| false).collect();

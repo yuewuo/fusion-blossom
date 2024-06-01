@@ -492,7 +492,7 @@ impl Cli {
                                 ]);
                             }
                         }
-                        let command_head = vec![format!(""), format!("benchmark")];
+                        let command_head = [String::new(), "benchmark".to_string()];
                         let mut command_tail = vec!["--total-rounds".to_string(), format!("{TEST_EACH_ROUNDS}")];
                         if !disable_blossom {
                             command_tail.append(&mut vec![format!("--verifier"), format!("blossom-v")]);
@@ -622,7 +622,7 @@ impl Cli {
                                 ]);
                             }
                         }
-                        let command_head = vec![format!(""), format!("benchmark")];
+                        let command_head = [String::new(), "benchmark".to_string()];
                         let mut command_tail = vec![
                             format!("--primal-dual-type"),
                             format!("dual-parallel"),
@@ -755,7 +755,7 @@ impl Cli {
                                 ]);
                             }
                         }
-                        let command_head = vec![format!(""), format!("benchmark")];
+                        let command_head = [String::new(), "benchmark".to_string()];
                         let mut command_tail = vec![
                             format!("--primal-dual-type"),
                             format!("parallel"),
