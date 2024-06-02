@@ -311,6 +311,7 @@ impl<T: FastClear> weak_table::traits::WeakElement for FastClearWeakRwLock<T> {
 
 cfg_if::cfg_if! {
     if #[cfg(feature="unsafe_pointer")] {
+        use std::cell::UnsafeCell;
 
         pub trait FastClearUnsafePtr<ObjType> where ObjType: FastClear {
 
@@ -338,11 +339,8 @@ cfg_if::cfg_if! {
             #[inline(always)]
             fn write(&self, active_timestamp: FastClearTimestamp) -> &mut ObjType {
                 unsafe {
-                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
-                    let ptr = self.ptr();
-                    let const_ptr = ptr as *const Arc<ObjType>;
-                    let mut_ptr = const_ptr as *mut Arc<ObjType>;
-                    let ret = Arc::get_mut_unchecked(&mut *mut_ptr);
+                    let ptr = UnsafeCell::new(self.ptr().clone());
+                    let ret = Arc::get_mut_unchecked(&mut *ptr.get());
                     ret.debug_assert_dynamic_cleared(active_timestamp);  // only assert during debug modes
                     ret
                 }
@@ -357,11 +355,8 @@ cfg_if::cfg_if! {
             #[inline(always)]
             fn write_force(&self) -> &mut ObjType {
                 unsafe {
-                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
-                    let ptr = self.ptr();
-                    let const_ptr = ptr as *const Arc<ObjType>;
-                    let mut_ptr = const_ptr as *mut Arc<ObjType>;
-                    Arc::get_mut_unchecked(&mut *mut_ptr)
+                    let ptr = UnsafeCell::new(self.ptr().clone());
+                    Arc::get_mut_unchecked(&mut *ptr.get())
                 }
             }
 
@@ -396,11 +391,8 @@ cfg_if::cfg_if! {
             #[inline(always)]
             fn write(&self) -> &mut ObjType {
                 unsafe {
-                    // https://stackoverflow.com/questions/54237610/is-there-a-way-to-make-an-immutable-reference-mutable
-                    let ptr = self.ptr();
-                    let const_ptr = ptr as *const Arc<ObjType>;
-                    let mut_ptr = const_ptr as *mut Arc<ObjType>;
-                    Arc::get_mut_unchecked(&mut *mut_ptr)
+                    let ptr = UnsafeCell::new(self.ptr().clone());
+                    Arc::get_mut_unchecked(&mut *ptr.get())
                 }
             }
 

@@ -368,7 +368,7 @@ pub trait ExampleCode {
 
     /// reorder the vertices such that new vertices (the indices of the old order) is sequential
     #[allow(clippy::unnecessary_cast)]
-    fn reorder_vertices(&mut self, sequential_vertices: &Vec<VertexIndex>) {
+    fn reorder_vertices(&mut self, sequential_vertices: &[VertexIndex]) {
         let (vertices, edges) = self.vertices_edges();
         assert_eq!(vertices.len(), sequential_vertices.len(), "amount of vertices must be same");
         let old_to_new = build_old_to_new(sequential_vertices);
@@ -1212,6 +1212,8 @@ pub struct QECPlaygroundCodeConfig {
     pub qubit_type: Option<qecp::types::QubitType>,
     #[serde(default = "qecp::decoder_fusion::fusion_default_configs::max_half_weight")]
     pub max_half_weight: usize,
+    #[serde(default = "qec_playground_default_configs::trim_isolated_vertices")]
+    pub trim_isolated_vertices: bool,
 }
 
 #[cfg(feature = "qecp_integrate")]
@@ -1233,6 +1235,9 @@ pub mod qec_playground_default_configs {
     }
     pub fn use_brief_edge() -> bool {
         false
+    }
+    pub fn trim_isolated_vertices() -> bool {
+        true
     }
 }
 
@@ -1279,11 +1284,16 @@ impl QECPlaygroundCode {
         let positions = &adaptor.positions;
         let mut vertex_index_map = HashMap::new();
         // filter the specific qubit type and also remove isolated virtual vertices
-        let mut is_vertex_isolated = vec![true; initializer.vertex_num];
-        for (left_vertex, right_vertex, _) in initializer.weighted_edges.iter().cloned() {
-            is_vertex_isolated[left_vertex] = false;
-            is_vertex_isolated[right_vertex] = false;
-        }
+        let is_vertex_isolated = if config.trim_isolated_vertices {
+            let mut is_vertex_isolated = vec![true; initializer.vertex_num];
+            for (left_vertex, right_vertex, _) in initializer.weighted_edges.iter().cloned() {
+                is_vertex_isolated[left_vertex] = false;
+                is_vertex_isolated[right_vertex] = false;
+            }
+            is_vertex_isolated
+        } else {
+            vec![false; initializer.vertex_num]
+        };
         for (vertex_index, is_isolated) in is_vertex_isolated.iter().cloned().enumerate() {
             let position = &adaptor.vertex_to_position_mapping[vertex_index];
             let qubit_type = simulator.get_node(position).as_ref().unwrap().qubit_type;
@@ -1542,24 +1552,24 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 
+pub fn visualize_code(code: &mut impl ExampleCode, visualize_filename: String) {
+    print_visualize_link(visualize_filename.clone());
+    let mut visualizer = Visualizer::new(
+        Some(visualize_data_folder() + visualize_filename.as_str()),
+        code.get_positions(),
+        true,
+    )
+    .unwrap();
+    visualizer.snapshot("code".to_string(), code).unwrap();
+    for round in 0..3 {
+        code.generate_random_errors(round);
+        visualizer.snapshot(format!("syndrome {}", round + 1), code).unwrap();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn visualize_code(code: &mut impl ExampleCode, visualize_filename: String) {
-        print_visualize_link(visualize_filename.clone());
-        let mut visualizer = Visualizer::new(
-            Some(visualize_data_folder() + visualize_filename.as_str()),
-            code.get_positions(),
-            true,
-        )
-        .unwrap();
-        visualizer.snapshot("code".to_string(), code).unwrap();
-        for round in 0..3 {
-            code.generate_random_errors(round);
-            visualizer.snapshot(format!("syndrome {}", round + 1), code).unwrap();
-        }
-    }
 
     #[test]
     fn example_code_capacity_repetition_code() {

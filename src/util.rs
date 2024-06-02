@@ -601,7 +601,7 @@ pub struct PartitionedSolverInitializer {
 
 /// perform index transformation
 #[allow(clippy::unnecessary_cast)]
-pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<VertexIndex>> {
+pub fn build_old_to_new(reordered_vertices: &[VertexIndex]) -> Vec<Option<VertexIndex>> {
     let mut old_to_new: Vec<Option<VertexIndex>> = (0..reordered_vertices.len()).map(|_| None).collect();
     for (new_index, old_index) in reordered_vertices.iter().enumerate() {
         assert_eq!(old_to_new[*old_index as usize], None, "duplicate vertex found {}", old_index);
@@ -613,7 +613,7 @@ pub fn build_old_to_new(reordered_vertices: &Vec<VertexIndex>) -> Vec<Option<Ver
 /// translate defect vertices into the current new index given reordered_vertices
 #[allow(clippy::unnecessary_cast)]
 pub fn translated_defect_to_reordered(
-    reordered_vertices: &Vec<VertexIndex>,
+    reordered_vertices: &[VertexIndex],
     old_defect_vertices: &[VertexIndex],
 ) -> Vec<VertexIndex> {
     let old_to_new = build_old_to_new(reordered_vertices);
@@ -641,6 +641,25 @@ impl SolverInitializer {
     #[cfg(feature = "python_binding")]
     fn __repr__(&self) -> String {
         format!("{:?}", self)
+    }
+    #[allow(clippy::unnecessary_cast)]
+    pub fn syndrome_of(&self, subgraph: &[EdgeIndex]) -> BTreeSet<VertexIndex> {
+        let mut defects = BTreeSet::new();
+        for edge_index in subgraph {
+            let (left, right, _weight) = self.weighted_edges[*edge_index as usize];
+            for vertex_index in [left, right] {
+                if defects.contains(&vertex_index) {
+                    defects.remove(&vertex_index);
+                } else {
+                    defects.insert(vertex_index);
+                }
+            }
+        }
+        // remove virtual vertices
+        for vertex_index in self.virtual_vertices.iter() {
+            defects.remove(vertex_index);
+        }
+        defects
     }
 }
 
