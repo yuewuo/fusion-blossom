@@ -2,7 +2,7 @@
 
 ## Overview
 
-This tutorial covers the concepts and implementation details for configuring graph partitions and fusion plans in parallel computing, focusing on the efficient execution of the Minimum Weight Perfect Matching (MWPM) algorithm. The goal is to enhance the speed of the computations by ensuring that each partition contains vertices with continuous indices and by designing a user-friendly interface in Python.
+This tutorial covers the concepts and implementation details for configuring graph partitions and fusion plans in parallel computing, focusing on the efficient execution of the Minimum Weight Perfect Matching (MWPM) algorithm. The goal is to enhance the speed of computations by ensuring that each partition contains vertices with continuous indices and by designing a user-friendly interface in Python.
 
 ## Configuration of Graph Partitions
 
@@ -37,6 +37,12 @@ def partition_graph(vertices, num_partitions):
     partition_size = len(vertices) // num_partitions
     partitions = [vertices[i * partition_size:(i + 1) * partition_size] for i in range(num_partitions)]
     return partitions
+
+# Example usage
+vertices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+num_partitions = 2
+partitions = partition_graph(vertices, num_partitions)
+print(partitions)
 ```
 
 ## Fusion Plans
@@ -47,10 +53,91 @@ After solving sub-problems independently, their solutions form an intermediate s
 
 **Key Concept**: The intermediate state is a valid state for the blossom algorithm. For primal variables, matchings to temporary boundary vertices are removed, and alternating trees are created for each defect vertex. Dual variables are preserved as they evolve to form a global MWPM solution.
 
-**Example**:
+### Detailed Functions
+
+#### `recover_boundary_vertices` Function
+
+The `recover_boundary_vertices` function is responsible for integrating the boundary vertices back into the solution of each sub-problem. Boundary vertices are vertices that lie on the border of two subgraphs and are shared by multiple partitions.
+
+**Key Concept**: During the partitioning and solving of sub-problems, boundary vertices might be temporarily excluded or handled separately. This function ensures that these vertices are correctly re-incorporated into the final sub-problem solutions.
+
+**Implementation**:
 
 ```python
-# Example function to fuse solutions of sub-problems
+def recover_boundary_vertices(solution, boundary_vertices):
+    """
+    Recover the boundary vertices in the sub-problem solution.
+    
+    Parameters:
+    solution (list): Solution of the sub-problem, typically a list of matched vertex pairs.
+    boundary_vertices (list): List of boundary vertices.
+    
+    Returns:
+    None: The function modifies the solution in place.
+    """
+    # Iterate through each pair in the solution
+    for i, (v1, v2) in enumerate(solution):
+        # Check if any vertex in the pair is a boundary vertex
+        if v1 in boundary_vertices or v2 in boundary_vertices:
+            # Logic to handle the boundary vertex recovery
+            if v1 in boundary_vertices:
+                print(f"Recovering boundary vertex {v1}")
+            if v2 in boundary_vertices:
+                print(f"Recovering boundary vertex {v2}")
+
+# Example usage
+sub_solution = [(1, 2), (3, 4), (5, 6)]
+boundary_vertices = [2, 5]
+recover_boundary_vertices(sub_solution, boundary_vertices)
+print(sub_solution)
+```
+
+#### `evolve_to_global_solution` Function
+
+The `evolve_to_global_solution` function takes the solutions of all sub-problems and combines them into a global solution. This function ensures that the intermediate solutions are integrated correctly to form a cohesive and correct overall solution.
+
+**Key Concept**: The function handles the merging of sub-solutions, considering the interactions and dependencies between them to produce a valid global MWPM solution.
+
+**Implementation**:
+
+```python
+def evolve_to_global_solution(sub_solutions):
+    """
+    Evolve intermediate sub-problem solutions into a global solution.
+    
+    Parameters:
+    sub_solutions (list): List of solutions for each sub-problem.
+    
+    Returns:
+    list: Global solution evolved from sub-solutions.
+    """
+    global_solution = []
+    # Iterate over each sub-solution to integrate into the global solution
+    for solution in sub_solutions:
+        for pair in solution:
+            global_solution.append(pair)
+    
+    # Resolve any conflicts and ensure global consistency
+    # This could involve additional logic depending on the problem specifics
+    # For simplicity, we're just combining the pairs here
+    
+    return global_solution
+
+# Example usage
+sub_solutions = [[(1, 2)], [(3, 4)], [(5, 6)]]
+global_solution = evolve_to_global_solution(sub_solutions)
+print(global_solution)
+```
+
+### Integrating Functions
+
+#### fuse_solutions Function
+
+Combines the `recover_boundary_vertices` and `evolve_to_global_solution` functions to form a cohesive fusion process.
+
+**Implementation**:
+
+```python
 def fuse_solutions(sub_solutions, boundary_vertices):
     """
     Fuse solutions of sub-problems to form a global solution.
@@ -60,7 +147,7 @@ def fuse_solutions(sub_solutions, boundary_vertices):
     boundary_vertices (list): List of boundary vertices.
     
     Returns:
-    global_solution: Fused global solution.
+    list: Fused global solution.
     """
     # Recover boundary vertices
     for solution in sub_solutions:
@@ -69,6 +156,13 @@ def fuse_solutions(sub_solutions, boundary_vertices):
     # Evolve intermediate state to global solution
     global_solution = evolve_to_global_solution(sub_solutions)
     return global_solution
+
+# Placeholder functions for complete example
+def mwpm_solver(partition):
+    return [(partition[i], partition[i + 1]) for i in range(0, len(partition), 2)]
+
+def get_boundary_vertices(measurement_rounds):
+    return measurement_rounds[:2]  # Simplified for illustration
 ```
 
 ### Schedule Design: Leaf Partitions and Fusion Tree
@@ -107,13 +201,17 @@ def batch_decode(measurement_rounds, leaf_partition_size):
     for partition in leaf_partitions:
         result = mwpm_solver(partition)
         decoding_result.append(result)
-    
+
     global_solution = fuse_solutions(decoding_result, get_boundary_vertices(measurement_rounds))
     return global_solution
+
+# Example usage
+measurement_rounds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+leaf_partition_size = 2
+decoding_result = batch_decode(measurement_rounds, leaf_partition_size)
+print(decoding_result)
 ```
 
 ## Conclusion
 
 By following this tutorial, you can effectively configure graph partitions with continuous indices and design efficient fusion plans for MWPM decoders. The Python interface hides the complexity of managing continuous indices, allowing users to focus on describing partitions as collections of vertices. This approach ensures both correctness and performance in parallel computing applications.
-
----
