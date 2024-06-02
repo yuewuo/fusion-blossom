@@ -375,6 +375,7 @@ impl std::fmt::Debug for DualNodeWeak {
 
 impl DualNodePtr {
     /// when fused, dual node may be outdated; refresh here
+    #[allow(clippy::needless_borrow)]
     pub fn update(&self) -> &Self {
         let mut current_belonging = self.read_recursive().belonging.upgrade_force();
         let mut bias = 0;
@@ -1099,6 +1100,7 @@ impl DualModuleInterfacePtr {
     }
 
     /// a helper function to update grow state
+    #[allow(clippy::needless_borrow)]
     pub fn set_grow_state(
         &self,
         dual_node_ptr: &DualNodePtr,
@@ -1170,6 +1172,7 @@ impl DualModuleInterfacePtr {
 
     /// fuse two interfaces by copying the nodes in `other` into myself
     #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::needless_borrow)]
     pub fn slow_fuse(&self, left: &Self, right: &Self) {
         let mut interface = self.write();
         interface.is_fusion = true; // for safety
@@ -1231,6 +1234,7 @@ impl DualModuleInterfacePtr {
     /// do a sanity check of if all the nodes are in consistent state
     #[inline(never)]
     #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::needless_borrow)]
     pub fn sanity_check(&self) -> Result<Vec<Option<DualNodePtr>>, String> {
         let mut flattened_nodes = vec![];
         self.flatten_nodes(&mut flattened_nodes);
