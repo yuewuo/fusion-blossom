@@ -6,7 +6,10 @@ code = fb.CodeCapacityPlanarCode(d=11, p=0.05, max_half_weight=500)
 
 ## Simulate Random Errors
 
-syndrome = code.generate_random_errors(seed=1000)
+defect_vertices = [39, 52, 63, 90, 100]
+
+# syndrome = code.generate_random_errors(seed=1000)
+syndrome = fb.SyndromePattern(defect_vertices = defect_vertices)
 print(syndrome)
 
 ## Initialize Visualizer [Optional]
