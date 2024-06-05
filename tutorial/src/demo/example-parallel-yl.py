@@ -52,6 +52,7 @@ def split_into_4_partitions_vertices(split_horizontal, split_vertical, num_verti
         reordered_vertices.append(i * num_vertices_per_row + num_vertices_per_column - 1)
 
 ## Code Initialization
+
 d = 11
 p = 0.005
 total_rounds = 100 
@@ -60,6 +61,7 @@ code = fb.CodeCapacityPlanarCode(d=d, p=p, max_half_weight=500)
 
 ## Define the vertices in different partitions, we split the vertices into 4, 
 ## with no syndrome vertex on the interface
+
 defect_vertices = [39, 52, 63, 90, 100] # indices are before the reorder
 split_horizontal = 6
 split_vertical = 5
@@ -73,15 +75,19 @@ split_into_4_partitions_vertices(split_horizontal, split_vertical, num_vertices_
 code.reorder_vertices(reordered_vertices)
 new_defect_vertices = translated_defect_to_reordered(reordered_vertices, defect_vertices)
 new_defect_vertices.sort() # the SyndromePattern only accepts defect vertices in ascending order
-# print("sorted new defect vertices: ", new_defect_vertices)
+
+fb.helper.peek_code(code)  # comment out after constructing the syndrome
 
 ## Get initializer
+
 initializer = code.get_initializer()
-# print("code initializer: ", initializer)
 
 ## Define Partition Configuration
+
 partition_config = fb.PartitionConfig(initializer.vertex_num)
 # the ranges below are the range of vertices (after reordering) of the 4 partitions 
+# we find the range below by looking at the partition visualization
+# for example, the range 0-36 is found by taking the min and the max indexes of the verticies in the top left parition
 partition_config.partitions = [fb.NodeRange(0,36), # unit 0
                                 fb.NodeRange(42,72), # unit 1
                                 fb.NodeRange(84,108), # unit 2
@@ -89,10 +95,9 @@ partition_config.partitions = [fb.NodeRange(0,36), # unit 0
                                 ]
 partition_config.fusions = [(0, 1), (2, 3), (4, 5)] # refer to tree figure in paper
 partition_info = partition_config.info()
-# print("partition_config: ", partition_config)
-# print("partition_info: ", partition_info)
 
 ## Define primal_dual_config
+
 primal_dual_config = {
     "dual": {
         "thread_pool_size": 1,
@@ -107,9 +112,9 @@ primal_dual_config = {
         # "streaming_decode_mock_measure_interval": 
     }
 }
-# print(primal_dual_config)
 
 ## Define syndrome graph
+
 syndrome = fb.SyndromePattern(
     defect_vertices = new_defect_vertices,
 )
