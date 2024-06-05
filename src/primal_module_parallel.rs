@@ -339,18 +339,19 @@ impl PrimalModuleParallel {
         }
     }
 
-    pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(
+    pub fn parallel_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F>(
         &mut self,
         syndrome_pattern: &SyndromePattern,
         parallel_dual_module: &DualModuleParallel<DualSerialModule>,
         mut callback: F,
     ) where
         F: FnMut(
-            &DualModuleInterfacePtr,
-            &DualModuleParallelUnit<DualSerialModule>,
-            &PrimalModuleSerialPtr,
-            Option<&GroupMaxUpdateLength>,
-        ),
+                &DualModuleInterfacePtr,
+                &DualModuleParallelUnit<DualSerialModule>,
+                &PrimalModuleSerialPtr,
+                Option<&GroupMaxUpdateLength>,
+            ) + Send
+            + Sync,
     {
         let thread_pool = Arc::clone(&self.thread_pool);
         *self.last_solve_start_time.write() = Instant::now();
@@ -512,7 +513,8 @@ impl PrimalModuleParallelUnitPtr {
 
     /// call this only if children is guaranteed to be ready and solved
     #[allow(clippy::unnecessary_cast)]
-    fn children_ready_solve<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(
+    #[allow(clippy::needless_borrow)]
+    fn children_ready_solve<DualSerialModule: DualModuleImpl + Send + Sync, F>(
         &self,
         primal_module_parallel: &PrimalModuleParallel,
         partitioned_syndrome_pattern: PartitionedSyndromePattern,
@@ -520,11 +522,12 @@ impl PrimalModuleParallelUnitPtr {
         callback: &mut Option<&mut F>,
     ) where
         F: FnMut(
-            &DualModuleInterfacePtr,
-            &DualModuleParallelUnit<DualSerialModule>,
-            &PrimalModuleSerialPtr,
-            Option<&GroupMaxUpdateLength>,
-        ),
+                &DualModuleInterfacePtr,
+                &DualModuleParallelUnit<DualSerialModule>,
+                &PrimalModuleSerialPtr,
+                Option<&GroupMaxUpdateLength>,
+            ) + Send
+            + Sync,
     {
         let mut primal_unit = self.write();
         if let Some(mocker) = &primal_unit.streaming_decode_mocker {
@@ -612,7 +615,7 @@ impl PrimalModuleParallelUnitPtr {
     }
 
     /// call on the last primal node, and it will spawn tasks on the previous ones
-    fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F: Send + Sync>(
+    fn iterative_solve_step_callback<DualSerialModule: DualModuleImpl + Send + Sync, F>(
         &self,
         primal_module_parallel: &PrimalModuleParallel,
         partitioned_syndrome_pattern: PartitionedSyndromePattern,
@@ -620,11 +623,12 @@ impl PrimalModuleParallelUnitPtr {
         callback: &mut Option<&mut F>,
     ) where
         F: FnMut(
-            &DualModuleInterfacePtr,
-            &DualModuleParallelUnit<DualSerialModule>,
-            &PrimalModuleSerialPtr,
-            Option<&GroupMaxUpdateLength>,
-        ),
+                &DualModuleInterfacePtr,
+                &DualModuleParallelUnit<DualSerialModule>,
+                &PrimalModuleSerialPtr,
+                Option<&GroupMaxUpdateLength>,
+            ) + Send
+            + Sync,
     {
         let primal_unit = self.read_recursive();
         // only when sequentially running the tasks will the callback take effect, otherwise it's unsafe to execute it from multiple threads

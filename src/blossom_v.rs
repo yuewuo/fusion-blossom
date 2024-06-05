@@ -12,7 +12,7 @@ cfg_if::cfg_if! {
             fn minimum_weight_perfect_matching(node_num: c_int, edge_num: c_int, edges: *const c_int, weights: *const c_int, matched: *mut c_int);
         }
 
-        pub fn safe_minimum_weight_perfect_matching(node_num: usize, weighted_edges: &Vec<(usize, usize, u32)>) -> Vec<usize> {
+        pub fn safe_minimum_weight_perfect_matching(node_num: usize, weighted_edges: &[(usize, usize, u32)]) -> Vec<usize> {
             let edge_num = weighted_edges.len();
             let mut edges = Vec::with_capacity(2 * edge_num);
             let mut weights = Vec::with_capacity(edge_num);
@@ -51,7 +51,7 @@ cfg_if::cfg_if! {
 
     } else {
 
-        pub fn safe_minimum_weight_perfect_matching(_node_num: usize, _weighted_edges: &Vec<(usize, usize, u32)>) -> Vec<usize> {
+        pub fn safe_minimum_weight_perfect_matching(_node_num: usize, _weighted_edges: &[(usize, usize, u32)]) -> Vec<usize> {
             unimplemented!("need blossom V library, see README.md")
         }
 
@@ -60,9 +60,11 @@ cfg_if::cfg_if! {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "blossom_v")]
     use super::*;
 
     #[test]
+    #[cfg(feature = "blossom_v")]
     fn blossom_v_test_1() {
         // cargo test blossom_v_test_1 -- --nocapture
         let node_num = 4;
