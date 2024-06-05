@@ -642,6 +642,9 @@ impl SolverInitializer {
     fn __repr__(&self) -> String {
         format!("{:?}", self)
     }
+}
+
+impl SolverInitializer {
     #[allow(clippy::unnecessary_cast)]
     pub fn syndrome_of(&self, subgraph: &[EdgeIndex]) -> BTreeSet<VertexIndex> {
         let mut defects = BTreeSet::new();

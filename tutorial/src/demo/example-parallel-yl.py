@@ -76,7 +76,7 @@ code.reorder_vertices(reordered_vertices)
 new_defect_vertices = translated_defect_to_reordered(reordered_vertices, defect_vertices)
 new_defect_vertices.sort() # the SyndromePattern only accepts defect vertices in ascending order
 
-fb.helper.peek_code(code)  # comment out after constructing the syndrome
+# fb.helper.peek_code(code)  # comment out after constructing the syndrome
 
 ## Get initializer
 
@@ -148,6 +148,7 @@ defect_vertices = syndrome.defect_vertices
 print("defect_vertices: ", defect_vertices)
 print(f"Minimum Weight Perfect Matching (MWPM):")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
+print(solver.defect_perfect_matching())
 # peer_matching_vertices = [(defect_vertices[a], defect_vertices[b])
 #                             for a, b in perfect_matching.peer_matchings]
 # print(f"          = vertices: {peer_matching_vertices}")
