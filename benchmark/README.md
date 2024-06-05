@@ -21,7 +21,7 @@ In this example,
 #### To use a syndrome pattern file:
 
 ```sh
-cargo run --release -- benchmark 15 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"tmp/15-10000-0.005-phenomenological-planar.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":4,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output 15-10000-0.005-phenomenological-planar/tree-16.profile
+cargo run --release -- benchmark 15 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"tmp/15-10000-0.005-phenomenological-planar.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":4,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/15-10000-0.005-phenomenological-planar/tree-16.profile
 ```
 
 In this example,
@@ -32,14 +32,3 @@ In this example,
 - The partition strategy is specified. Since the partition is independent from syndrome pattern generation, a single `.syndromes` file can be used by benchmarking multiple different partition strategies.
 - `--verifier none` is suggested when benchmarking the speed, since a verifier is generally much slower than the solver to be benchmarked.
 - An output file is specified by `--benchmark-profiler-output visualize/data/15-10000-0.005-phenomenological-planar/tree-16.profile`, which can be later visualized by opening the visualization tool in a browser: `/visualize/partition-profile.html?filename=15-10000-0.005-phenomenological-planar/tree-16.profile`
-
-#### To visualize
-
-```sh
-cd visualize/
-screen / tmux
-python3 server.py
-ctrl+A+D
-```
-
-`screen` `tmux`

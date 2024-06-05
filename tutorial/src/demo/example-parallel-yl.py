@@ -148,10 +148,7 @@ defect_vertices = syndrome.defect_vertices
 print("defect_vertices: ", defect_vertices)
 print(f"Minimum Weight Perfect Matching (MWPM):")
 print(f"    - peer_matchings: {perfect_matching.peer_matchings}")
-print(solver.defect_perfect_matching())
-# peer_matching_vertices = [(defect_vertices[a], defect_vertices[b])
-#                             for a, b in perfect_matching.peer_matchings]
-# print(f"          = vertices: {peer_matching_vertices}")
+print(f"          = vertices: {solver.defect_perfect_matching()}") # the function `defect_perfect_matching()` is used in SolverParallel
 virtual_matching_vertices = [(defect_vertices[a], b)
                             for a, b in perfect_matching.virtual_matchings]
 print(f"    - virtual_matchings: {perfect_matching.virtual_matchings}")
