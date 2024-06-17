@@ -1,8 +1,8 @@
 # Example Parallel Configuration 
 
-In this chapter, you will learn how about the configuration of graph partitions and different fusion plans as explained in the paper [1]. Make sure you understand the decoding and syndrome graph before proceeding. You can [download the complete code here](./example-parallel-yl.py).
+In this chapter, you will learn how about the configuration of graph partitions and different fusion plans as explained in the paper [1]. Make sure you understand the decoding and syndrome graph before proceeding. You can [download the complete code here](./example-parallel.py).
 
-In paper [1], Fusion Blossom solves the MWPM problem with a Divide and Conquer approach. Fusion Blossom *divides* the decoding problem into two sub-problems that can be solved, or "conquered," independently and *fuses* their solutions recursively to obtain the overall solution. This recursive division/fusion is represented as a full binary tree, denoted as a *fusion tree*. 
+In paper [1], Fusion Blossom solves the MWPM problem with a Divide and Conquer approach. Fusion Blossom *divides* the decoding problem into two sub-problems that can be solved, or "conquered", independently and *fuses* their solutions recursively to obtain the overall solution. This recursive division/fusion is represented as a full binary tree, denoted as a *fusion tree*. 
 
 
 

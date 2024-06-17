@@ -700,7 +700,6 @@ pub struct BenchmarkProfiler {
 impl BenchmarkProfiler {
     pub fn new(noisy_measurements: VertexNum, detail_log_file: Option<(String, &PartitionInfo)>) -> Self {
         let benchmark_profiler_output = detail_log_file.map(|(filename, partition_info)| {
-            println!("here the filename is {}", filename);
             let mut file = File::create(filename).unwrap();
             file.write_all(serde_json::to_string(&partition_info.config).unwrap().as_bytes())
                 .unwrap();
