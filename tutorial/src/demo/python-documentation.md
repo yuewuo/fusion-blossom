@@ -4,7 +4,7 @@
 * `CodeCapacityPlanarCode(d=int, p=float, max_half_weight=int)`
     * `d`: code distance
     * `p`: physical error rate
-    * `max_half_weight`: the library scales the edge weight such that the maximum weight is 500 * 2 
+    * `max_half_weight`: the library scales the edge weight such that the maximum weight is 2 * `max_half_weight`
 
 * `CodeCapacityRepetitionCode` 
 * `CodeCapacityRotatedCode`
