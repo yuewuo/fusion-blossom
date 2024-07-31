@@ -513,6 +513,7 @@ impl PrimalModuleParallelUnitPtr {
 
     /// call this only if children is guaranteed to be ready and solved
     #[allow(clippy::unnecessary_cast)]
+    #[allow(clippy::needless_borrow)]
     fn children_ready_solve<DualSerialModule: DualModuleImpl + Send + Sync, F>(
         &self,
         primal_module_parallel: &PrimalModuleParallel,

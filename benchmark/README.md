@@ -21,7 +21,7 @@ In this example,
 #### To use a syndrome pattern file:
 
 ```sh
-cargo run --release -- benchmark 15 -n 10000 0.005 --code-type error-pattern-reader --code-config '"filename":"tmp/15-10000-0.005-phenomenological-planar.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":4,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/15-10000-0.005-phenomenological-planar/tree-16.profile
+cargo run --release -- benchmark 15 -n 10000 0.005 --code-type error-pattern-reader --code-config '{"filename":"tmp/15-10000-0.005-phenomenological-planar.syndromes"}' --primal-dual-type parallel --partition-strategy phenomenological-planar-code-time-partition --partition-config '{"partition_num":4,"enable_tree_fusion":true}' --verifier none --benchmark-profiler-output visualize/data/15-10000-0.005-phenomenological-planar/tree-16.profile
 ```
 
 In this example,
