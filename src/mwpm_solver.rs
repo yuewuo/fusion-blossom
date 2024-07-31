@@ -520,6 +520,39 @@ impl SolverParallel {
         let primal_dual_config = pyobject_to_json(primal_dual_config);
         Self::new(initializer, partition_info, primal_dual_config)
     }
+
+    #[pyo3(name = "defect_perfect_matching")]
+    pub fn defect_perfect_matching(&mut self) -> Vec<(VertexIndex, VertexIndex)> {
+        let perfect_matching = self.perfect_matching_visualizer(None);
+        let mut defect_matching = vec![];
+        // iterate over peer matching
+        for (a, b) in perfect_matching.peer_matchings.iter() {
+            let node_a = a.read_recursive();
+            let vertex_a = if let DualNodeClass::DefectVertex { defect_index } = &node_a.class {
+                *defect_index
+            } else {
+                unreachable!("can only be syndrome")
+            };
+            let node_b = b.read_recursive();
+            let vertex_b = if let DualNodeClass::DefectVertex { defect_index } = &node_b.class {
+                *defect_index
+            } else {
+                unreachable!("can only be syndrome")
+            };
+            defect_matching.push((vertex_a, vertex_b));
+        }
+        // iterate over virtual matching
+        for (a, virtual_vertex) in perfect_matching.virtual_matchings.iter() {
+            let node_a = a.read_recursive();
+            let vertex_a = if let DualNodeClass::DefectVertex { defect_index } = &node_a.class {
+                *defect_index
+            } else {
+                unreachable!("can only be syndrome")
+            };
+            defect_matching.push((vertex_a, *virtual_vertex));
+        }
+        defect_matching
+    }
 }
 
 impl SolverParallel {
