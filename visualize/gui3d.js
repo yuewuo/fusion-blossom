@@ -143,7 +143,9 @@ if (!is_mock) {
 
 export function animate() {
     requestAnimationFrame(animate)
-    orbit_control.value.update()
+    if (orbit_control.value.enabled) {
+        orbit_control.value.update()
+    }
     renderer.render(scene, camera.value)
     if (stats) stats.update()
 }
