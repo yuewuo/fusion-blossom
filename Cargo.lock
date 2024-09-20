@@ -724,9 +724,9 @@ dependencies = [
 
 [[package]]
 name = "fusion-blossom"
-version = "0.2.10"
+version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04909e6133ada7924a1e27037572a5d109c90bec3eed1a678662b29c7d5424a5"
+checksum = "a0fb3f952e1f7bc2261483f61b198c9a8d78972f2830e6492a0b5af41d9f0b50"
 dependencies = [
  "cc",
  "cfg-if",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "fusion-blossom"
-version = "0.2.11"
+version = "0.2.12"
 dependencies = [
  "cc",
  "cfg-if",
@@ -1389,9 +1389,9 @@ dependencies = [
 
 [[package]]
 name = "qecp"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abbf59f54cb17e07a8e6ddd5189ea8a02e1f73224f70f09bda071fac89c1d07a"
+checksum = "24967e48925d0a5a731db682d9305a67b978b065b9efd36fc4ce0891719c4dc0"
 dependencies = [
  "actix-cors",
  "actix-web",
@@ -1406,7 +1406,7 @@ dependencies = [
  "enum_dispatch",
  "float-cmp",
  "float-ord",
- "fusion-blossom 0.2.10",
+ "fusion-blossom 0.2.11",
  "lazy_static",
  "libc",
  "ndarray",

@@ -1,6 +1,6 @@
 [package]
 name = "fusion-blossom"
-version = "0.2.11"
+version = "0.2.12"
 authors = ["Yue Wu <wuyue16pku@gmail.com>"]
 edition = "2021"
 license = "MIT"
@@ -79,7 +79,7 @@ pyo3 = { version = "0.18.3", features = [
 ], optional = true }
 lazy_static = "1.4.0"
 petgraph = "0.6.3"
-qecp = { version = "=0.2.6", features = ["fusion-blossom"], optional = true }
+qecp = { version = "0.2.7", features = ["fusion-blossom"], optional = true }
 nonzero = "0.2.0"
 
 [build-dependencies]
