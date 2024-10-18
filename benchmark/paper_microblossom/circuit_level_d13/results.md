@@ -1,7 +1,11 @@
 
 # Parity Blossom
 
-18us in total
+
+note: evaluation in micro blossom shows 14.2us decoding latency, probably because micro blossom will process
+the graph and remove duplicated virtual vertices, etc. fusion blossom does not natively have this.
+
+17.6us in total using naive graph
 
 ```
 noisy_measurements: 12
