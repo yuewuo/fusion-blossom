@@ -36,7 +36,7 @@ debug = true
 
 [features]
 # to enable a feature, use `--features xxx`
-default = []
+default = ["progress_bar"]
 blossom_v = [
 ] # automatically enabled when file `blossomV/PerfectMatching.h` exists
 remove_blossom_v = [] # disable blossom V library even if required files exist
@@ -54,6 +54,8 @@ dangerous_pointer = [
 ] # use raw pointers instead of Arc and Weak, require "unsafe_pointer" feature
 python_binding = ["pyo3"] # bind to Python
 qecp_integrate = ["qecp"]
+wasm_binding = ["wasm-bindgen"] # bind to wasm
+progress_bar = ["pbr"] # make pbr an optional dependency because of wasm
 
 [dependencies]
 rand_xoshiro = "0.6.0"
@@ -67,7 +69,7 @@ chrono = "0.4.19"
 derivative = "2.2.0"
 urlencoding = "2.1.0"
 clap = { version = "4.2.4", features = ["cargo", "derive"] }
-pbr = "1.0.4"
+pbr = { version = "1.0.4", optional = true }
 rayon = "1.7.0"
 weak-table = "0.3.2"
 rand = "0.8.5"
@@ -81,6 +83,8 @@ lazy_static = "1.4.0"
 petgraph = "0.6.3"
 qecp = { version = "0.2.7", features = ["fusion-blossom"], optional = true }
 nonzero = "0.2.0"
+wasm-bindgen = { version = "0.2.86", optional = true }
+getrandom = { version = "0.2", features = ["js"] }
 
 [build-dependencies]
 cc = "1.0.66"

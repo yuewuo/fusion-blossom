@@ -14,7 +14,6 @@ extern crate chrono;
 extern crate clap;
 extern crate core_affinity;
 extern crate derivative;
-extern crate pbr;
 #[cfg(test)]
 extern crate petgraph;
 #[cfg(feature = "python_binding")]
@@ -24,6 +23,8 @@ pub extern crate qecp;
 extern crate rand;
 extern crate rayon;
 extern crate urlencoding;
+#[cfg(feature = "wasm_binding")]
+extern crate wasm_bindgen;
 extern crate weak_table;
 
 pub mod blossom_v;
@@ -257,4 +258,12 @@ fn generate_visualizer_website(py: Python<'_>) -> &pyo3::types::PyDict {
     include_visualize_file!(mapping, "index.html", "partition-profile.html", "icon.svg");
     include_visualize_file!(mapping, "package.json", "package-lock.json");
     mapping.into_py_dict(py)
+}
+
+#[cfg(feature = "wasm_binding")]
+use wasm_bindgen::prelude::*;
+
+#[cfg_attr(feature = "wasm_binding", wasm_bindgen)]
+pub fn get_version() -> String {
+    "hello world".to_string()
 }

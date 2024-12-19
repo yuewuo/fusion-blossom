@@ -9,6 +9,7 @@ use super::visualize::*;
 use crate::qecp;
 use clap::{Parser, Subcommand, ValueEnum};
 use derivative::Derivative;
+#[cfg(feature = "progress_bar")]
 use pbr::ProgressBar;
 use rand::{thread_rng, Rng};
 use serde::Serialize;
@@ -315,6 +316,7 @@ impl RunnableBenchmarkParameters {
                     total_rounds,
                     use_deterministic_seed,
                     print_syndrome_pattern,
+                    #[cfg(feature = "progress_bar")]
                     pb_message,
                     enable_visualizer,
                     visualizer_filename,
@@ -324,6 +326,7 @@ impl RunnableBenchmarkParameters {
         // whether to disable progress bar, useful when running jobs in background
         let disable_progress_bar = env::var("DISABLE_PROGRESS_BAR").is_ok();
         // prepare progress bar display
+        #[cfg(feature = "progress_bar")]
         let mut pb = if !disable_progress_bar {
             let mut pb = ProgressBar::on(std::io::stderr(), total_rounds as u64);
             pb.message(format!("{pb_message} ").as_str());
@@ -347,6 +350,7 @@ impl RunnableBenchmarkParameters {
             visualizer = Some(new_visualizer);
         }
         for round in (starting_iteration as u64)..(total_rounds as u64) {
+            #[cfg(feature = "progress_bar")]
             pb.as_mut().map(|pb| pb.set(round));
             let seed = if use_deterministic_seed { round } else { rng.gen() };
             let syndrome_pattern = code.generate_random_errors(seed);
@@ -361,6 +365,7 @@ impl RunnableBenchmarkParameters {
             primal_dual_solver.clear(); // also count the clear operation
             benchmark_profiler.end(Some(&*primal_dual_solver));
             primal_dual_solver.reset_profiler();
+            #[cfg(feature = "progress_bar")]
             if let Some(pb) = pb.as_mut() {
                 if pb_message.is_empty() {
                     pb.message(format!("{} ", benchmark_profiler.brief()).as_str());
@@ -371,6 +376,7 @@ impl RunnableBenchmarkParameters {
             // always print out brief
             println!("{}", benchmark_profiler.brief());
         } else {
+            #[cfg(feature = "progress_bar")]
             if let Some(pb) = pb.as_mut() {
                 pb.finish()
             }

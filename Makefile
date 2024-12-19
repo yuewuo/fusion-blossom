@@ -62,6 +62,11 @@ check: clean-env
 	cargo check --features disable_visualizer
 	cargo check --features disable_visualizer --release
 
+wasm-check:
+	cargo check --lib --no-default-features --features wasm_binding,remove_blossom_v
+wasm:
+	wasm-pack build --no-default-features --features wasm_binding,remove_blossom_v
+
 python: clean-env
 	maturin develop
 	pytest tests/python
