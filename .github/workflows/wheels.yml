@@ -47,7 +47,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           override: true
 
       - name: Install Python dependencies
-        run: python -m pip install -U setuptools wheel twine cibuildwheel
+        run: python -m pip install -U setuptools wheel twine cibuildwheel pytest maturin
 
       - name: Build Wheels
         run: python -m cibuildwheel --output-dir wheelhouse
