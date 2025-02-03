@@ -43,7 +43,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly-2023-11-16
+          toolchain: nightly
           override: true
 
       - name: Install Python dependencies
@@ -63,15 +63,15 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           CIBW_ARCHS_LINUX: x86_64  # aarch64 requires QEMU, ~ 40min for each manylinux and musllinux...
           CIBW_ARCHS_MACOS: universal2
           CIBW_BEFORE_BUILD: >
-            rustup default nightly-2023-11-16 &&
+            rustup default nightly &&
             rustup show
           CIBW_BEFORE_BUILD_MACOS: >
-            rustup default nightly-2023-11-16 &&
+            rustup default nightly &&
             rustup target add aarch64-apple-darwin &&
             rustup target add x86_64-apple-darwin &&
             rustup show
           CIBW_BEFORE_BUILD_LINUX: >
-            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly-2023-11-16 --profile=minimal -y &&
+            curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly --profile=minimal -y &&
             rustup show
 
       - name: list wheel files
@@ -109,7 +109,10 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
       - uses: actions/setup-python@v3
 
       - name: Install Python dependencies
-        run: python -m pip install -U maturin cffi setuptools wheel twine cibuildwheel
+        run: python -m pip install -U maturin cffi
+
+      - name: Build source distribution
+        run: maturin sdist -o wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
@@ -138,7 +141,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly-2023-11-16
+          toolchain: nightly
           override: true
 
       - name: Install Python dependencies
