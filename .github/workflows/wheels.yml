@@ -3,7 +3,7 @@ name: Build Python Binding
 on:
   push:
     branches:
-      - main
+      - ci-build
     tags:
       - '**'
   # pull_request: {}
@@ -35,15 +35,11 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
 
     steps:
       - uses: actions/checkout@v3
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
 
       - uses: actions/setup-python@v3
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
 
       - name: Install Rust
         # unnecessary for ubuntu because it's installed inside cibuildwheel
-        # no python37 for macos
-        if: matrix.os != 'ubuntu' && (matrix.os != 'macos' || matrix['python-version'] != '7')
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
@@ -51,17 +47,9 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           override: true
 
       - name: Install Python dependencies
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: python -m pip install -U setuptools wheel twine cibuildwheel
 
-      # - name: Set up QEMU for building with emulator
-      #   if: matrix.os == 'ubuntu'
-      #   uses: docker/setup-qemu-action@v2
-      #   with:
-      #     platforms: all
-
       - name: Build Wheels
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: 'cp3${{ matrix.python-version }}-*'
@@ -70,6 +58,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
           CIBW_ENVIRONMENT: 'PATH="$HOME/.cargo/bin:$PATH"'
           CIBW_ENVIRONMENT_WINDOWS: 'PATH="$UserProfile\.cargo\bin;$PATH"'
           CIBW_MANYLINUX_X86_64_IMAGE: 'manylinux2014'
+          CIBW_MUSLLINUX_X86_64_IMAGE: 'musllinux_1_2'
           # Yue 2022.10.17: build on aarch64 failed due to strange `cargo metadata` exited with an error:     Updating crates.io index
           CIBW_ARCHS_LINUX: x86_64  # aarch64 requires QEMU, ~ 40min for each manylinux and musllinux...
           CIBW_ARCHS_MACOS: universal2
@@ -85,47 +74,75 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
             curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=nightly-2023-11-16 --profile=minimal -y &&
             rustup show
 
-      - name: Build windows 32bit wheels
-        if: matrix.os == 'windows'
-        run: cibuildwheel --output-dir wheelhouse
-        env:
-          CIBW_BUILD: 'cp3${{ matrix.python-version }}-win32'
-          CIBW_PLATFORM: windows
-          CIBW_ENVIRONMENT: 'PATH="$UserProfile\.cargo\bin;$PATH"'
-          CIBW_BEFORE_BUILD: >
-            rustup toolchain install nightly-2023-11-16-i686-pc-windows-msvc &&
-            rustup default nightly-2023-11-16-i686-pc-windows-msvc &&
-            rustup override set nightly-2023-11-16-i686-pc-windows-msvc &&
-            rustup show
-
       - name: list wheel files
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: ${{ matrix.ls || 'ls -lh' }} wheelhouse/
 
       - name: twine check
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: twine check wheelhouse/*
 
+      - name: install wheel for testing (Ubuntu)
+        if: matrix.os == 'ubuntu'
+        run: python -m pip install -U wheelhouse/*.manylinux2014_x86_64.whl
+
+      - name: install wheel for testing (macOS)
+        if: matrix.os == 'macos'
+        run: python -m pip install -U wheelhouse/*.whl
+      
+      - name: install wheel for testing (Windows)
+        if: matrix.os == 'windows'
+        run: Get-ChildItem -Path wheelhouse -Filter *.whl |ForEach-Object { python -m pip install -U $_.FullName }
+
+      - name: run Python test
+        run: pytest tests/python
+
       - uses: actions/upload-artifact@v4
-        if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         with:
           path: wheelhouse/*.whl
 
-  # build_sdist:
-  #   name: Build source distribution
-  #   runs-on: ubuntu-latest
+  build_sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
 
-  #   - uses: actions/checkout@v3
+    steps:
+      - uses: actions/checkout@v3
 
-  #   - uses: actions/setup-python@v3
+      - uses: actions/setup-python@v3
 
-  #   - name: Install Python dependencies
-  #     run: python -m pip install -U maturin cffi
+      - name: Install Python dependencies
+        run: python -m pip install -U maturin cffi setuptools wheel twine cibuildwheel
 
-  #   - uses: actions/upload-artifact@v3
-  #     with:
-  #       path: ./wheelhouse/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          path: ./wheelhouse/*.tar.gz
 
+  rust_tests:
+    name: Run Rust tests on ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+          - ubuntu
+          # - macos
+          - windows
+        python-version:
+          - '8'
+    runs-on: ${{ format('{0}-latest', matrix.os) }}
 
-  # upload_pypi:
-  #   needs: [build_wheels, build_sdist]
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v3
+
+      - name: Install Rust
+        # unnecessary for ubuntu because it's installed inside cibuildwheel
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly-2023-11-16
+          override: true
+
+      - name: Install Python dependencies
+        run: python -m pip install -U setuptools wheel twine cibuildwheel
+
+      - name: run Rust test
+        run: make ci_rust_test

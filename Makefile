@@ -70,3 +70,7 @@ wasm:
 python: clean-env
 	maturin develop
 	pytest tests/python
+
+ci_rust_test:
+	cargo test --release
+	cargo test -r --no-default-features --features remove_blossom_v,dangerous_pointer,u32_index,i32_weight
