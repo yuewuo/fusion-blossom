@@ -18,7 +18,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
       matrix:
         os:
           - ubuntu
-          - macos
+          # - macos
           - windows
         python-version:  # Yue 2022.10.9: I enabled abi3-py37 in pyo3, so everything built will be py37-abi3 which is compatible with py37+
           # - '7'
@@ -106,7 +106,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         run: twine check wheelhouse/*
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: matrix.os != 'macos' || matrix['python-version'] != '7'  # no python37 for macos
         with:
           path: wheelhouse/*.whl

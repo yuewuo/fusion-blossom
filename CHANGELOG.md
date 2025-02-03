@@ -23,3 +23,7 @@ The first version of Python package
 ## 0.2.10 (2024.5.7)
 
 - optimize Python interface to accept `max_tree_size = None`
+
+## 0.2.13 (2025.2.1)
+
+- use bottle=0.14-dev to fix error on python3.13 where cgi module is deprecated
