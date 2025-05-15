@@ -93,7 +93,7 @@ jobs:  # Workflow credit to https://github.com/samuelcolvin/rtoml/blob/main/.git
         run: Get-ChildItem -Path wheelhouse -Filter *.whl |ForEach-Object { python -m pip install -U $_.FullName }
 
       - name: run Python test
-        run: pytest tests/python
+        run: python -X faulthandler -m pytest -p no:faulthandler tests/python
       
       - name: build source distribution only on Ubuntu
         if: matrix.os == 'ubuntu'

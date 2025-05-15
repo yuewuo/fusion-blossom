@@ -805,6 +805,131 @@ mod tests {
     }
 
     #[test]
+    fn visualize_thesis_circuit_level() {
+        // cargo test visualize_thesis_circuit_level -- --nocapture
+        let visualize_filename = "visualize_thesis_circuit_level.json".to_string();
+        let d: VertexNum = 3;
+        let td: VertexNum = 4;
+        let p = 0.2f64;
+        let half_weight: Weight = (10000. * ((1. - p).ln() - p.ln())).max(1.) as Weight;
+        let t_vertex_num = d * d - 1;
+        let vertex_num = (d * d - 1) * td; // both X and Z type stabilizers altogether
+        let virtual_vertices = vec![];
+        let num_rows = d + 1;
+        let has_stabilizer = |i: isize, j: isize| -> bool {
+            if i < 0 || i > d as isize || j < 0 || j > d as isize {
+                return false;
+            }
+            if i == 0 {
+                return j % 2 == 0 && j != 0;
+            }
+            if i == d as isize {
+                return j % 2 == 1 && j != d as isize;
+            }
+            if j == 0 {
+                return i % 2 == 1 && i != d as isize;
+            }
+            if j == d as isize {
+                return i % 2 == 0 && i != 0;
+            }
+            true
+        };
+        let is_z = |i: isize, j: isize| -> bool { (i + j) % 2 == 0 };
+        let mut positions = Vec::new();
+        let scale = 2f64 / 254f64 * 181f64;
+        let mut stab_bias: std::collections::BTreeMap<(isize, isize), usize> = std::collections::BTreeMap::new();
+        for t in 0..td {
+            let pos_t = t as f64;
+            for i in 0..num_rows {
+                for j in 0..num_rows {
+                    if has_stabilizer(i as isize, j as isize) {
+                        if t == 0 {
+                            // calculate bias
+                            let index = positions.len();
+                            stab_bias.insert((i as isize, j as isize), index);
+                        }
+                        positions.push(VisualizePosition::new(i as f64 * scale, j as f64 * scale, pos_t * 2.0));
+                    }
+                }
+            }
+        }
+        let weight = half_weight * 2; // to make sure weight is even number for ease of this test function
+        let weighted_edges = {
+            let mut weighted_edges: Vec<(VertexIndex, VertexIndex, Weight)> = Vec::new();
+            for t in 0..td {
+                let t_bias = t * t_vertex_num;
+                for i in 0..num_rows {
+                    for j in 0..num_rows {
+                        if !has_stabilizer(i as isize, j as isize) {
+                            continue;
+                        }
+                        let bias = stab_bias.get(&(i as isize, j as isize)).unwrap() + t_bias;
+                        for (di, dj) in [(1, 1), (1, -1)] {
+                            if !has_stabilizer(i as isize + di, j as isize + dj) {
+                                continue;
+                            }
+                            // there is an edge
+                            let new_bias = stab_bias.get(&(i as isize + di, j as isize + dj)).unwrap() + t_bias;
+                            weighted_edges.push((bias, new_bias, weight));
+                        }
+                    }
+                }
+                // inter-layer connection
+                if t + 1 < td {
+                    for i in 0..num_rows {
+                        for j in 0..num_rows {
+                            if !has_stabilizer(i as isize, j as isize) {
+                                continue;
+                            }
+                            let bias = stab_bias.get(&(i as isize, j as isize)).unwrap() + t_bias;
+                            weighted_edges.push((bias, bias + t_vertex_num, weight));
+                            // diagonal edges
+                            let diagonal_diffs: Vec<(isize, isize)> = if is_z(i as isize, j as isize) {
+                                vec![(1, -1)]
+                            } else {
+                                // i and j are reversed if x stabilizer, not vec![(0, -2), (2, 0), (2, -2)]
+                                vec![(1, 1)]
+                            };
+                            for (di, dj) in diagonal_diffs {
+                                if !has_stabilizer(i as isize + di, j as isize + dj) {
+                                    continue;
+                                }
+                                let new_bias = stab_bias.get(&(i as isize + di, j as isize + dj)).unwrap() + t_bias;
+                                weighted_edges.push((bias, new_bias + t_vertex_num, weight));
+                            }
+                        }
+                    }
+                }
+            }
+            weighted_edges
+        };
+        // hardcode syndrome
+        let defect_vertices = vec![29, 21, 23, 13];
+        let grow_edges: Vec<usize> = vec![33, 50];
+        // run single-thread fusion blossom algorithm
+        print_visualize_link_with_parameters(
+            visualize_filename.clone(),
+            vec![("patch".to_string(), "visualize_thesis_circuit_level".to_string())],
+        );
+        println!("positions: {:?}", positions.len());
+        let mut visualizer =
+            Visualizer::new(Some(visualize_data_folder() + visualize_filename.as_str()), positions, true).unwrap();
+        let initializer = SolverInitializer::new(vertex_num, weighted_edges, virtual_vertices);
+        let mut dual_module = DualModuleSerial::new_empty(&initializer);
+        let interface_ptr =
+            DualModuleInterfacePtr::new_load(&SyndromePattern::new_vertices(defect_vertices), &mut dual_module);
+        // grow edges
+        for &edge_index in grow_edges.iter() {
+            let mut edge = dual_module.edges[edge_index].write_force();
+            edge.left_growth = edge.weight;
+        }
+        // save snapshot
+        visualizer
+            .snapshot_combined("initial".to_string(), vec![&interface_ptr, &dual_module])
+            .unwrap();
+    }
+
+    #[test]
     fn visualize_rough_idea_fusion_blossom() {
         // cargo test visualize_rough_idea_fusion_blossom -- --nocapture
         let quarter_weight = 250;
