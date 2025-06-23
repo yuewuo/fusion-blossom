@@ -580,7 +580,7 @@ pub fn auto_visualize_data_filename() -> String {
 #[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn print_visualize_link_with_parameters(filename: String, parameters: Vec<(String, String)>) {
     let default_port = if cfg!(feature = "python_binding") { 51666 } else { 8066 };
-    let mut link = format!("http://localhost:{}?filename={}", default_port, filename);
+    let mut link = format!("http://localhost:{}/visualize/?filename={}", default_port, filename);
     for (key, value) in parameters.iter() {
         link.push('&');
         link.push_str(&urlencoding::encode(key));
