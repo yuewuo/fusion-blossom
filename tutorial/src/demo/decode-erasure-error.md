@@ -42,6 +42,15 @@ SyndromePattern {
 }
 ```
 
+You can also set the edge weights manually, using the following construction of a syndrome pattern:
+```python
+fb.SyndromePattern(
+    defect_vertices=[],  # Vec<VertexIndex)>
+    erasures=[],         # Vec<EdgeIndex>, setting weights to 0
+    dynamic_weights=[],   # Vec<(EdgeIndex, Weight)>, setting weights of certain edges to the new weights
+)
+```
+
 The erasures are edge indices, whose weights will be set to 0 in the solver (red edges below).
 
 <div style="display: flex; justify-content: center;">
