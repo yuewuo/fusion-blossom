@@ -11,7 +11,7 @@
 
 ## Chapters
 
-For beginners, please read how the MWPM decoder works and how we abstract the MWPM decoder interface in [Problem Definition Chapter](problem_definition.md).
+For beginners, please read how the MWPM decoder works and how we abstract the MWPM decoder interface in [Problem Definition Chapter](problem-definition.md).
 
 For experts in fusion-blossom, please jump to [Installation](installation.md) or directly go to [demos](demo/example-qec-codes.md).
 

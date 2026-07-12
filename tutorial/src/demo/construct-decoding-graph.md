@@ -1,7 +1,7 @@
 # Construct Decoding Graph
 
 In this chapter you'll learn how to construct your own decoding graph.
-Please make sure you understand everything about decoding graph in the [Problem Definition Chapter](../problem_definition.md).
+Please make sure you understand everything about decoding graph in the [Problem Definition Chapter](../problem-definition.md).
 
 You can [download the complete code here](./construct-decoding-graph.py).
 

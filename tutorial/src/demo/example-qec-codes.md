@@ -68,7 +68,7 @@ solver.solve(syndrome)
 
 ## Print Minimum-Weight Parity Subgraph (MWPS)
 
-For definition of MWPS, please see [Problem Definition Chapter](../problem_definition.md).
+For definition of MWPS, please see [Problem Definition Chapter](../problem-definition.md).
 The function `subgraph()` takes an optional visualizer object for visualization of the parity subgraph.
 
 ```python
