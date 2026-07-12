@@ -16,7 +16,7 @@ For open-boundary QEC codes, there are some errors that only generate a single d
 
 Note that here we're assuming a single round of measurement.
 A normal stabilizer measurement means trivial measurement result (+1) and a defect stabilizer measurement means non-trivial measurement result (-1).
-This can be easily extended to multiple rounds of measurement, where a normal stabilizer measurement means the same result as the previous round, and a defect stabilizer stabilizer measurement means different result from the previous round.
+This can be easily extended to multiple rounds of measurement, where a normal stabilizer measurement means the same result as the previous round, and a defect stabilizer measurement means different result from the previous round.
 
 The syndrome Graph \\( (V_S, E_S) \\) is generated from the decoding graph.
 In the syndrome graph, \\( V_S \subseteq V_D \\), where real vertices with normal measurement results are discarded, and only defect vertices and some virtual vertices are preserved.
