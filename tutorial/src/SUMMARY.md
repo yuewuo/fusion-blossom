@@ -9,7 +9,7 @@
 # Python Demos
 
 - [Example QEC Codes](demo/example-qec-codes.md)
-- [Construct Syndrome](demo/construct-syndrome.md)s
+- [Construct Syndrome](demo/construct-syndrome.md)
 - [Construct Decoding Graph](demo/construct-decoding-graph.md)
 - [Use Results](demo/use-results.md)
 
