@@ -66,7 +66,7 @@ The syndrome pattern essentially sets a parity constraint on the result subgraph
 
 We shall note that in a traditional MWPM decoder, people have to translate each matched pair in the minimum-weight perfect matching back to a chain of edges in the decoding graph.
 In fact, in order to use traditional MWPM libraries to implement a MWPM decoder, people translate from the decoding graph to the syndrome graph and then back to the decoding graph, which is not only time-consuming but also make the decoder implementation more complex.
-What we do here is to directly solve the problem on the decoding graph for high efficiency, and also directly output results on the decoding graph so that user can simply multiple the individual error for each edge to get the most-likely error pattern.
+What we do here is to directly solve the problem on the decoding graph for high efficiency, and also directly output results on the decoding graph so that user can simply multiply the individual error for each edge to get the most-likely error pattern.
 
 Our library can output both MWPS and MWPM. For more details, see [Example QEC Codes](demo/example-qec-codes.md). Here is an example in Python:
 
@@ -87,7 +87,7 @@ mwpm = solver.perfect_matching()  # traditional MWPM decoder output
 ## How MWPM decoder works?
 
 MWPM decoder essentially tries to find the most likely error pattern that generates a syndrome \\( S \\).
-Such an error pattern must satisfy the parity constrains to generate the given syndrome \\( S \\), either in the decoding graph (each defect vertex is incident by odd times) or in the syndrome graph (each vertex belongs to exactly one matching).
+Such an error pattern must satisfy the parity constraints to generate the given syndrome \\( S \\), either in the decoding graph (each defect vertex is incident by odd times) or in the syndrome graph (each vertex belongs to exactly one matching).
 
 Suppose the aggregated probability for each edge is \\( p_e \\), independent from all other edges.
 An error pattern corresponds to a subset of edges \\( E \\), and the probability of this error pattern is
@@ -98,6 +98,6 @@ The last term \\( \prod_{e}{(1-p_e)} \\) is a constant, so maximizing the probab
 
 \\[ \prod_{e \in E}{\frac{p_e}{1-p_e}} = \exp\left({\sum_{e \in E}{\ln \frac{p_e}{1-p_e}}}\right) = \exp\left({- \sum_{e \in E}{\ln \frac{1-p_e}{p_e}}}\right) \\]
 
-Given a reasonable error rate \\( p_e \le \frac{1}{2} \\), we have \\( \frac{1-p_e}{p_e} \ge 1 \\) and \\( \ln \frac{1-p_e}{p_e} \ge 0 \\). We assign weight to each edge as \\( w_e = \ln \frac{1 - p_e}{p_e} \\), a non-negative number. Thus, maximizing the probability of an error pattern is equivalent to minimizing the value while satisfying the parity constrains.
+Given a reasonable error rate \\( p_e \le \frac{1}{2} \\), we have \\( \frac{1-p_e}{p_e} \ge 1 \\) and \\( \ln \frac{1-p_e}{p_e} \ge 0 \\). We assign weight to each edge as \\( w_e = \ln \frac{1 - p_e}{p_e} \\), a non-negative number. Thus, maximizing the probability of an error pattern is equivalent to minimizing the value while satisfying the parity constraints.
 
 \\[ \arg \min_{E} \sum_{e \in E} w_e = \arg \min_{E} \sum_{e \in E}{\ln \frac{1-p_e}{p_e}} \ \ \textrm{, subject to}\ S(E) = S \\]

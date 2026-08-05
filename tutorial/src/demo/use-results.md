@@ -24,7 +24,7 @@ code = fb.CodeCapacityPlanarCode(d=7, p=0.1, max_half_weight=500)
 
 ## Initialize Visualizer [Optional]
 
-In order to plot them in a correct geometry, we swap the vertical `i` and horizontal `j` parameters for the the Z decoding graph.
+In order to plot them in a correct geometry, we swap the vertical `i` and horizontal `j` parameters for the Z decoding graph.
 We also place the Z decoding graph on top of the X decoding graph by setting `t = 1`, which do not affect the top view but can better distinguish X and Z decoding graphs if viewing in another direction (like the figure above).
 
 ```python
