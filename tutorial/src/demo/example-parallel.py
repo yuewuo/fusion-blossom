@@ -87,7 +87,7 @@ initializer = code.get_initializer()
 partition_config = fb.PartitionConfig(initializer.vertex_num)
 # the ranges below are the range of vertices (after reordering) of the 4 partitions 
 # we find the range below by looking at the partition visualization
-# for example, the range 0-36 is found by taking the min and the max indexes of the verticies in the top left parition
+# for example, the range 0-36 is found by taking the min and the max indexes of the vertices in the top left partition
 partition_config.partitions = [fb.NodeRange(0,36), # unit 0
                                 fb.NodeRange(42,72), # unit 1
                                 fb.NodeRange(84,108), # unit 2

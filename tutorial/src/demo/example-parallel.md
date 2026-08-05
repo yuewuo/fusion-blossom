@@ -44,7 +44,7 @@ initializer = code.get_initializer()
 
 ## Define Partition Configuration
 partition_config = fb.PartitionConfig(initializer.vertex_num)
-# The ranges below are the range of vertices (after reordering) of the 4 partitions we find the range below by looking at the partition visualization. For example, the range 0-36 is found by taking the min and the max indexes of the verticies in the top left parition
+# The ranges below are the range of vertices (after reordering) of the 4 partitions we find the range below by looking at the partition visualization. For example, the range 0-36 is found by taking the min and the max indexes of the vertices in the top left partition
 partition_config.partitions = [fb.NodeRange(0,36), # unit 0
                                 fb.NodeRange(42,72), # unit 1
                                 fb.NodeRange(84,108), # unit 2
@@ -54,13 +54,13 @@ partition_config.fusions = [(0, 1), (2, 3), (4, 5)] # refer to the Balanced tree
 partition_info = partition_config.info()
 ```
 
-Note that we define `partition_config.partitions` and `partition_config.fusions` differently for different partition and fusion plans. The `NodeRange()` in the example code indicates the range of vertex indexes (after reordering) of the specific partition. This range can be obtained by finding the minimum and maximum value of the specific parition using the visualization tool `fb.helper.peek_code()`. 
+Note that we define `partition_config.partitions` and `partition_config.fusions` differently for different partition and fusion plans. The `NodeRange()` in the example code indicates the range of vertex indexes (after reordering) of the specific partition. This range can be obtained by finding the minimum and maximum value of the specific partition using the visualization tool `fb.helper.peek_code()`. 
 
 There are mainly 3 categories of fusion plan as denoted by the 3 types of Fusion Trees. 
 * Balanced Tree
-    * Balanced tree has the shortest path from leaf to root, making it a good candidate for *Batch Decoding*. For Batch Decoding, the syndrome of all N rounds of measurement is available at the time of decoding, making the decoding latency the same as decoding time. Since decoding time is determined by the longest path from a leaf to the root given enouch parallel resources, *balanced tree* is a good candidate for fusion plan. 
+    * Balanced tree has the shortest path from leaf to root, making it a good candidate for *Batch Decoding*. For Batch Decoding, the syndrome of all N rounds of measurement is available at the time of decoding, making the decoding latency the same as decoding time. Since decoding time is determined by the longest path from a leaf to the root given enough parallel resources, *balanced tree* is a good candidate for fusion plan. 
 * Linear Tree
-    * Linear tree is preferable for *Streem Decoding*, where the decoding latency is subtaintially shorter than the decoding time as stream decoding starts as soon as rounds of measurement are ready for a leaf node. Therefore, besides the decoding time (represented by the paths between leaves and the root), we must also take into account the time when rounds of measurement for a leaf is ready. To minimize the decoding latency, one must balance the path length plus the ready time for all paths, allowing a shorter path for a later leaf. 
+    * Linear tree is preferable for *Stream Decoding*, where the decoding latency is substantially shorter than the decoding time as stream decoding starts as soon as rounds of measurement are ready for a leaf node. Therefore, besides the decoding time (represented by the paths between leaves and the root), we must also take into account the time when rounds of measurement for a leaf is ready. To minimize the decoding latency, one must balance the path length plus the ready time for all paths, allowing a shorter path for a later leaf. 
 * Mixed Tree
     * Mixed tree is a continuum of trees between the 2 extreme cases of balanced tree and linear tree. To construct a mixed tree, one selects a certain height in the balanced tree, keeps balanced sub-trees below the height but constructs a linear tree above it. The higher this height, the smaller path difference between earlier and later leaves. For the balanced and linear trees, this mix height is root and leaf, respectively. We note that the mix height can be determined dynamically: the decoder can start with a balanced tree and switch to a linear tree to optimize the performance of the system.
 
