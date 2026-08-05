@@ -11,7 +11,7 @@ Our paper is out on arXiv! [https://arxiv.org/abs/2305.08307](https://arxiv.org/
 
 ## Key Features
 
-- **Correctness**: This is an exact MWPM solver, verified against the [Blossom V library](https://pub.ist.ac.at/~vnk/software.html) with millions of randomized test cases .
+- **Correctness**: This is an exact MWPM solver, verified against the [Blossom V library](https://pub.ist.ac.at/~vnk/software.html) with millions of randomized test cases.
 - **Linear Complexity**: The average decoding time is roughly $O(N)$ given small physical error rate, proportional to the number of defect vertices $N$.
 - **Parallelism**: A single MWPM decoding problem can be partitioned and solved in parallel, then *fused* together to find an **exact** global MWPM solution.
 - **Simple Interface**: The graph problem is abstracted and easy-to-use for QEC applications. Especially, it supports decoding erasure errors (by setting some edge weights to 0 on the fly).
@@ -56,7 +56,7 @@ Click the demo image below to view the corresponding demo
 
 Our code is written in [Rust](https://www.rust-lang.org/) programming language for speed and memory safety, but it's hardly an easy language to learn. To make the decoder more accessible, we bind the library to Python and user can simply install the library using `pip3 install fusion-blossom`.
 
-We have several Python demos at [the tutorial website](https://tutorial.fusionblossom.com/demo/example-qec-codes.html) . Also there is a simple example for decoder, and you can run it by cloning the project and run `python3 scripts/demo.py`.
+We have several Python demos at [the tutorial website](https://tutorial.fusionblossom.com/demo/example-qec-codes.html). Also there is a simple example for decoder, and you can run it by cloning the project and run `python3 scripts/demo.py`.
 
 For parallel solver, it needs user to provide a partition strategy. Please check our paper for a thorough description of how partition works.
 
@@ -64,7 +64,7 @@ For parallel solver, it needs user to provide a partition strategy. Please check
 
 #### Sparse Decoding Graph and Integer Weights
 
-The weights in QEC decoding graph are computed by taking the log of error probability, e.g. $w_e = \log\{(1-p)/p\}$ or roughly $w_e = -\log{p}$, we can safely use integers to save weights by e.g. multiplying the weights by 1e6 and truncate to nearest integer. In this way, the truncation error $\Delta w_e = 1$ of integer weights corresponds to relative error $\Delta p /{p}=10^{-6}$ which is small enough. Suppose physical error rate $p$ is in the range of a positive `f64` variable (2.2e-308 to 1), the maximum weight is 7e7,which is well below the maximum value of a `u32` variable (4.3e9). Since weights only sum up in our algorithm (no multiplication), `u32` is large enough and accurate enough. By default we use `usize` which is platform dependent (usually 64 bits), but you can 
+The weights in QEC decoding graph are computed by taking the log of error probability, e.g. $w_e = \log\{(1-p)/p\}$ or roughly $w_e = -\log{p}$, we can safely use integers to save weights by e.g. multiplying the weights by 1e6 and truncate to nearest integer. In this way, the truncation error $\Delta w_e = 1$ of integer weights corresponds to relative error $\Delta p /{p}=10^{-6}$ which is small enough. Suppose physical error rate $p$ is in the range of a positive `f64` variable (2.2e-308 to 1), the maximum weight is 7e7, which is well below the maximum value of a `u32` variable (4.3e9). Since weights only sum up in our algorithm (no multiplication), `u32` is large enough and accurate enough. By default we use `usize` which is platform dependent (usually 64 bits), but you can 
 
 We use integer also for ease of migrating to FPGA implementation. In order to fit more vertices into a single FPGA, it's necessary to reduce the resource usage for each vertex. Integers are much cheaper than floating-point numbers, and also it allows flexible trade-off between resource usage and accuracy, e.g. if all weights are equal, we can simply use a 2 bit integer.
 
@@ -72,7 +72,7 @@ Note that other libraries of MWPM solver like [Blossom V](https://doi.org/10.100
 
 ## Tests
 
-In order to test the correctness of our MWPM solver, we need a ground-truth MWPM solver. [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) is widely-used in existing MWPM decoders, but according to the license we cannot embed it in this library.To run the test cases with ground truth comparison or enable the functions like `blossom_v_mwpm`, you need to download this library [at this website](https://pub.ist.ac.at/~vnk/software.html) to a folder named `blossomV` at the root directory of this git repo.
+In order to test the correctness of our MWPM solver, we need a ground-truth MWPM solver. [Blossom V](https://doi.org/10.1007/s12532-009-0002-8) is widely-used in existing MWPM decoders, but according to the license we cannot embed it in this library. To run the test cases with ground truth comparison or enable the functions like `blossom_v_mwpm`, you need to download this library [at this website](https://pub.ist.ac.at/~vnk/software.html) to a folder named `blossomV` at the root directory of this git repo.
 
 ```shell
 wget -c https://pub.ist.ac.at/~vnk/software/blossom5-v2.05.src.tar.gz -O - | tar -xz
@@ -100,7 +100,7 @@ node index.js <url> <width> <height>  # local render
 
 ## Visualize parallel execution of multiple decoding problems
 
-In order to understand the bottleneck of  parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each consists of 49 rounds of measurement. Green blocks are fusion operations, a single round of measurement sandwiched by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
+In order to understand the bottleneck of parallel execution, we wrote a visualization tool to display the execution windows of base partitions and fusion operations on multiple threads. Fusion operation only scales with the size of the fusion boundary and the depth of active partitions, irrelevant to the base partition's size. We study different partition and fusion strategies in our paper. Below shows the parallel execution on 64 threads. Blue blocks are base partitions, each consists of 49 rounds of measurement. Green blocks are fusion operations, a single round of measurement sandwiched by two neighbor base partitions. You can click the image which jumps to this interactive visualization tool.
 
 [<img src="./benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/64.svg"/>](https://visualize.fusionblossom.com/partition-profile.html?filename=benchmark/paper_parallel_fusion_blossom/thread_pool_size_partition_2k/tmp/64.profile)
 
