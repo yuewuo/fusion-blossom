@@ -163,6 +163,19 @@ impl SyndromePattern {
     }
 }
 
+impl SyndromePattern {
+    /// without any virtual vertex every defect can only be matched to another defect, so an odd
+    /// number of defects admits no matching at all; rejecting it here keeps the solver from
+    /// searching forever for something that cannot exist
+    pub fn assert_solvable(&self, virtual_vertex_num: usize) {
+        assert!(
+            virtual_vertex_num > 0 || self.defect_vertices.len() % 2 == 0,
+            "no valid matching exists: odd number of defects ({}) and no virtual vertex to match against",
+            self.defect_vertices.len()
+        );
+    }
+}
+
 /// an efficient representation of partitioned vertices and erasures when they're ordered
 #[derive(Debug, Clone, Serialize)]
 pub struct PartitionedSyndromePattern<'a> {
