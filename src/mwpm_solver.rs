@@ -892,6 +892,15 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "defect vertex 2 is duplicated")]
+    fn reject_duplicate_defect_vertex() {
+        // cargo test reject_duplicate_defect_vertex -- --nocapture
+        let initializer = repetition_code_initializer();
+        let mut solver = SolverSerial::new(&initializer);
+        solver.solve(&SyndromePattern::new_vertices(vec![1, 2, 2]));
+    }
+
+    #[test]
     #[should_panic(expected = "erasure edge 100 is out of range")]
     fn reject_out_of_range_erasure_edge() {
         // cargo test reject_out_of_range_erasure_edge -- --nocapture
