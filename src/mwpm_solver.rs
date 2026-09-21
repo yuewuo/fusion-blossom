@@ -313,6 +313,7 @@ impl PrimalDualSolver for SolverSerial {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.assert_solvable(self.subgraph_builder.virtual_vertex_num);
         if !syndrome_pattern.erasures.is_empty() {
             assert!(
                 syndrome_pattern.dynamic_weights.is_empty(),
@@ -430,6 +431,7 @@ impl PrimalDualSolver for SolverDualParallel {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.assert_solvable(self.subgraph_builder.virtual_vertex_num);
         if !syndrome_pattern.erasures.is_empty() {
             assert!(
                 syndrome_pattern.dynamic_weights.is_empty(),
@@ -591,6 +593,7 @@ impl PrimalDualSolver for SolverParallel {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.assert_solvable(self.subgraph_builder.virtual_vertex_num);
         if !syndrome_pattern.erasures.is_empty() {
             self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
         }
@@ -730,6 +733,7 @@ impl PrimalDualSolver for SolverBlossomV {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.assert_solvable(self.subgraph_builder.virtual_vertex_num);
         assert!(visualizer.is_none(), "not supported");
         assert!(syndrome_pattern.erasures.is_empty(), "doesn't support erasure for now");
         let defect_vertices = &syndrome_pattern.defect_vertices;
@@ -867,4 +871,37 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<SolverParallel>()?;
     m.add_class::<SolverErrorPatternLogger>()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// a bare path graph with no virtual vertex, so every defect must be matched to another defect
+    fn no_virtual_vertex_initializer() -> SolverInitializer {
+        SolverInitializer {
+            vertex_num: 4,
+            weighted_edges: vec![(0, 1, 2), (1, 2, 2), (2, 3, 2)],
+            virtual_vertices: vec![],
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "no valid matching exists")]
+    fn reject_odd_defects_without_virtual_vertex() {
+        // cargo test reject_odd_defects_without_virtual_vertex -- --nocapture
+        let initializer = no_virtual_vertex_initializer();
+        let mut solver = SolverSerial::new(&initializer);
+        solver.solve(&SyndromePattern::new_vertices(vec![0, 1, 2]));
+        solver.perfect_matching();
+    }
+
+    #[test]
+    fn accept_even_defects_without_virtual_vertex() {
+        // cargo test accept_even_defects_without_virtual_vertex -- --nocapture
+        let initializer = no_virtual_vertex_initializer();
+        let mut solver = SolverSerial::new(&initializer);
+        solver.solve(&SyndromePattern::new_vertices(vec![0, 1]));
+        solver.perfect_matching();
+    }
 }

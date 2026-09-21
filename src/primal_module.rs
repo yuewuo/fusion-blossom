@@ -489,6 +489,8 @@ impl FusionVisualizer for PerfectMatching {
 pub struct SubGraphBuilder {
     /// number of vertices
     pub vertex_num: VertexNum,
+    /// number of virtual vertices, i.e. the boundary a defect can be matched to
+    pub virtual_vertex_num: usize,
     /// mapping from vertex pair to edge index
     vertex_pair_edges: HashMap<(VertexIndex, VertexIndex), EdgeIndex>,
     /// an instance of complete graph to compute minimum-weight path between any pair of vertices
@@ -506,6 +508,7 @@ impl SubGraphBuilder {
         }
         Self {
             vertex_num: initializer.vertex_num,
+            virtual_vertex_num: initializer.virtual_vertices.len(),
             vertex_pair_edges,
             complete_graph: CompleteGraph::new(initializer.vertex_num, &initializer.weighted_edges),
             subgraph: BTreeSet::new(),
