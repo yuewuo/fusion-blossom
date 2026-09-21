@@ -313,6 +313,7 @@ impl PrimalDualSolver for SolverSerial {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.validate(self.subgraph_builder.vertex_num, self.subgraph_builder.edge_num);
         if !syndrome_pattern.erasures.is_empty() {
             assert!(
                 syndrome_pattern.dynamic_weights.is_empty(),
@@ -430,6 +431,7 @@ impl PrimalDualSolver for SolverDualParallel {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.validate(self.subgraph_builder.vertex_num, self.subgraph_builder.edge_num);
         if !syndrome_pattern.erasures.is_empty() {
             assert!(
                 syndrome_pattern.dynamic_weights.is_empty(),
@@ -591,6 +593,7 @@ impl PrimalDualSolver for SolverParallel {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.validate(self.subgraph_builder.vertex_num, self.subgraph_builder.edge_num);
         if !syndrome_pattern.erasures.is_empty() {
             self.subgraph_builder.load_erasures(&syndrome_pattern.erasures);
         }
@@ -730,6 +733,7 @@ impl PrimalDualSolver for SolverBlossomV {
         self.subgraph_builder.clear();
     }
     fn solve_visualizer(&mut self, syndrome_pattern: &SyndromePattern, visualizer: Option<&mut Visualizer>) {
+        syndrome_pattern.validate(self.subgraph_builder.vertex_num, self.subgraph_builder.edge_num);
         assert!(visualizer.is_none(), "not supported");
         assert!(syndrome_pattern.erasures.is_empty(), "doesn't support erasure for now");
         let defect_vertices = &syndrome_pattern.defect_vertices;
@@ -867,4 +871,41 @@ pub(crate) fn register(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_class::<SolverParallel>()?;
     m.add_class::<SolverErrorPatternLogger>()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::example_codes::*;
+
+    fn repetition_code_initializer() -> SolverInitializer {
+        CodeCapacityRepetitionCode::new(7, 0.2, 500).get_initializer()
+    }
+
+    #[test]
+    #[should_panic(expected = "defect vertex 100 is out of range")]
+    fn reject_out_of_range_defect_vertex() {
+        // cargo test reject_out_of_range_defect_vertex -- --nocapture
+        let initializer = repetition_code_initializer();
+        let mut solver = SolverSerial::new(&initializer);
+        solver.solve(&SyndromePattern::new_vertices(vec![100]));
+    }
+
+    #[test]
+    #[should_panic(expected = "erasure edge 100 is out of range")]
+    fn reject_out_of_range_erasure_edge() {
+        // cargo test reject_out_of_range_erasure_edge -- --nocapture
+        let initializer = repetition_code_initializer();
+        let mut solver = SolverSerial::new(&initializer);
+        solver.solve(&SyndromePattern::new(vec![1, 2], vec![100]));
+    }
+
+    #[test]
+    #[should_panic(expected = "dynamic weight edge 100 is out of range")]
+    fn reject_out_of_range_dynamic_weight_edge() {
+        // cargo test reject_out_of_range_dynamic_weight_edge -- --nocapture
+        let initializer = repetition_code_initializer();
+        let mut solver = SolverSerial::new(&initializer);
+        solver.solve(&SyndromePattern::new_dynamic_weights(vec![1, 2], vec![], vec![(100, 4)]));
+    }
 }
