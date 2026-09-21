@@ -163,6 +163,45 @@ impl SyndromePattern {
     }
 }
 
+impl SyndromePattern {
+    /// reject indices that do not exist in the decoding graph, and defects reported more than
+    /// once, so that a malformed syndrome is reported at the API boundary instead of surfacing
+    /// later as an unrelated panic deep inside a dual module or as a bare index-out-of-bounds
+    #[allow(clippy::unnecessary_cast)]
+    pub fn validate(&self, vertex_num: VertexNum, edge_num: EdgeIndex) {
+        let mut seen_defect_vertices = BTreeSet::new();
+        for vertex_index in self.defect_vertices.iter().cloned() {
+            assert!(
+                (vertex_index as VertexNum) < vertex_num,
+                "defect vertex {} is out of range [0, {})",
+                vertex_index,
+                vertex_num
+            );
+            assert!(
+                seen_defect_vertices.insert(vertex_index),
+                "defect vertex {} is duplicated",
+                vertex_index
+            );
+        }
+        for edge_index in self.erasures.iter().cloned() {
+            assert!(
+                edge_index < edge_num,
+                "erasure edge {} is out of range [0, {})",
+                edge_index,
+                edge_num
+            );
+        }
+        for (edge_index, _weight) in self.dynamic_weights.iter().cloned() {
+            assert!(
+                edge_index < edge_num,
+                "dynamic weight edge {} is out of range [0, {})",
+                edge_index,
+                edge_num
+            );
+        }
+    }
+}
+
 /// an efficient representation of partitioned vertices and erasures when they're ordered
 #[derive(Debug, Clone, Serialize)]
 pub struct PartitionedSyndromePattern<'a> {
