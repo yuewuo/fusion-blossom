@@ -95,7 +95,7 @@ impl CodeEdge {
 /// default function for computing (pre-scaled) weight from probability
 #[cfg_attr(feature = "python_binding", pyfunction)]
 pub fn weight_of_p(p: f64) -> f64 {
-    assert!((0. ..=0.5).contains(&p), "p must be a reasonable value between 0 and 50%");
+    assert!(p > 0. && p < 0.5, "p must be in the open range (0, 0.5), got {}", p);
     ((1. - p) / p).ln()
 }
 
@@ -1577,6 +1577,22 @@ mod tests {
         let mut code = CodeCapacityRepetitionCode::new(7, 0.2, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, "example_code_capacity_repetition_code.json".to_string());
+    }
+
+    #[test]
+    #[should_panic(expected = "p must be in the open range (0, 0.5)")]
+    fn weight_of_p_rejects_zero() {
+        // cargo test weight_of_p_rejects_zero -- --nocapture
+        // p = 0 used to yield +inf, which compute_weights turned into NaN weights without any error
+        weight_of_p(0.);
+    }
+
+    #[test]
+    #[should_panic(expected = "p must be in the open range (0, 0.5)")]
+    fn weight_of_p_rejects_half() {
+        // cargo test weight_of_p_rejects_half -- --nocapture
+        // p = 0.5 used to yield weight 0, tripping the unrelated "max weight" assert in compute_weights
+        weight_of_p(0.5);
     }
 
     #[test]
