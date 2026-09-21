@@ -352,7 +352,7 @@ pub trait ExampleCode {
             vertex.is_defect = false;
         }
         for edge in edges.iter_mut() {
-            edge.is_erasure = true;
+            edge.is_erasure = false;
         }
     }
 
@@ -1577,6 +1577,16 @@ mod tests {
         let mut code = CodeCapacityRepetitionCode::new(7, 0.2, 500);
         code.sanity_check().unwrap();
         visualize_code(&mut code, "example_code_capacity_repetition_code.json".to_string());
+    }
+
+    #[test]
+    fn example_code_clear_errors() {
+        // cargo test example_code_clear_errors -- --nocapture
+        let mut code = CodeCapacityRepetitionCode::new(7, 0.2, 500);
+        code.set_syndrome(&SyndromePattern::new(vec![1, 2], vec![0, 3]));
+        code.clear_errors();
+        assert!(code.get_defect_vertices().is_empty());
+        assert!(code.get_erasures().is_empty());
     }
 
     #[test]
